@@ -1,4 +1,4 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, type World } from "./world.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, HEX_MODES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
@@ -200,9 +200,29 @@ function newWorld(seed: number) {
   explored.clear();
   recolor();
 }
+/** Cor estável para um id (cultura, língua...): espalha o matiz pelo círculo de cores, com tons sóbrios. */
+const idColor = (id: number): [number, number, number] => {
+  const h = (id * 137.508) % 360, s = 0.45, l = 0.5, f = (n: number) => { const k = (n + h / 30) % 12; return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return [f(0) * 255, f(8) * 255, f(4) * 255].map(Math.round) as [number, number, number];
+};
+const RELIGION_COLORS: [number, number, number][] = [[176, 138, 92], [110, 140, 190], [120, 160, 100], [200, 110, 80], [90, 160, 170]];
+/** Camadas que dependem da economia (modo ≥ HEX_MODES): cor por hex a partir da cidade (mercado) do hex. */
+function hexLayer(): ((i: number) => readonly number[] | null) | undefined {
+  if (mode < HEX_MODES) return undefined;
+  const top = (m: Record<number, number> | undefined) => (m ? +Object.entries(m).sort((a, b) => b[1] - a[1])[0][0] : -1);
+  const perCity = eco.cities.map((k): readonly number[] | null => {
+    const id = k.identity, c = eco.countries[k.country - 1];
+    if (mode === 8) return id ? idColor(top(id.culture)) : null;
+    if (mode === 9) return id ? idColor(100 + top(id.language)) : null;
+    if (mode === 10) return id ? RELIGION_COLORS[top(id.religion)] ?? null : null;
+    if (mode === 11) { const v = Math.min(1, (c.literacy ?? 0) / 0.6); return [40 + 60 * v, 60 + 100 * v, 90 + 150 * v]; } // azul: mais letrados
+    const v = Math.min(1, ((k.road ?? 0) + (k.harbor ?? 0)) / 6); return [70 + 150 * v, 70 + 110 * v, 60 + 30 * v]; // dourado: mais estrada e porto
+  });
+  return (i) => (eco.market[i] ? perCity[eco.market[i] - 1] : null);
+}
 function recolor() {
   const t = performance.now();
-  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba, eco.control, mode === 6 ? eco.countries.map((c) => c.research.known.size / TECHS.length) : mode === 7 ? eco.countries.map((c) => averageLoyalty(c.pops) / 100) : undefined));
+  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba, eco.control, mode === 6 ? eco.countries.map((c) => c.research.known.size / TECHS.length) : mode === 7 ? eco.countries.map((c) => averageLoyalty(c.pops) / 100) : undefined, hexLayer()));
   colorMs = performance.now() - t;
   drawnVersion = eco.version;
   renderer.uploadBorders(buildBorders(world, eco, borders)); // fronteiras mudam junto com o mapa político
@@ -587,7 +607,8 @@ let menuCat: string | null = null; // item do menu lateral aberto (null = só o 
 const LAYERS: [string, [number, string][]][] = [
   ["Geografia", [[0, "Terreno"], [5, "Clima"], [3, "Recursos"]]],
   ["Território", [[1, "Político"], [4, "Controle"]]],
-  ["Sociedade", [[2, "População"], [7, "Satisfação"]]],
+  ["Sociedade", [[2, "População"], [7, "Satisfação"], [8, "Cultura"], [9, "Língua"], [10, "Religião"], [11, "Alfabetização"]]],
+  ["Economia", [[12, "Infraestrutura"]]],
   ["Ciência", [[6, "Tecnologia"]]],
 ];
 const flagCache = new Map<string, string>();
@@ -616,7 +637,7 @@ function topbarHtml() {
     `</div>`;
 }
 
-const maptoolsHtml = () => LAYERS.map(([g, ms]) => `<div class="grp"><span>${g}</span>${ms.map(([k, n]) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}" title="Tecla ${k + 1}">${n}</button>`).join("")}</div>`).join("");
+const maptoolsHtml = () => LAYERS.map(([g, ms]) => `<div class="grp"><span>${g}</span>${ms.map(([k, n]) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}" title="${k < 9 ? `Tecla ${k + 1}` : n}">${n}</button>`).join("")}</div>`).join("");
 
 function leftmenuHtml() {
   return MENU.map(([ic, n]) => `<button class="item ${menuCat === ic ? "on" : ""}" data-menu="${ic}">${icon(ic, 18)} ${n}</button>`).join("") +
@@ -1311,7 +1332,7 @@ function frame(now: number) {
     advanceWeek(world, eco); afterWeek();
     tickMs = performance.now() - t;
   }
-  if (eco.version !== drawnVersion || (mode >= 2 && mode !== 3 && mode !== 5 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou
+  if (eco.version !== drawnVersion || (mode >= 2 && mode !== 3 && mode !== 5 && eco.week % 4 === 0 && frames === 0) /* camadas que mudam com o tempo */) recolor(); // cidades cresceram / população mudou
   refreshFog();
   renderer.draw(cam.x, cam.y, cam.zoom, hover[0], hover[1], Math.cos((2 * Math.PI * (eco.week % 52)) / 52), active > 0);
   drawUnits();

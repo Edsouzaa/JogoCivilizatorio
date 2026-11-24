@@ -257,7 +257,9 @@ export function claim(w: World, country: number, center: number, radius: number)
   return got;
 }
 
-export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Controle", "Clima", "Tecnologia", "Satisfação"] as const;
+export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Controle", "Clima", "Tecnologia", "Satisfação", "Cultura", "Língua", "Religião", "Alfabetização", "Infraestrutura"] as const;
+/** Modos a partir daqui pintam com a cor que o chamador dá por hex (dados da economia: cultura, estradas...). */
+export const HEX_MODES = 8;
 const CLIMATE_COLORS = [[40, 150, 60], [220, 190, 90], [110, 190, 110], [120, 150, 190], [225, 235, 245]];
 export const URBAN_COLOR = [190, 180, 170];
 
@@ -266,7 +268,7 @@ export const URBAN_COLOR = [190, 180, 170];
  * Trocar de modo = recalcular isto e subir a textura.
  */
 /** `byCountry[país − 1]` em 0..1 para os mapas por país (Tecnologia, Satisfação). */
-export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4), control?: Float32Array, byCountry?: number[]) {
+export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4), control?: Float32Array, byCountry?: number[], byHex?: (i: number) => readonly number[] | null) {
   for (let i = 0; i < w.W * w.H; i++) {
     const t = w.terrain[i];
     let c: readonly number[] = TERRAINS[t].color;
@@ -280,6 +282,7 @@ export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Ui
       else if (mode === 5) c = CLIMATE_COLORS[w.climate[i]];
       else if (mode === 6) { const v = w.owner[i] ? byCountry?.[w.owner[i] - 1] ?? 0 : -1; c = v < 0 ? [70, 70, 70] : [30 + 40 * v, 50 + 110 * v, 90 + 165 * v]; } // azul: mais avançado
       else if (mode === 7) { const v = w.owner[i] ? byCountry?.[w.owner[i] - 1] ?? 0.5 : -1; c = v < 0 ? [70, 70, 70] : v < 0.5 ? [220, 60 + 260 * v, 60] : [440 - 400 * v, 200, 70]; } // vermelho → amarelo → verde
+      else if (mode >= HEX_MODES) c = (w.owner[i] && byHex?.(i)) || [70, 70, 70];
       else if (mode === 4) { const v = control?.[i] ?? 0; c = w.owner[i] ? [220 - 180 * v, 60 + 160 * v, 60] : [70, 70, 70]; } // vermelho = pouco, verde = muito
       if (urban[i] && (mode === 0 || mode === 1 || mode === 3)) c = mode === 1 ? c.map((v) => v * 0.6) : URBAN_COLOR;
     }
