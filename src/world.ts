@@ -298,6 +298,8 @@ export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Co
 /** Modos a partir daqui pintam com a cor que o chamador dá por hex (dados da economia: cultura, estradas...). */
 export const HEX_MODES = 8;
 const CLIMATE_COLORS = [[40, 150, 60], [220, 190, 90], [110, 190, 110], [120, 150, 190], [225, 235, 245]];
+/** Oceano profundo: azul bem escuro (navio fraco não entra). */
+export const DEEP_COLOR = [16, 34, 66];
 export const URBAN_COLOR = [190, 180, 170];
 
 /**
@@ -306,9 +308,10 @@ export const URBAN_COLOR = [190, 180, 170];
  */
 /** `byCountry[país − 1]` em 0..1 para os mapas por país (Tecnologia, Satisfação). */
 export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4), control?: Float32Array, byCountry?: number[], byHex?: (i: number) => readonly number[] | null, influence?: Uint16Array) {
+  const deep = deepOcean(w);
   for (let i = 0; i < w.W * w.H; i++) {
     const t = w.terrain[i];
-    let c: readonly number[] = TERRAINS[t].color;
+    let c: readonly number[] = deep[i] ? DEEP_COLOR : TERRAINS[t].color;
     if (mode === 0 && w.owner[i]) c = w.countries[w.owner[i] - 1].color;
     if (t === T.OCEAN && mode === 1 && w.owner[i]) c = w.countries[w.owner[i] - 1].color.map((v, k) => (v + TERRAINS[0].color[k] * 2) / 3);
     if (t !== T.OCEAN) {
@@ -325,7 +328,7 @@ export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Ui
     }
     out[i * 4] = c[0]; out[i * 4 + 1] = c[1]; out[i * 4 + 2] = c[2];
     // alfa = id do bioma para o shader; 255 = desenhar cor lisa (cidade, ou modo que não é terreno)
-    out[i * 4 + 3] = mode === 0 && !urban[i] ? t : 255;
+    out[i * 4 + 3] = mode === 0 && !urban[i] && !deep[i] ? t : 255; // oceano profundo: cor lisa escura (o raso fica com a textura)
   }
   return out;
 }
@@ -351,6 +354,8 @@ export const riverAt = (w: World, h: number, k: number) => (w.river[h] >> k) & 1
 
 /** Grade das nascentes: uma chance de rio a cada tantas colunas × linhas. */
 export const RIVER_SPACING = { cols: 26, rows: 16, chance: 0.75 };
+/** Rio que não chega ao mar só fica se tiver pelo menos isto de bordas (e então termina num lago). */
+export const RIVER_LAKE_MIN = 12;
 function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () => number) {
   const { W, H, terrain } = w;
   const N = W * H;
@@ -410,10 +415,12 @@ function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () 
       if (riverCorner.has(kk)) { reachedSea = true; break; } // juntou com outro rio
     }
     if (path.length < 4) continue; // filete: descarta
-    if (!reachedSea && path.length >= 8 && rand() < 0.25) { // terminou numa bacia: lago (vira água; os mares fechados viram zona própria)
-      for (const x of hexesInRadius(h, 1, W, H)) if (isLand(terrain[x])) { // lago de ~7 hexes em volta do fim
-        terrain[x] = T.OCEAN; w.pop[x] = 0; w.resource[x] = 0; w.resource2[x] = 0; w.reserve[x] = Infinity; w.landCount--;
-      }
+    // todo rio termina no mar, num lago ou noutro rio: o que parou numa bacia ganha um lago no fim (curto demais: descarta)
+    if (!reachedSea && path.length < RIVER_LAKE_MIN) continue;
+    if (!reachedSea) { // bacia: lago (vira água; os mares fechados viram zona própria)
+      const lake = hexesInRadius(h, 1, W, H).filter((x) => isLand(terrain[x])); // lago de ~7 hexes em volta do fim
+      if (lake.length < 3) continue; // não cabe lago (gelo, borda do mapa): o rio não fica
+      for (const x of lake) { terrain[x] = T.OCEAN; w.pop[x] = 0; w.resource[x] = 0; w.resource2[x] = 0; w.reserve[x] = Infinity; w.landCount--; }
       reachedSea = true; // o rio deságua no lago: o trecho de baixo pode ser navegável
     }
     // rio comprido que chega ao mar ou a outro rio: o trecho de baixo é navegável

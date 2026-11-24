@@ -82,3 +82,22 @@ console.log("deep ok");
   for (const z of open) assert.ok(size.get(z)! <= OPEN_SEA_MAX * SEA_ZONE_SPACING.cols * SEA_ZONE_SPACING.rows * 1.5, `zona ${z} grande demais`);
 }
 console.log("open sea ok");
+
+// todo rio chega a água: cada grupo de hexes com rio encosta no mar ou num lago
+{
+  const { forNeighbors } = await import("../src/hex.ts");
+  const seen = new Uint8Array(big.W * big.H);
+  let groups = 0;
+  for (let s = 0; s < big.W * big.H; s++) {
+    if (!big.river[s] || seen[s] || big.terrain[s] === T.OCEAN) continue;
+    groups++;
+    const part = [s]; seen[s] = 1; let wet = false;
+    for (let q = 0; q < part.length; q++) forNeighbors(part[q] % big.W, (part[q] / big.W) | 0, big.W, big.H, (j) => {
+      if (big.terrain[j] === T.OCEAN) wet = true;
+      else if (big.river[j] && !seen[j]) { seen[j] = 1; part.push(j); }
+    });
+    assert.ok(wet, `rio em (${s % big.W}, ${(s / big.W) | 0}) não chega ao mar nem a um lago`);
+  }
+  assert.ok(groups > 0);
+}
+console.log("rivers to water ok");

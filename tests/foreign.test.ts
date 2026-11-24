@@ -27,6 +27,18 @@ assert.ok(e.countries[0].exports > 0 && e.countries[1].imports > 0);
 assert.ok(Math.abs(e.countries[1].tariffs - e.countries[1].imports * RULES.tariff) < 1e-9);
 assert.ok(Math.abs(mA.trade[COPPER] + mB.trade[COPPER]) < 1e-6, "comércio criou ou destruiu cobre");
 
+// além-mar (continentes diferentes) sem Navegação: o oceano profundo deixa passar bem menos
+{
+  const capA = e.cities.find((k) => k.country === 1)!.hex, capB = e.cities.find((k) => k.country === 2)!.hex;
+  const cont = w.continent!, keepA = cont[capA], keepB = cont[capB];
+  cont[capA] = 1; cont[capB] = 1; tick(w, e); const same = e.countries[0].exports;
+  cont[capB] = 2; tick(w, e); const overseas = e.countries[0].exports;
+  assert.ok(overseas < same * 0.5, `além-mar sem Navegação deveria exportar bem menos (${overseas} vs ${same})`);
+  e.countries[0].research.known.add("Navegação"); tick(w, e);
+  assert.ok(e.countries[0].exports > overseas, "com Navegação o comércio além-mar volta");
+  e.countries[0].research.known.delete("Navegação"); cont[capA] = keepA; cont[capB] = keepB;
+}
+
 // guerra cancela o acordo e não deixa fazer outro
 declareWar(e, 1, 2);
 assert.ok(!hasPact(e, 1, 2));

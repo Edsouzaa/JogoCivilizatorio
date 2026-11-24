@@ -109,6 +109,9 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - IA na expansão: quando a capacidade de expansão está cheia, os colonos da IA viram posto avançado (em vez de esperar parados) e as próximas cidades partem também dos postos; posto avançado abastece colonos. Camada de mapa "Expansão": território, área de influência em tom claro e cidades isoladas em vermelho.
 
+- Rios sempre chegam à água: todo rio termina no mar, num lago ou noutro rio; o que para numa bacia ganha um lago no fim (se for curto ou não couber lago, o rio não fica). Teste novo garante que todo rio encosta em água.
+- Oceano profundo visível: azul bem escuro no mapa (a faixa rasa do litoral continua clara). Além de barrar navio sem Navegação, atrapalha o comércio além-mar: entre países de continentes diferentes, quem não tem Navegação só consegue exportar 20% do que exportaria.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.

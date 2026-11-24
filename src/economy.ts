@@ -122,6 +122,7 @@ export const RULES = {
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
   cityGrowthPop: 300,       // a IA compra centro urbano quando a população urbana passa disto × tamanho
+  oceanTradeNoNav: 0.2,     // comércio exterior além-mar sem Navegação: só isto passa (oceano profundo)
   harborCost: 120,          // porto nível n custa isto × n
   harborTrade: 0.25,        // cada nível: +25% do que a cidade troca
   roadCost: 80,             // estrada nível n custa isto × n
@@ -502,6 +503,9 @@ function foreignTrade(w: World, e: Economy) {
       hexDistance(city.hex % w.W, (city.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W) <= RULES.foreignRange * (onWater(city) || onWater(k) ? 2 : 1));
     const pool = e.cities.filter((k) => !k.blockaded && ((k.country === a && near(k, b)) || (k.country === b && near(k, a))));
     if (!pool.some((k) => k.country === a) || !pool.some((k) => k.country === b)) continue;
+    // além-mar (continentes diferentes): sem Navegação o navio não cruza o oceano profundo e quase nada passa
+    const cont = (k: number) => w.continent?.[e.cities.find((x) => x.country === k)?.hex ?? 0] ?? 0;
+    const overseas = cont(a) !== cont(b) || !cont(a);
     for (let gi = 1; gi < NG; gi++) {
       const net = pool.map((k) => k.market.supply[gi] - k.market.used[gi] - k.market.pop * POP_DEMAND[gi]);
       // cada país só exporta para o outro: sobra de um lado, falta do outro
@@ -509,7 +513,8 @@ function foreignTrade(w: World, e: Economy) {
         let offer = 0, lack = 0;
         const fs = Math.min(1, RULES.foreignShare * (1 + techSum(e.countries[from - 1].research, "trade")));
         pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * portMult(k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
-        const moved = Math.min(offer, lack);
+        // pouca frota capaz de cruzar o oceano profundo: além-mar sem Navegação só passa uma fração
+        const moved = Math.min(offer, lack) * (overseas && !e.countries[from - 1].research.known.has("Navegação") ? RULES.oceanTradeNoNav : 1);
         if (moved <= 0) continue;
         const value = moved * BASE_PRICE[gi];
         pool.forEach((k, i) => {
