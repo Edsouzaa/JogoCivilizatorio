@@ -9,14 +9,12 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Movimento inteligente: as tropas andam pelo menor caminho. Se o alvo é inalcançável (mar sem frota), elas vão até o ponto possível mais perto e param.
 - Painel de notificações (tecnologia, guerra, paz e avisos) e linha do equador.
 - Testes movidos para `tests/`.
+- Seleção por caixa (botão esquerdo arrastando), painel das tropas por tipo e ordem para o grupo todo. Arrastar o mapa agora é com o botão direito ou o do meio.
+- Bandeira do país (faixas, cruz ou canto + símbolo), desenhada nas unidades. Nome, cor e bandeira editáveis no botão 🏳. Cidades e estados podem ser renomeados (✏).
 
 ## Próximos (nesta ordem)
 
-1. **Base do mapa**
-   - Seleção de várias divisões arrastando o mouse, com painel dos tipos de tropa.
-   - Bandeira do país nas unidades.
-   - Mudar a cor do país.
-   - Nome e bandeira ao criar cidade, estado e nação (um editor simples de faixas e símbolo).
+1. **Bandeiras de cidade e estado**, e escolher nome e bandeira já na criação (hoje se renomeia depois).
 2. **Clique em estado e zona marítima**: a borda brilha e aparece o nome. O nó fica dourado. O estado mostra QV, PIB e população.
 3. **Nós marítimos**: bolinha no centro e linhas pontilhadas entre nós vizinhos. O bloqueio fecha a entrada de recursos no mercado.
 4. **Recursos**

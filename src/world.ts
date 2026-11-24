@@ -47,13 +47,14 @@ const MINERAL = new Set(["Pedra", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", 
 
 export const START_RADIUS = 1; // território inicial em volta da capital; cresce com a cidade
 
+import type { Flag } from "./flags.ts";
 export type World = {
   W: number; H: number; seed: number;
   terrain: Uint8Array; resource: Uint8Array; owner: Uint16Array; pop: Float32Array; climate: Uint8Array;
   river: Uint8Array;     // bits 0–5: rio na borda k do hex (ver `across`)
   navigable: Uint8Array; // bits 0–5: trecho navegável (futuro: navios)
   seaZone: Uint16Array;  // zona marítima do hex de oceano (1..n); 0 = terra/gelo
-  countries: { name: string; color: [number, number, number]; capital: number }[];
+  countries: { name: string; color: [number, number, number]; capital: number; flag?: Flag }[];
   landCount: number;
 };
 

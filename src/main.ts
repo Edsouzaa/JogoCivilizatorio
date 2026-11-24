@@ -8,6 +8,7 @@ import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
+import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo, buildBorders } from "./fog.ts";
@@ -188,13 +189,25 @@ const hexAt = (sx: number, sy: number): [number, number] => { const [c, r] = pix
 const inMap = (c: number, r: number) => c >= 0 && r >= 0 && c < W && r < H;
 const cityOf = (i: number) => (eco.market[i] ? eco.cities[eco.market[i] - 1] : undefined);
 
-let drag: { x: number; y: number; moved: number } | null = null;
+// Botão esquerdo: clique seleciona, arrastar faz a caixa de seleção de tropas. Direito ou meio: arrasta o mapa; clique direito = ordem.
+let drag: { x: number; y: number; x0: number; y0: number; moved: number; box: boolean } | null = null;
+let group: number[] = []; // divisões selecionadas pela caixa (todas do mesmo país)
+let lastPan = 0;          // quanto o último arrasto com o botão direito andou (contextmenu não vira ordem se arrastou)
 canvas.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return; // botão direito é ordem de movimento (contextmenu), não seleção nem arrasto
-  drag = { x: e.clientX, y: e.clientY, moved: 0 }; canvas.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: 0, box: e.button === 0 }; canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener("pointerup", (e) => {
-  if (drag && drag.moved < 5) { // clique sem arrastar = selecionar hex
+  if (drag && !drag.box) lastPan = drag.moved;
+  if (drag?.box && drag.moved >= 5) { // caixa: pega as tropas do país dentro dela
+    const dpr = window.devicePixelRatio || 1;
+    const [x0, x1] = [drag.x0, e.clientX].map((v) => v * dpr).sort((a, b) => a - b), [y0, y1] = [drag.y0, e.clientY].map((v) => v * dpr).sort((a, b) => a - b);
+    const inside = eco.divisions.filter((d) => { const [x, y] = divScreen(d.hex); return x >= x0 && x <= x1 && y >= y0 && y <= y1 && (d.country === active || canSee(d.hex)); });
+    const who = inside.some((d) => d.country === active) ? active : inside[0]?.country ?? 0;
+    group = inside.filter((d) => d.country === who && (!net || who === active)).map((d) => d.id);
+    selectedDiv = group[0] ?? null;
+    if (who && !net) { active = who; eco.humans = [active]; }
+    message = ""; updateUI();
+  } else if (drag?.box && drag.moved < 5) { // clique sem arrastar = selecionar hex
     const [c, r] = hexAt(e.clientX, e.clientY);
     selected = inMap(c, r) ? r * W + c : -1;
     if (!net && selected >= 0 && world.owner[selected]) { active = world.owner[selected]; eco.humans = [active]; }
@@ -203,6 +216,7 @@ canvas.addEventListener("pointerup", (e) => {
     const k = here.findIndex((d) => d.id === selectedDiv);
     selectedDiv = here.length ? here[(k + 1) % here.length].id : null;
     if (selectedDiv) active = here[(k + 1) % here.length].country;
+    group = selectedDiv ? [selectedDiv] : [];
     message = "";
     updateUI();
   }
@@ -212,6 +226,7 @@ canvas.addEventListener("pointermove", (e) => {
   if (drag) {
     const dpr = window.devicePixelRatio || 1;
     drag.moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y);
+    if (drag.box) { drag.x = e.clientX; drag.y = e.clientY; hover = hexAt(e.clientX, e.clientY); return; }
     cam.x -= ((e.clientX - drag.x) * dpr) / cam.zoom; cam.y -= ((e.clientY - drag.y) * dpr) / cam.zoom;
     cam.x = ((cam.x % WORLD_W) + WORLD_W) % WORLD_W; // o mundo é redondo: andar para o lado dá a volta
     cam.y = Math.min(1.5 * H, Math.max(0, cam.y));
@@ -223,7 +238,9 @@ canvas.addEventListener("pointermove", (e) => {
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   const [c, r] = hexAt(e.clientX, e.clientY);
-  if (selectedDiv && inMap(c, r)) cmd({ t: "move", id: selectedDiv, target: r * W + c });
+  if (lastPan >= 5) { lastPan = 0; return; } // foi arrasto do mapa, não ordem
+  if (!inMap(c, r)) return;
+  for (const id of group.length ? group : selectedDiv ? [selectedDiv] : []) cmd({ t: "move", id, target: r * W + c });
 });
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -243,6 +260,32 @@ function cmd(c: Cmd) {
   if (net) { net.send(JSON.stringify({ t: "cmd", cmd: c })); message = ""; return updateUI(); }
   act(applyCommand(world, eco, active, c));
 }
+
+// ---------------- identidade do país: nome, cor e bandeira ----------------
+const idBox = document.createElement("div");
+idBox.style.cssText = "display:none;position:fixed;top:120px;left:8px;background:#000d;padding:10px;border-radius:6px;width:300px;line-height:1.9;z-index:5";
+idBox.innerHTML = `<b>🏳 Identidade do país</b><br>
+  Nome <input id="id-name" maxlength="30" style="width:200px"><br>
+  Cor no mapa <input id="id-color" type="color"><br>
+  Bandeira <select id="id-layout">${FLAG_LAYOUTS.map((l, k) => `<option value="${k}">${l}</option>`).join("")}</select>
+  <select id="id-symbol">${FLAG_SYMBOLS.map((s) => `<option value="${s}">${s || "sem símbolo"}</option>`).join("")}</select><br>
+  Cores <input id="id-c0" type="color"> <input id="id-c1" type="color"> <input id="id-c2" type="color"><br>
+  <canvas id="id-preview" width="120" height="80" style="border-radius:3px"></canvas><br>
+  <button id="id-ok">Aplicar</button> <button id="id-cancel">Fechar</button>`;
+document.body.appendChild(idBox);
+const idIn = (k: string) => document.getElementById("id-" + k) as HTMLInputElement;
+const idFlag = (): Flag => ({ layout: +idIn("layout").value, symbol: idIn("symbol").value, colors: [idIn("c0").value, idIn("c1").value, idIn("c2").value] });
+const idPreview = () => { const g = (idIn("preview") as unknown as HTMLCanvasElement).getContext("2d")!; g.clearRect(0, 0, 120, 80); drawFlag(g, 1, 1, 118, 78, idFlag()); };
+function openIdentity() {
+  const meta = world.countries[active - 1], f = flagOf(active);
+  idIn("name").value = meta.name; idIn("color").value = rgbHex(meta.color);
+  idIn("layout").value = String(f.layout); idIn("symbol").value = f.symbol;
+  f.colors.forEach((c, k) => (idIn("c" + k).value = c));
+  idBox.style.display = "block"; idPreview();
+}
+idBox.addEventListener("input", idPreview);
+idIn("ok").onclick = () => { cmd({ t: "identity", name: idIn("name").value, color: hexRgb(idIn("color").value), flag: idFlag() }); idBox.style.display = "none"; };
+idIn("cancel").onclick = () => (idBox.style.display = "none");
 
 // ---------------- multiplayer (lockstep; ver server/server.ts) ----------------
 type RoomStatus = { code: string; speed: number; paused: string | null; votes: number; needed: number; players: { id: number; name: string; country: number }[] };
@@ -354,6 +397,14 @@ document.addEventListener("pointerdown", (e) => {
   if (d.build) return doBuild(Number(d.build));
   if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
   if (d.act === "found" && selectedDiv) return cmd({ t: "found", unit: selectedDiv });
+  if (d.groupKind) { group = eco.divisions.filter((x) => group.includes(x.id) && x.kind === d.groupKind).map((x) => x.id); selectedDiv = group[0] ?? null; return updateUI(); }
+  if (d.act === "identity" && active) return openIdentity();
+  if (d.rename) { // "city:3" ou "state:2"
+    const [kind, id] = d.rename.split(":"), cur = kind === "city" ? eco.cities[+id]?.name : eco.states.find((s) => s.id === +id)?.name;
+    const name = prompt(kind === "city" ? "Nome da cidade" : "Nome do estado", cur ?? "");
+    if (name) cmd({ t: "rename", kind: kind as "city" | "state", id: +id, name });
+    return;
+  }
   if (d.act === "settlers") return cmd({ t: "settlers" });
   if (d.tech && active) return cmd({ t: "tech", name: d.tech });
   if (d.law && active) {
@@ -414,7 +465,8 @@ function updateUI() {
     SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${SPEED_NAMES[k + 1]}: ${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${s}×</button>`).join(" ") +
     `<br><small>${info}</small>` + (performance.now() < hudMsgUntil ? `<br><b>${hudMsg}</b>` : "") +
     `<br><small style="opacity:.6">${fps.toFixed(0)} FPS · semana ${tickMs.toFixed(1)} ms · ${eco.cities.length} cidades · seed ${world.seed}</small>`;
-  if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = null; // destruída
+  group = group.filter((id) => eco.divisions.some((d) => d.id === id));
+  if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = group[0] ?? null; // destruída
   const show = selected >= 0 || selectedDiv;
   panel.innerHTML = show ? divisionHtml() + headerHtml() + tabsHtml() + [hexHtml, economyHtml, researchTab, societyHtml, politicsTab, marketHtml][tab]() : "";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
@@ -426,7 +478,7 @@ function headerHtml() {
   if (!active) return net ? "<i>Clique num país livre e use \"Assumir este país\".</i>" : "<i>Clique num país para controlá-lo.</i>";
   const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics;
   const weekly = c.income + c.tariffs - c.upkeep - c.interest;
-  return `<h3 style="color:rgb(${meta.color})">${meta.name} <small style="color:#aaa">(você) · Era ${ERAS[c.research.era]}</small></h3>` +
+  return `<h3 style="color:rgb(${meta.color})">${meta.name} <small style="color:#aaa">(você) · Era ${ERAS[c.research.era]}</small> <button data-act="identity" title="Nome, cor e bandeira">🏳</button></h3>` +
     `<div class="stats">` +
     `<span title="População">👥 ${fmt(c.pop)}</span>` +
     `<span title="PIB anual">📈 ${fmt(c.gdpWeek * 52)}</span>` +
@@ -477,7 +529,17 @@ function societyHtml() {
     ` · migração no mês <span class="${c.migration < 0 ? "up" : c.migration > 0 ? "down" : ""}">${signed(c.migration)}</span></small>`;
 }
 
+const KIND_NAMES: Record<string, string> = { army: "⚔ Divisões", fleet: "⛵ Frotas", air: "✈ Esquadrões", settler: "⛺ Colonos" };
+function groupHtml() {
+  const ds = eco.divisions.filter((d) => group.includes(d.id));
+  const kinds = Object.keys(KIND_NAMES).filter((k) => ds.some((d) => d.kind === k));
+  return `<div class="unit"><b>${ds.length} unidades selecionadas</b> <small>(botão direito: todas vão)</small><table>` +
+    kinds.map((k) => { const of = ds.filter((d) => d.kind === k); return `<tr><td><button data-group-kind="${k}">${KIND_NAMES[k]}</button></td><td>${of.length}</td><td>${fmt(of.reduce((s, d) => s + d.strength, 0))} homens</td></tr>`; }).join("") +
+    `</table></div>`;
+}
+
 function divisionHtml() {
+  if (group.length > 1) return groupHtml();
   const d = eco.divisions.find((x) => x.id === selectedDiv);
   if (!d) return "";
   const t = d.target === null ? "parada" : `indo para (${d.target % W}, ${(d.target / W) | 0})`;
@@ -613,7 +675,7 @@ function hexHtml() {
     ? ` <button data-act="air">Formar esquadrão (${AIR.cost} + ${AIR.pilots} manpower)</button>` : "";
   if (city && eco.urban[i]) {
     const ci = eco.market[i] - 1, st = stateOfCity(eco, ci), lock = statesLocked(eco, active);
-    if (st) h += `<br>🗺 Estado: <b>${st.name}</b> · ${st.interest} ${st.happy ? "😊" : "<span class='bad'>😠 insatisfeito</span>"}` + (lock ? "" : ` <button data-state-leave="${ci}">Sair do estado</button>`);
+    if (st) h += `<br>🗺 Estado: <b>${st.name}</b>${st.country === active ? ` <button data-rename="state:${st.id}" title="Renomear">✏</button>` : ""} · ${st.interest} ${st.happy ? "😊" : "<span class='bad'>😠 insatisfeito</span>"}` + (lock ? "" : ` <button data-state-leave="${ci}">Sair do estado</button>`);
     else if (!lock) h += `<br>🗺 Sem estado: <button data-state-new="${ci}">Criar estado</button>` +
       statesOf(eco, active).map((x) => ` <button data-state-join="${ci}|${x.id}">Juntar a ${x.name}</button>`).join("");
     if (lock && !st) h += `<br><small>🗺 ${lock}</small>`;
@@ -622,7 +684,7 @@ function hexHtml() {
   if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {
     const others = eco.cities.map((k, idx) => [k, idx] as const).filter(([k]) => k.country === city.country && k !== city);
-    h += `<br><b>${city.name}</b> · tamanho ${city.size} · pop urbana ${fmt(city.urban.reduce((s, j) => s + world.pop[j], 0))}` +
+    h += `<br><b>${city.name}</b>${city.country === active ? ` <button data-rename="city:${eco.cities.indexOf(city)}" title="Renomear">✏</button>` : ""} · tamanho ${city.size} · pop urbana ${fmt(city.urban.reduce((s, j) => s + world.pop[j], 0))}` +
       ` (cresce com ${fmt(city.size * RULES.cityGrowthPop)})` +
       (others.length && city.size > 1 ? `<br>Passar 1 de tamanho para: ${others.map(([k, idx]) => `<button data-transfer="${idx}">${k.name}</button>`).join(" ")}` : "");
   }
@@ -659,6 +721,13 @@ function drawChart(cv: HTMLCanvasElement, data: number[]) {
   g.fillStyle = "#aaa"; g.font = "10px sans-serif"; g.fillText(fmt(max / 1.1), 4, 12);
 }
 
+const divScreen = (i: number): [number, number] => {
+  let [x, y] = hexCenter(i % W, (i / W) | 0);
+  x += Math.round((cam.x - x) / WORLD_W) * WORLD_W; // cópia mais perto da câmera (mundo dá a volta)
+  return [(x - cam.x) * cam.zoom + unitsCanvas.width / 2, (y - cam.y) * cam.zoom + unitsCanvas.height / 2];
+};
+const flagOf = (k: number): Flag => world.countries[k - 1].flag ?? randomFlag(k, world.countries[k - 1].color);
+
 /** Divisões desenhadas por cima do mapa (canvas 2D): círculo na cor do país, com soldados e organização. */
 function drawUnits() {
   units.clearRect(0, 0, unitsCanvas.width, unitsCanvas.height);
@@ -670,11 +739,12 @@ function drawUnits() {
       units.fillStyle = "#ffd76acc"; units.font = "12px sans-serif"; units.textAlign = "left"; units.textBaseline = "bottom"; units.fillText("Equador", 8, ey - 2);
     }
   }
-  const toScreen = (i: number): [number, number] => {
-    let [x, y] = hexCenter(i % W, (i / W) | 0);
-    x += Math.round((cam.x - x) / WORLD_W) * WORLD_W; // cópia mais perto da câmera (mundo dá a volta)
-    return [(x - cam.x) * cam.zoom + unitsCanvas.width / 2, (y - cam.y) * cam.zoom + unitsCanvas.height / 2];
-  };
+  const toScreen = divScreen;
+  if (drag?.box && drag.moved >= 5) { // caixa de seleção
+    const dpr = window.devicePixelRatio || 1;
+    units.strokeStyle = "#fff"; units.lineWidth = 1; units.setLineDash([5, 3]);
+    units.strokeRect(drag.x0 * dpr, drag.y0 * dpr, (drag.x - drag.x0) * dpr, (drag.y - drag.y0) * dpr); units.setLineDash([]);
+  }
   const r = Math.max(4, Math.min(cam.zoom * 0.7, 30));
   const stack = new Map<number, number>();
   for (const d of eco.divisions) {
@@ -683,12 +753,13 @@ function drawUnits() {
     if (sx < -r || sy < -r || sx > unitsCanvas.width + r || sy > unitsCanvas.height + r) continue;
     const n = stack.get(d.hex) ?? 0; stack.set(d.hex, n + 1);
     const x = sx + n * r * 0.6, y = sy - n * r * 0.6;
-    if (d.target !== null && d.id === selectedDiv) {
+    const sel = d.id === selectedDiv || group.includes(d.id);
+    if (d.target !== null && sel) {
       const [tx, ty] = toScreen(d.target);
       units.strokeStyle = "#fff"; units.setLineDash([4, 4]); units.beginPath(); units.moveTo(x, y); units.lineTo(tx, ty); units.stroke(); units.setLineDash([]);
     }
     units.fillStyle = `rgb(${world.countries[d.country - 1].color})`;
-    units.strokeStyle = d.id === selectedDiv ? "#fff" : "#000"; units.lineWidth = d.id === selectedDiv ? 3 : 1.5;
+    units.strokeStyle = sel ? "#fff" : "#000"; units.lineWidth = sel ? 3 : 1.5;
     units.beginPath();
     if (d.kind === "settler") units.rect(x - r * 0.8, y - r * 0.8, r * 1.6, r * 1.6);
     else if (d.kind === "air") { units.moveTo(x - r, y); units.lineTo(x + r, y); units.moveTo(x, y - r); units.lineTo(x, y + r * 0.6); units.moveTo(x - r * 0.5, y + r * 0.6); units.lineTo(x + r * 0.5, y + r * 0.6); units.arc(x, y, r * 0.7, 0, Math.PI * 2); }
@@ -696,6 +767,7 @@ function drawUnits() {
     else units.arc(x, y, r, 0, Math.PI * 2);
     units.fill(); units.stroke();
     units.fillStyle = "#3c3"; units.fillRect(x - r, y + r + 2, 2 * r * d.org, 3); // barra de organização
+    if (r >= 6) drawFlag(units, x - r * 1.1, y - r * 1.9, r * 1.2, r * 0.8, flagOf(d.country)); // bandeira do país
     if (r >= 10) { units.fillStyle = "#000"; units.font = `bold ${Math.round(r * 0.8)}px sans-serif`; units.textAlign = "center"; units.textBaseline = "middle"; units.fillText(String(Math.round(d.strength)), x, y); }
   }
 }
