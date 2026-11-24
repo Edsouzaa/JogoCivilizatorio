@@ -13,7 +13,7 @@ import { SERIES } from "./history.ts";
 import { relation, prestige, DIPLO } from "./diplomacy.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
-import { icon } from "./icons.ts";
+import { icon, hydrateIcons } from "./icons.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, warSupport, WAR, NAVY, AIR } from "./war.ts";
@@ -32,15 +32,22 @@ const NOTE_ICON: Record<string, string> = { Diplomacia: "diplomacy", Militar: "m
 const notes: { cat: string; text: string; date: string }[] = [];
 const unread: Record<string, number> = {};
 let noteFilter: string | null = null;
-/** Categoria pelo começo da mensagem (os avisos já começam com um símbolo do assunto). */
-const noteCat = (m: string) =>
-  /^(⚔|🕊|🏰|🪖)/u.test(m) ? "Militar" : /^(🤝|🌐)/u.test(m) ? "Diplomacia" : /^(⛏|🍞|💰|🏦)/u.test(m) ? "Economia"
-  : /^(📰|📜|🏛)/u.test(m) ? "Política" : /^(☠|🎭|🔬)/u.test(m) ? "Sociedade" : "Geral";
-const notify = (m: string) => {
+const NOTE_BY_ICON: Record<string, string> = {
+  military: "Militar", peace: "Militar", fort: "Militar", soldier: "Militar", diplomacy: "Diplomacia", globe: "Diplomacia",
+  pick: "Economia", bread: "Economia", treasury: "Economia", news: "Política", admin: "Política", politics: "Política",
+  skull: "Sociedade", mask: "Sociedade", tech: "Sociedade",
+};
+/** Categoria pelo ícone do começo da mensagem; o ícone sai do texto (notificação é texto puro). */
+const noteSplit = (m: string): [string, string] => {
+  const r = /^<i class=i-([a-z]+)><\/i>\s*/.exec(m);
+  const clean = (t: string) => t.replace(/<i class=i-[a-z]+><\/i>\s*/g, ""); // ícones no meio do texto também saem
+  return r ? [NOTE_BY_ICON[r[1]] ?? "Geral", clean(m.slice(r[0].length))] : ["Geral", clean(m)];
+};
+const notify = (raw: string) => {
+  const [cat, m] = noteSplit(raw);
   hudMsg = m; hudMsgUntil = performance.now() + 5000;
   let date = "";
   try { date = dateLabel(eco.week); } catch { /* antes do mundo existir */ }
-  const cat = noteCat(m);
   notes.unshift({ cat, text: m, date });
   if (notes.length > 60) notes.pop();
   unread[cat] = (unread[cat] ?? 0) + 1;
@@ -65,8 +72,8 @@ function showNotes(cat: string | null) {
 
 /** Depois de cada semana simulada: avisos que só existem naquela semana. */
 function afterWeek() {
-  for (const n of eco.news ?? []) if (eco.cities[n.city]?.country === active) notify(n.kind === "fome" ? `🍞 Fome em ${eco.cities[n.city].name}: falta comida no mercado, o povo está morrendo` : `☠ Peste em ${eco.cities[n.city].name}`);
-  for (const i of eco.exhausted) if (world.owner[i] === active) notify(`⛏ Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
+  for (const n of eco.news ?? []) if (eco.cities[n.city]?.country === active) notify(n.kind === "fome" ? `<i class=i-bread></i> Fome em ${eco.cities[n.city].name}: falta comida no mercado, o povo está morrendo` : `<i class=i-skull></i> Peste em ${eco.cities[n.city].name}`);
+  for (const i of eco.exhausted) if (world.owner[i] === active) notify(`<i class=i-pick></i> Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
 }
 // eventos do país do jogador que viram notificação (comparando com o quadro anterior)
 let seenTechs = -1, seenWars = "", seenActive = -1, seenLawEvent: string | undefined;
@@ -75,11 +82,11 @@ function watchEvents() {
   const c = eco.countries[active - 1];
   const wars = [...eco.wars].filter((k) => k.split("-").includes(String(active))).sort().join(",");
   if (seenActive === active) {
-    if (c.research.known.size > seenTechs) notify(`🔬 Tecnologia descoberta: ${[...c.research.known].at(-1)}`);
-    for (const k of wars.split(",")) if (k && !seenWars.split(",").includes(k)) notify(`⚔ Guerra com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
-    for (const k of seenWars.split(",")) if (k && !wars.split(",").includes(k)) notify(`🕊 Paz com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
+    if (c.research.known.size > seenTechs) notify(`<i class=i-tech></i> Tecnologia descoberta: ${[...c.research.known].at(-1)}`);
+    for (const k of wars.split(",")) if (k && !seenWars.split(",").includes(k)) notify(`<i class=i-military></i> Guerra com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
+    for (const k of seenWars.split(",")) if (k && !wars.split(",").includes(k)) notify(`<i class=i-peace></i> Paz com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
   }
-  if (seenActive === active && c.politics.lawEvent && c.politics.lawEvent !== seenLawEvent) notify(`📰 ${c.politics.lawEvent}`);
+  if (seenActive === active && c.politics.lawEvent && c.politics.lawEvent !== seenLawEvent) notify(`<i class=i-news></i> ${c.politics.lawEvent}`);
   seenActive = active; seenTechs = c.research.known.size; seenWars = wars; seenLawEvent = c.politics.lawEvent;
 }
 
@@ -96,12 +103,12 @@ async function doAutosave() {
     lastAuto = await writeAutosave(await snapshot(), dateLabel(eco.week));
     notify(`Salvo automaticamente (${lastAuto.label})`);
   } catch {
-    notify("⚠ Salvamento automático indisponível neste navegador (use 💾)");
+    notify("<i class=i-warn></i> Salvamento automático indisponível neste navegador (use <i class=i-save></i>)");
   } finally { autosaving = false; }
 }
 async function continueAutosave() {
   const blob = lastAuto && (await readAutosave(lastAuto.slot));
-  if (blob) doLoad(blob); else notify("⚠ Nenhum salvamento automático encontrado");
+  if (blob) doLoad(blob); else notify("<i class=i-warn></i> Nenhum salvamento automático encontrado");
 }
 
 async function doSave() {
@@ -126,7 +133,7 @@ async function doLoad(file: Blob) {
     recolor();
     notify(`Partida carregada: ${dateLabel(eco.week)}`);
   } catch (err) {
-    notify(`⚠ ${(err as Error).message}`);
+    notify(`<i class=i-warn></i> ${(err as Error).message}`);
   }
 }
 const fileInput = Object.assign(document.createElement("input"), { type: "file", accept: ".save" });
@@ -294,7 +301,7 @@ function cmd(c: Cmd) {
 // ---------------- identidade do país: nome, cor e bandeira ----------------
 const idBox = document.createElement("div");
 idBox.style.cssText = "display:none;position:fixed;top:90px;left:calc(var(--menu) + 16px);background:var(--panel);border:1px solid var(--gold);padding:12px;width:300px;line-height:1.9;z-index:7";
-idBox.innerHTML = `<b id="id-title">🏳 Identidade do país</b><br>
+idBox.innerHTML = `<b id="id-title"><i class=i-flag></i> Identidade do país</b><br>
   Nome <input id="id-name" maxlength="30" style="width:200px"><br>
   <span id="id-colorrow">Cor no mapa <input id="id-color" type="color"><br></span>
   Bandeira <select id="id-layout">${FLAG_LAYOUTS.map((l, k) => `<option value="${k}">${l}</option>`).join("")}</select>
@@ -309,7 +316,7 @@ const idPreview = () => { const g = (idIn("preview") as unknown as HTMLCanvasEle
 /** Mesma janela para país, cidade e estado: nome + bandeira (cor no mapa só no país). */
 let idOk: () => void = () => {};
 function openNamer(title: string, name: string, f: Flag, ok: () => void, color?: readonly number[]) {
-  document.getElementById("id-title")!.textContent = title;
+  document.getElementById("id-title")!.innerHTML = title; hydrateIcons(idBox); // títulos são nossos (com ícone), não do jogador
   (document.getElementById("id-colorrow") as HTMLElement).style.display = color ? "" : "none";
   idIn("name").value = name;
   if (color) idIn("color").value = rgbHex(color);
@@ -319,13 +326,13 @@ function openNamer(title: string, name: string, f: Flag, ok: () => void, color?:
 }
 function openIdentity() {
   const meta = world.countries[active - 1];
-  openNamer("🏳 Identidade do país", meta.name, flagOf(active), () => cmd({ t: "identity", name: idIn("name").value, color: hexRgb(idIn("color").value), flag: idFlag() }), meta.color);
+  openNamer("<i class=i-flag></i> Identidade do país", meta.name, flagOf(active), () => cmd({ t: "identity", name: idIn("name").value, color: hexRgb(idIn("color").value), flag: idFlag() }), meta.color);
 }
 const cityFlag = (k: number) => eco.cities[k].flag ?? flagOf(eco.cities[k].country);
 const stateFlag = (id: number) => { const s = eco.states.find((x) => x.id === id)!; return s.flag ?? flagOf(s.country); };
 /** Fundar cidade: pede nome e bandeira antes (a bandeira começa sendo a do país). */
 function askFound(unit: number) {
-  openNamer("🏙 Nova cidade", cityName(world, eco, active), flagOf(active), () => cmd({ t: "found", unit, name: idIn("name").value, flag: idFlag() }));
+  openNamer("<i class=i-city></i> Nova cidade", cityName(world, eco, active), flagOf(active), () => cmd({ t: "found", unit, name: idIn("name").value, flag: idFlag() }));
 }
 idBox.addEventListener("input", idPreview);
 idBox.addEventListener("keydown", (ev) => { if (ev.key === "Enter") idIn("ok").click(); if (ev.key === "Escape") idIn("cancel").click(); });
@@ -345,11 +352,11 @@ function watchChoice() {
     evShown = key; evSince = performance.now();
     if (!net && speed) togglePause();
     const def = EVENT_LIST[ev.id];
-    evBox.innerHTML = `<b style="font-size:16px">📜 ${def.title}</b><p>${def.text}</p>` +
+    evBox.innerHTML = `<b style="font-size:16px"><i class=i-admin></i> ${def.title}</b><p>${def.text}</p>` +
       def.options.map((o, k) => `<button data-choose="${k}" style="display:block;width:100%;margin:4px 0;padding:6px">${o.label}<br><small style="opacity:.7">${fxText(o.fx)}</small></button>`).join("") +
       `<small id="ev-timer" style="opacity:.6"></small>`;
-    evBox.style.display = "block";
-    notify(`📜 ${def.title}`);
+    hydrateIcons(evBox); evBox.style.display = "block";
+    notify(`<i class=i-admin></i> ${def.title}`);
   }
   const left = Math.max(0, CHOICES.timeoutMs - (performance.now() - evSince));
   const t = document.getElementById("ev-timer");
@@ -370,7 +377,7 @@ const pendingSteps: { t?: string; week: number; cmds: [number, Cmd][] }[] = [];
 const mpBox = document.createElement("div");
 mpBox.id = "mpbox";
 mpBox.style.cssText = "display:none;position:fixed;top:90px;left:calc(var(--menu) + 16px);background:var(--panel);border:1px solid var(--gold);padding:12px;width:300px;line-height:1.8;z-index:7";
-mpBox.innerHTML = `<b>🌐 Multiplayer</b> <small>(servidor: npm run server)</small><br>
+mpBox.innerHTML = `<b><i class=i-globe></i> Multiplayer</b> <small>(servidor: npm run server)</small><br>
   Servidor <input id="mp-url" style="width:200px"><br>Seu nome <input id="mp-name" maxlength="24" style="width:120px"><br>
   Senha <input id="mp-pass" type="password" maxlength="64" style="width:120px" placeholder="opcional"><br>
   <button id="mp-create">Criar sala (mapa deste tamanho)</button><br>
@@ -414,7 +421,7 @@ function applyStep(m: { t?: string; week: number; cmds: [number, Cmd][] }) {
 function connect(hello: object) {
   net?.close();
   let ws: WebSocket;
-  try { ws = new WebSocket($("mp-url").value); } catch { return notify("⚠ Endereço de servidor inválido"); }
+  try { ws = new WebSocket($("mp-url").value); } catch { return notify("<i class=i-warn></i> Endereço de servidor inválido"); }
   ws.binaryType = "arraybuffer";
   net = ws; synced = false; pendingSteps.length = 0;
   ws.onopen = () => ws.send(JSON.stringify(hello));
@@ -427,7 +434,7 @@ function connect(hello: object) {
         for (const st of pendingSteps.splice(0)) if (st.week > eco.week || (st.t === "cmds" && st.week === eco.week)) applyStep(st); // "cmds" repetido é inofensivo: o evento já resolvido só dá erro
         recolor();
         updateUI();
-      } catch (err) { notify(`⚠ ${(err as Error).message}`); }
+      } catch (err) { notify(`<i class=i-warn></i> ${(err as Error).message}`); }
       return;
     }
     const m = JSON.parse(ev.data as string);
@@ -442,7 +449,7 @@ function connect(hello: object) {
     else if (m.t === "status") {
       mp = m; speed = m.paused ? 0 : m.speed; lastSpeed = m.speed;
       active = m.players.find((p: { id: number }) => p.id === myId)?.country ?? 0;
-    } else if (m.t === "err") notify(`⚠ ${m.msg}`);
+    } else if (m.t === "err") notify(`<i class=i-warn></i> ${m.msg}`);
     else if (m.t === "chat") addChat(m);
     updateUI();
   };
@@ -500,7 +507,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.rename) { // "city:3" ou "state:2"
     const [kind, id] = d.rename.split(":") as ["city" | "state", string];
     const cur = kind === "city" ? eco.cities[+id].name : eco.states.find((s) => s.id === +id)!.name;
-    return openNamer(kind === "city" ? "🏙 Cidade" : "🗺 Estado", cur, kind === "city" ? cityFlag(+id) : stateFlag(+id), () => cmd({ t: "rename", kind, id: +id, name: idIn("name").value, flag: idFlag() }));
+    return openNamer(kind === "city" ? "<i class=i-city></i> Cidade" : "<i class=i-map></i> Estado", cur, kind === "city" ? cityFlag(+id) : stateFlag(+id), () => cmd({ t: "rename", kind, id: +id, name: idIn("name").value, flag: idFlag() }));
   }
   if (d.act === "settlers") return cmd({ t: "settlers" });
   if (d.tech && active) return cmd({ t: "tech", name: d.tech });
@@ -514,7 +521,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "fleet") return cmd({ t: "fleet", hex: selected });
   if (d.stateNew) {
     const k = Number(d.stateNew);
-    return openNamer("🗺 Novo estado", `Estado de ${eco.cities[k].name}`, cityFlag(k), () => cmd({ t: "stateNew", city: k, name: idIn("name").value, flag: idFlag() }));
+    return openNamer("<i class=i-map></i> Novo estado", `Estado de ${eco.cities[k].name}`, cityFlag(k), () => cmd({ t: "stateNew", city: k, name: idIn("name").value, flag: idFlag() }));
   }
   if (d.stateJoin) { const [city, st] = d.stateJoin.split("|").map(Number); return cmd({ t: "stateJoin", city, state: st }); }
   if (d.stateLeave) return cmd({ t: "stateLeave", city: Number(d.stateLeave) });
@@ -561,7 +568,7 @@ function chartsHtml() {
   return keys.map((k) => btn(k, chartKey, "chart")).join("") +
     `<canvas id="series" width="600" height="160" style="width:100%;height:160px;background:#111;margin-top:4px"></canvas>` +
     `<small>${(h[chartKey]?.length ?? 0)} meses · agora ${fmt(SERIES[chartKey](c, active, eco))}</small>` +
-    `<br><b>🏆 Ranking mundial</b> ` + ["Prestígio", "PIB", "População", "Tecnologias", "Cidades"].map((k) => btn(k, rankKey, "rank")).join("") +
+    `<br><b><i class=i-prestige></i> Ranking mundial</b> ` + ["Prestígio", "PIB", "População", "Tecnologias", "Cidades"].map((k) => btn(k, rankKey, "rank")).join("") +
     `<table>${ranked.slice(0, 10).map(([k, v], n) => `<tr${k === active ? ' style="color:#fd6"' : ""}><td>${n + 1}º ${world.countries[k - 1].name}</td><td>${fmt(v)}</td></tr>`).join("")}` +
     (mine >= 10 ? `<tr style="color:#fd6"><td>${mine + 1}º ${world.countries[active - 1].name}</td><td>${fmt(ranked[mine][1])}</td></tr>` : "") + `</table>`;
 }
@@ -816,6 +823,7 @@ function updateUI() {
   const show = selected >= 0 || selectedDiv;
   panel.innerHTML = show ? `<button data-act="close-panel" style="float:right" title="Fechar">${icon("close")}</button>` + divisionHtml() + hexHtml() : "";
   document.getElementById("bottombar")!.innerHTML = bottombarHtml();
+  hydrateIcons(document.body); // marcadores <i class=i-…> viram SVG
   if (performance.now() >= hudMsgUntil) document.getElementById("toast")!.style.display = "none";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
@@ -829,22 +837,22 @@ function headerHtml() {
   if (!active) return net ? "<i>Clique num país livre e use \"Assumir este país\".</i>" : "<i>Clique num país para controlá-lo.</i>";
   const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics;
   const weekly = c.income + c.tariffs - c.upkeep - c.interest;
-  return `<h3 style="color:rgb(${meta.color})">${meta.name} <small style="color:#aaa">(você) · Era ${ERAS[c.research.era]}</small> <button data-act="identity" title="Nome, cor e bandeira">🏳</button></h3>` +
+  return `<h3 style="color:rgb(${meta.color})">${meta.name} <small style="color:#aaa">(você) · Era ${ERAS[c.research.era]}</small> <button data-act="identity" title="Nome, cor e bandeira"><i class=i-flag></i></button></h3>` +
     `<div class="stats">` +
-    `<span title="População">👥 ${fmt(c.pop)}</span>` +
-    `<span title="PIB anual">📈 ${fmt(c.gdpWeek * 52)}</span>` +
-    `<span title="Pontos administrativos (centros administrativos + papel): pagam os incentivos">📜 ${Math.floor(c.admin ?? 0)}/${adminCap(eco, active)} <small>${signed(c.adminWeek ?? 0)}</small></span> ` +
-    `<span title="Controle médio do território (pela população): imposto, produção e recrutas">🧭 ${pct(c.control ?? 1)}</span> ` +
-    `<span title="Tesouro e saldo por semana">💰 ${fmt(c.treasury)} <small class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}/sem</small></span>` +
-    `<span title="Dívida">🏦 <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span></span>` +
-    `<span title="Legitimidade do governo">🏛 <span class="${p.legitimacy < 0.4 ? "up" : "down"}">${pct(p.legitimacy)}</span></span>` +
-    `<span title="Lealdade média · radicais">❤ ${Math.round(averageLoyalty(c.pops))} · <span class="${c.radicals > 0.1 ? "bad" : ""}">${pct(c.radicals)} rad.</span></span>` +
-    `<span title="Manpower livre (só para o exército)">🪖 ${fmt(c.manpower)}</span>` +
-    `<span title="Grupos de colonos">⛺ ${settlersOf(eco, active)}</span>` +
-    `<span title="Infâmia: reputação de agressor. ≥${INFAMY.noPacts} ninguém fecha acordo; ≥${INFAMY.pactsBreak} acordos caem e vizinhos podem se unir contra você. Cai ${INFAMY.decayWeek}/semana.">☠ <span class="${c.infamy >= INFAMY.pactsBreak ? "bad" : c.infamy >= INFAMY.noPacts ? "up" : ""}">${Math.round(c.infamy)}</span></span>` +
+    `<span title="População"><i class=i-people></i> ${fmt(c.pop)}</span>` +
+    `<span title="PIB anual"><i class=i-economy></i> ${fmt(c.gdpWeek * 52)}</span>` +
+    `<span title="Pontos administrativos (centros administrativos + papel): pagam os incentivos"><i class=i-admin></i> ${Math.floor(c.admin ?? 0)}/${adminCap(eco, active)} <small>${signed(c.adminWeek ?? 0)}</small></span> ` +
+    `<span title="Controle médio do território (pela população): imposto, produção e recrutas"><i class=i-compass></i> ${pct(c.control ?? 1)}</span> ` +
+    `<span title="Tesouro e saldo por semana"><i class=i-treasury></i> ${fmt(c.treasury)} <small class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}/sem</small></span>` +
+    `<span title="Dívida"><i class=i-treasury></i> <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span></span>` +
+    `<span title="Legitimidade do governo"><i class=i-politics></i> <span class="${p.legitimacy < 0.4 ? "up" : "down"}">${pct(p.legitimacy)}</span></span>` +
+    `<span title="Lealdade média · radicais"><i class=i-heart></i> ${Math.round(averageLoyalty(c.pops))} · <span class="${c.radicals > 0.1 ? "bad" : ""}">${pct(c.radicals)} rad.</span></span>` +
+    `<span title="Manpower livre (só para o exército)"><i class=i-soldier></i> ${fmt(c.manpower)}</span>` +
+    `<span title="Grupos de colonos"><i class=i-tent></i> ${settlersOf(eco, active)}</span>` +
+    `<span title="Infâmia: reputação de agressor. ≥${INFAMY.noPacts} ninguém fecha acordo; ≥${INFAMY.pactsBreak} acordos caem e vizinhos podem se unir contra você. Cai ${INFAMY.decayWeek}/semana."><i class=i-skull></i> <span class="${c.infamy >= INFAMY.pactsBreak ? "bad" : c.infamy >= INFAMY.noPacts ? "up" : ""}">${Math.round(c.infamy)}</span></span>` +
     `</div>` +
     (c.bankruptWeeks ? `<div class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</div>` : "") +
-    (p.rival >= 0 ? `<div class="bad">⚠ ${GROUPS[p.rival].name} tem mais apoio popular que o governo</div>` : "");
+    (p.rival >= 0 ? `<div class="bad"><i class=i-warn></i> ${GROUPS[p.rival].name} tem mais apoio popular que o governo</div>` : "");
 }
 
 function tabsHtml() {
@@ -854,7 +862,7 @@ function tabsHtml() {
 function economyHtml() {
   if (!active) return "";
   const c = eco.countries[active - 1];
-  const pool = `<div>🏦 Fundo de investimento privado: <b>${fmt(c.investPool ?? 0)}</b> <small>(+${fmt(c.investWeek ?? 0)}/sem pela lei de Economia; os investidores constroem sozinhos onde dá mais lucro)</small></div>`;
+  const pool = `<div><i class=i-treasury></i> Fundo de investimento privado: <b>${fmt(c.investPool ?? 0)}</b> <small>(+${fmt(c.investWeek ?? 0)}/sem pela lei de Economia; os investidores constroem sozinhos onde dá mais lucro)</small></div>`;
   return pool + `<canvas id="gdp" width="600" height="110" style="width:100%;height:110px;background:#111"></canvas>` +
     `<table><tr><td>Impostos (${pct(c.tax)})</td><td class="down">+${fmt(c.income)}</td></tr>` +
     `<tr><td>Tarifas (comércio exterior)</td><td class="down">+${fmt(c.tariffs)}</td></tr>` +
@@ -878,10 +886,10 @@ function societyHtml(part: "pops" | "culture" = "pops") {
     `${cultureName(world, id)} ${pct(f)}` + (id === c.primaryCulture ? " <small>(principal)</small>" : accepted.has(id)
       ? ` <small>(aceita)</small> <button data-accept="${id}|off" title="Deixar de aceitar">✕</button>`
       : ` <span class="bad">(discriminada)</span> <button data-accept="${id}|on" title="Aceitar: custa ${ACCEPT_COST} pontos administrativos">Aceitar</button>`)).join("<br>");
-  const ident = `<br>🎭 <b>Culturas</b><br>${cultures}<br>🗣 <b>Línguas</b> (oficial: ${languageName(c.officialLanguage ?? 0)}): ${top("language", languageName)}` +
-    `<br>⛪ <b>Religiões</b> (do Estado: ${RELIGIONS[c.stateReligion ?? 0]}): ${top("religion", (id) => RELIGIONS[id])}` +
+  const ident = `<br><i class=i-mask></i> <b>Culturas</b><br>${cultures}<br><i class=i-speech></i> <b>Línguas</b> (oficial: ${languageName(c.officialLanguage ?? 0)}): ${top("language", languageName)}` +
+    `<br><i class=i-church></i> <b>Religiões</b> (do Estado: ${RELIGIONS[c.stateReligion ?? 0]}): ${top("religion", (id) => RELIGIONS[id])}` +
     ((c.culturePenalty ?? 0) > 0.5 ? `<br><span class="bad">Minorias não aceitas: −${Math.round(c.culturePenalty!)} de lealdade</span>` : "");
-  const lit = ident + `<br>📚 Letrados: <b>${pct(c.literacy ?? 0)}</b> <small>(pesquisa +${pct(RULES.literacyResearch * (c.literacy ?? 0))}; sobem com Escrita, Universidades, Imprensa...)</small>`;
+  const lit = ident + `<br><i class=i-book></i> Letrados: <b>${pct(c.literacy ?? 0)}</b> <small>(pesquisa +${pct(RULES.literacyResearch * (c.literacy ?? 0))}; sobem com Escrita, Universidades, Imprensa...)</small>`;
   const qolColor = (q: number) => (q < 15 ? "up" : q >= 30 ? "down" : "");
   const rows = POP_TYPES.map((t, k) => [t, k] as const).filter(([, k]) => p.count[k] >= 0.5)
     .sort(([a], [b]) => a.cls - b.cls)
@@ -895,7 +903,7 @@ function societyHtml(part: "pops" | "culture" = "pops") {
     ` · migração no mês <span class="${c.migration < 0 ? "up" : c.migration > 0 ? "down" : ""}">${signed(c.migration)}</span></small>`;
 }
 
-const KIND_NAMES: Record<string, string> = { army: "⚔ Divisões", fleet: "⛵ Frotas", air: "✈ Esquadrões", settler: "⛺ Colonos" };
+const KIND_NAMES: Record<string, string> = { army: "<i class=i-military></i> Divisões", fleet: "<i class=i-ship></i> Frotas", air: "<i class=i-plane></i> Esquadrões", settler: "<i class=i-tent></i> Colonos" };
 function groupHtml() {
   const ds = eco.divisions.filter((d) => group.includes(d.id));
   const kinds = Object.keys(KIND_NAMES).filter((k) => ds.some((d) => d.kind === k));
@@ -911,20 +919,20 @@ function divisionHtml() {
   const t = d.target === null ? "parada" : `indo para (${d.target % W}, ${(d.target / W) | 0})`;
   if (d.kind === "settler") {
     const dist = settlerDistance(world, eco, d), out = dist > RULES.settlerSupplyRange;
-    return `<div class="unit"><b>⛺ Colonos</b> · ${t} · ${Math.round(d.strength)} pessoas · ${dist} hex da cidade` +
+    return `<div class="unit"><b><i class=i-tent></i> Colonos</b> · ${t} · ${Math.round(d.strength)} pessoas · ${dist} hex da cidade` +
       (out ? ` <span class="bad">sem suprimentos (máx. ${RULES.settlerSupplyRange}): morrendo</span>` : "") +
       `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="disband">Voltar para casa</button>${message ? ` <span class="bad">${message}</span>` : ""}</div>`;
   }
   if (d.kind === "air") {
     const region = airRegion(eco, d.target ?? d.hex);
     const name = region >= STATES.regionBase ? eco.states.find((x) => x.id === region - STATES.regionBase)?.name ?? "—" : region >= 0 ? eco.cities[region].name : "—";
-    return `<div class="unit"><b>✈ Esquadrão ${d.id}</b> · ${d.target === null ? "defendendo a base" : "missão"}: região de ${name}` +
+    return `<div class="unit"><b><i class=i-plane></i> Esquadrão ${d.id}</b> · ${d.target === null ? "defendendo a base" : "missão"}: região de ${name}` +
       `<br>Pilotos ${Math.round(d.strength)}/${AIR.pilots} · org. ${pct(d.org)} · alcance ${AIR.range} hexes <small>(botão direito = região de missão)</small> <button data-act="disband">Desfazer</button></div>`;
   }
-  if (d.kind === "fleet") return `<div class="unit"><b>⛵ Frota ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
+  if (d.kind === "fleet") return `<div class="unit"><b><i class=i-ship></i> Frota ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
     `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · <small>leva exércitos nessa zona</small> <button data-act="disband">Desfazer</button></div>`;
   const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
-  return `<div class="unit"><b>⚔ Divisão ${d.id}</b> · ${t}` + (sieged ? ` · 🏰 cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
+  return `<div class="unit"><b><i class=i-military></i> Divisão ${d.id}</b> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
     `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button></div>`;
 }
 
@@ -940,7 +948,7 @@ function pactsHtml() {
 function warsHtml() {
   const enemies = world.countries.map((_, k) => k + 1).filter((b) => atWar(eco, active, b));
   const n = eco.divisions.filter((d) => d.country === active && d.kind === "army").length;
-  return `Exército: ${n} divisão(ões)` + (enemies.length ? "<br><span class='bad'>⚔ Em guerra</span>" + enemies.map((b) => {
+  return `Exército: ${n} divisão(ões)` + (enemies.length ? "<br><span class='bad'><i class=i-military></i> Em guerra</span>" + enemies.map((b) => {
     const s = warScore(world, eco, active, b), st = eco.warStats?.[active < b ? `${active}-${b}` : `${b}-${active}`];
     const sup = st ? warSupport(eco, active, st) : 1;
     return `<br><b>${world.countries[b - 1].name}</b> · placar ${s >= 0 ? "+" : ""}${Math.round(s * 100)} <button data-peace="${b}">Paz</button>` + (st ? `<table>
@@ -968,11 +976,11 @@ function lawEffect(l: Law, cat: string, p: Politics) {
 function politicsHtml(p: Politics, era: number) {
   const groups = GROUPS.map((g, k) => [g, k] as const).filter(([, k]) => p.political[k] > 0.005 || p.popular[k] > 0.005)
     .sort(([, a], [, b]) => p.political[b] - p.political[a])
-    .map(([g, k]) => `<tr><td>${p.government.includes(k) ? "🏛 " : ""}${k === p.rival ? "⚠ " : ""}${g.name}</td><td>${pct(p.political[k])}</td><td>${pct(p.popular[k])}</td></tr>`);
+    .map(([g, k]) => `<tr><td>${p.government.includes(k) ? "<i class=i-politics></i> " : ""}${k === p.rival ? "<i class=i-warn></i> " : ""}${g.name}</td><td>${pct(p.political[k])}</td><td>${pct(p.popular[k])}</td></tr>`);
   const laws = Object.entries(LAWS).map(([cat, list]) => {
     const cur = lawOf(p, cat);
     const opts = list.filter((l) => l.name !== cur.name).map((l) => {
-      if (l.era > era) return `<tr><td colspan="2"><small style="opacity:.55">🔒 ${l.name} — era ${ERAS[l.era]}</small></td></tr>`;
+      if (l.era > era) return `<tr><td colspan="2"><small style="opacity:.55"><i class=i-lock></i> ${l.name} — era ${ERAS[l.era]}</small></td></tr>`;
       const s = lawSupport(p, l);
       return `<tr><td>${p.enacting ? `<b>${l.name}</b>` : `<button data-law="${cat}|${l.name}">${l.name}</button>`}<br><small class="${s > 0 ? "down" : "up"}" title="Gostam: ${l.likes.join(", ") || "—"} · Não gostam: ${l.dislikes.join(", ") || "—"}">apoio ${s > 0 ? "+" : ""}${pct(s)}</small></td>` +
         `<td style="text-align:left"><small>${lawEffect(l, cat, p)}</small></td></tr>`;
@@ -983,19 +991,19 @@ function politicsHtml(p: Politics, era: number) {
     ? `<div>Votando <b>${p.enacting.law}</b> · fase ${lawPhase(p.enacting.progress) + 1}/3: ${LAW_PHASES[lawPhase(p.enacting.progress)]}` +
       `<br>Poder Político <span class="${p.support > 0 ? "down" : "up"}">${pct(p.support)}</span>${p.support > 0 ? "" : " <span class='bad'>(travada no parlamento)</span>"}` +
       ` · Poder Popular <span class="${(p.popularSupport ?? 0) >= 0 ? "down" : "up"}">${pct(p.popularSupport ?? 0)}</span>${(p.popularSupport ?? 0) < POLITICS_RULES.revoltSupport ? " <span class='bad'>(revolta)</span>" : (p.popularSupport ?? 0) < POLITICS_RULES.protestSupport ? " <span class='bad'>(protestos)</span>" : ""}` +
-      ` <button data-act="cancel-law">Cancelar</button>${p.lawEvent ? `<br><small>📰 ${p.lawEvent}</small>` : ""}` +
+      ` <button data-act="cancel-law">Cancelar</button>${p.lawEvent ? `<br><small><i class=i-news></i> ${p.lawEvent}</small>` : ""}` +
       `<div class="bar"><div style="background:#fa6;width:${Math.min(100, p.enacting.progress * 100)}%"></div></div></div>` : "";
   const federal = !!lawOf(p, "Estados").federal;
   const states = statesOf(eco, active).map((x) => {
     const n = eco.cities.filter((k) => k.state === x.id).length;
     const taxes = federal ? `<br><small>Imposto: ` + [["", "Nacional"], ...LAWS["Impostos"].filter((l) => l.era <= era).map((l) => [l.name, l.name])]
       .map(([v, label]) => `<button data-state-tax="${x.id}|${v}" class="${(x.taxLaw ?? "") === v ? "on" : ""}">${label}</button>`).join(" ") + "</small>" : "";
-    return `<tr><td>${x.name} <small>(${n} cidade${n > 1 ? "s" : ""})</small>${taxes}</td><td>${x.interest} ${x.happy ? "😊" : "<span class='bad'>😠</span>"}</td></tr>`;
+    return `<tr><td>${x.name} <small>(${n} cidade${n > 1 ? "s" : ""})</small>${taxes}</td><td>${x.interest} ${x.happy ? "<i class=i-smile></i>" : "<span class='bad'><i class=i-frown></i></span>"}</td></tr>`;
   });
   const statesTable = `<b>Estados</b> <small>(${federal ? "Federação: cada estado escolhe o imposto" : `Centralizado: +${Math.round(STATES.adminPerState * 100)}% de arrecadação por estado`}; crie no hex de uma cidade)</small>` +
     (states.length ? `<table>${states.join("")}</table>` : "<br><small>Nenhum estado ainda.</small>");
   return voting +
-    `<table><tr><td><b>Grupo</b> <small>(🏛 governo)</small></td><td><b title="decide leis e governo">Político</b></td><td><b title="dá legitimidade">Popular</b></td></tr>${groups.join("")}</table>` +
+    `<table><tr><td><b>Grupo</b> <small>(<i class=i-politics></i> governo)</small></td><td><b title="decide leis e governo">Político</b></td><td><b title="dá legitimidade">Popular</b></td></tr>${groups.join("")}</table>` +
     `<table class="laws">${laws.join("")}</table>` + statesTable;
 }
 
@@ -1027,25 +1035,25 @@ function hexHtml() {
   if (world.reserve[i] !== Infinity) h += ` · jazida para ~${Math.round(world.reserve[i] / 52)} anos (com 1 nível)`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
   const ct = world.continent?.[i];
-  if (ct) h += ` · continente <b>${world.continents![ct - 1].name}</b> <button data-continent="${ct}" title="Renomear continente">✏</button>`;
+  if (ct) h += ` · continente <b>${world.continents![ct - 1].name}</b> <button data-continent="${ct}" title="Renomear continente"><i class=i-edit></i></button>`;
   h += ` · cabem ${fmt(popCap(world, eco, i))}` + (world.owner[i] ? ` · controle ${pct(eco.control[i])}` : "");
   if (active && world.owner[i] === active && !eco.urban[i] && isLand(world.terrain[i])) { // comprar como centro urbano da cidade vizinha
     const k = eco.cities.findIndex((cc) => cc.country === active && cc.urban.some((u) => hexDistance(u % W, (u / W) | 0, i % W, (i / W) | 0, W) === 1));
-    if (k >= 0) h += `<br><button data-urbanize="${k}">🏙 Virar centro urbano de ${eco.cities[k].name} (${fmt(urbanCost(eco.cities[k]))})</button> <small>cidade +1 tamanho; menos recurso natural, mais indústria</small>`;
+    if (k >= 0) h += `<br><button data-urbanize="${k}"><i class=i-city></i> Virar centro urbano de ${eco.cities[k].name} (${fmt(urbanCost(eco.cities[k]))})</button> <small>cidade +1 tamanho; menos recurso natural, mais indústria</small>`;
   }
   const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
   if (hst) { // estado: população, PIB (valor do que os mercados oferecem) e qualidade de vida
     const cs = eco.cities.filter((k) => k.state === hst.id);
     const gdp = cs.reduce((s, k) => s + k.market.supply.reduce((a, q, g) => a + q * k.market.price[g], 0), 0);
     const pops = eco.countries[hst.country - 1].pops;
-    h += `<br>🗺 <b>${hst.name}</b> · ${cs.length} cidade(s) · pop ${fmt(cs.reduce((s, k) => s + k.market.pop, 0))} · PIB ${fmt(gdp)}/sem · QV ${Math.round(lowerClassQol(pops))} <small>(do país)</small> · lealdade ${Math.round(averageLoyalty(pops))}`;
+    h += `<br><i class=i-map></i> <b>${hst.name}</b> · ${cs.length} cidade(s) · pop ${fmt(cs.reduce((s, k) => s + k.market.pop, 0))} · PIB ${fmt(gdp)}/sem · QV ${Math.round(lowerClassQol(pops))} <small>(do país)</small> · lealdade ${Math.round(averageLoyalty(pops))}`;
   }
   if (world.owner[i] !== active || !active) {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
     if (net && world.owner[i] && !mp?.players.some((p) => p.country === world.owner[i])) h += ` <button data-act="claim">Assumir este país</button>`;
     if (active && world.owner[i] && world.owner[i] !== active) {
       const rel = relation(eco, active, world.owner[i]);
-      h += `<br>🤝 Relações: <b class="${rel < 0 ? "up" : "down"}">${Math.round(rel)}</b> · prestígio deles ${prestige(eco, world.owner[i])} <button data-improve="${world.owner[i]}" title="+${DIPLO.improve} de relação">Melhorar relações (${DIPLO.improveCost} 📜)</button>`;
+      h += `<br><i class=i-diplomacy></i> Relações: <b class="${rel < 0 ? "up" : "down"}">${Math.round(rel)}</b> · prestígio deles ${prestige(eco, world.owner[i])} <button data-improve="${world.owner[i]}" title="+${DIPLO.improve} de relação">Melhorar relações (${DIPLO.improveCost} <i class=i-admin></i>)</button>`;
     }
     if (active && world.owner[i] && !atWar(eco, active, world.owner[i])) {
       h += hasPact(eco, active, world.owner[i]) ? ` <button data-unpact="${world.owner[i]}">Cancelar acordo</button>` : ` <button data-pact="${world.owner[i]}">Propor acordo comercial</button>`;
@@ -1059,50 +1067,50 @@ function hexHtml() {
     const tip = def.boosts !== undefined ? ` <small>(+${Math.round(def.mult! * 100)}% ${BUILDINGS[def.boosts].name}/nível)</small>`
       : def.industry ? ` <small>(${def.industry.inputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")} → ${def.industry.admin ? `${def.industry.admin} pontos adm.` : def.industry.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")})</small>` : "";
     const tech = techFor(b), locked = tech && !eco.countries[active - 1].research.known.has(tech);
-    return `<tr><td>${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} 👷</td>` +
-      `<td>${locked ? `<small>🔒 ${tech}</small>` : `<button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>`}</td></tr>`;
+    return `<tr><td>${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} <i class=i-worker></i></td>` +
+      `<td>${locked ? `<small><i class=i-lock></i> ${tech}</small>` : `<button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>`}</td></tr>`;
   });
   h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
   for (let b = 1; b <= eco.countries.length; b++) if (atWar(eco, active, b)) {
     const s = airSuperiority(eco, airRegion(eco, i), active, b);
-    h += `<br>✈ Céu desta região contra ${world.countries[b - 1].name}: <b class="${s >= 0.5 ? "down" : "up"}">${pct(s)}</b> <small>(batalhas aqui: ${s >= 0.5 ? "+" : "−"}${Math.round(Math.abs(2 * s - 1) * AIR.bonus * 100)}%)</small>`;
+    h += `<br><i class=i-plane></i> Céu desta região contra ${world.countries[b - 1].name}: <b class="${s >= 0.5 ? "down" : "up"}">${pct(s)}</b> <small>(batalhas aqui: ${s >= 0.5 ? "+" : "−"}${Math.round(Math.abs(2 * s - 1) * AIR.bonus * 100)}%)</small>`;
   }
   if (eco.urban[i] && !eco.occupier[i]) h += `<br><button data-act="recruit">Recrutar divisão (${WAR.recruitCost} + ${WAR.divisionSize} manpower)</button>`;
   if (eco.urban[i] && !eco.occupier[i] && coastOf(world, i) >= 0) h += eco.countries[active - 1].research.known.has(NAVY.tech)
-    ? ` <button data-act="fleet">Construir frota (${NAVY.cost} + ${NAVY.sailors} manpower)</button>` : ` <small>🔒 frota: ${NAVY.tech}</small>`;
+    ? ` <button data-act="fleet">Construir frota (${NAVY.cost} + ${NAVY.sailors} manpower)</button>` : ` <small><i class=i-lock></i> frota: ${NAVY.tech}</small>`;
   if (eco.urban[i] && !eco.occupier[i]) h += eco.countries[active - 1].research.known.has(AIR.tech)
     ? ` <button data-act="air">Formar esquadrão (${AIR.cost} + ${AIR.pilots} manpower)</button>` : "";
   if (city && eco.urban[i]) {
     const ci = eco.market[i] - 1, st = stateOfCity(eco, ci), lock = statesLocked(eco, active);
-    if (st) h += `<br>🗺 Estado: <b>${st.name}</b>${st.country === active ? ` <button data-rename="state:${st.id}" title="Renomear">✏</button>` : ""} · ${st.interest} ${st.happy ? "😊" : "<span class='bad'>😠 insatisfeito</span>"}` + (lock ? "" : ` <button data-state-leave="${ci}">Sair do estado</button>`);
-    else if (!lock) h += `<br>🗺 Sem estado: <button data-state-new="${ci}">Criar estado</button>` +
+    if (st) h += `<br><i class=i-map></i> Estado: <b>${st.name}</b>${st.country === active ? ` <button data-rename="state:${st.id}" title="Renomear"><i class=i-edit></i></button>` : ""} · ${st.interest} ${st.happy ? "<i class=i-smile></i>" : "<span class='bad'><i class=i-frown></i> insatisfeito</span>"}` + (lock ? "" : ` <button data-state-leave="${ci}">Sair do estado</button>`);
+    else if (!lock) h += `<br><i class=i-map></i> Sem estado: <button data-state-new="${ci}">Criar estado</button>` +
       statesOf(eco, active).map((x) => ` <button data-state-join="${ci}|${x.id}">Juntar a ${x.name}</button>`).join("");
-    if (lock && !st) h += `<br><small>🗺 ${lock}</small>`;
+    if (lock && !st) h += `<br><small><i class=i-map></i> ${lock}</small>`;
   }
-  if (city) { const k = eco.cities.indexOf(city); if (eco.famine?.[k]) h += `<br><span class="bad">🍞 Fome em ${city.name}</span>`; if ((eco.plague?.[k] ?? 0) > 0) h += `<br><span class="bad">☠ Peste em ${city.name} (${eco.plague![k]} semanas)</span>`; }
+  if (city) { const k = eco.cities.indexOf(city); if (eco.famine?.[k]) h += `<br><span class="bad"><i class=i-bread></i> Fome em ${city.name}</span>`; if ((eco.plague?.[k] ?? 0) > 0) h += `<br><span class="bad"><i class=i-skull></i> Peste em ${city.name} (${eco.plague![k]} semanas)</span>`; }
   if (city && city.country === active) {
     const k = eco.cities.indexOf(city), stateCities = city.state !== undefined ? eco.cities.map((x, j) => (x.state === city.state ? j : -1)).filter((j) => j >= 0) : [];
-    h += "<br><b>📜 Incentivos</b> " + (Object.keys(INCENTIVES) as IncentiveKind[]).map((kind) => {
+    h += "<br><b><i class=i-admin></i> Incentivos</b> " + (Object.keys(INCENTIVES) as IncentiveKind[]).map((kind) => {
       const on = hasIncentive(eco, k, kind), def = INCENTIVES[kind];
       return `<br><button data-incentive="${kind}|${k}|${on ? "off" : "on"}" title="${def.desc}" class="${on ? "on" : ""}">${on ? "✓ " : ""}${kind}</button> <small>${def.cost} + ${def.upkeep}/sem</small>` +
         (!on && stateCities.length > 1 ? ` <button data-incentive="${kind}|${stateCities.join(",")}|on" title="Em todas as cidades do estado">no estado (${def.cost * stateCities.length})</button>` : "");
     }).join("");
   }
-  if (city?.blockaded) h += `<br><span class="bad">⚓ ${city.name} bloqueada por frota inimiga: sem comércio exterior</span>`;
+  if (city?.blockaded) h += `<br><span class="bad"><i class=i-anchor></i> ${city.name} bloqueada por frota inimiga: sem comércio exterior</span>`;
   if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {
     const others = eco.cities.map((k, idx) => [k, idx] as const).filter(([k]) => k.country === city.country && k !== city);
     { const k = eco.cities.indexOf(city), lv = city.road ?? 0;
       const hb = city.harbor ?? 0;
-      if (city.coast || city.port) h += `<br>⚓ Porto nível ${hb}/${maxHarbor(eco, city.country)} <small>(+${Math.round(RULES.harborTrade * hb * 100)}% comércio${hb ? ", alcance do comércio exterior ×2" : ""})</small>` + (city.country === active && hb < maxHarbor(eco, city.country) ? ` <button data-harbor="${k}">Melhorar (${RULES.harborCost * (hb + 1)})</button>` : "");
-      h += `<br>🛣 Estrada nível ${lv}/${maxRoad(eco, city.country)} <small>(+${Math.round(RULES.roadTrade * lv * 100)}% comércio terrestre, +${Math.round(RULES.roadControl * lv * 100)}% controle)</small>` + (city.country === active && lv < maxRoad(eco, city.country) ? ` <button data-road="${k}">Melhorar (${RULES.roadCost * (lv + 1)})</button>` : ""); }
+      if (city.coast || city.port) h += `<br><i class=i-anchor></i> Porto nível ${hb}/${maxHarbor(eco, city.country)} <small>(+${Math.round(RULES.harborTrade * hb * 100)}% comércio${hb ? ", alcance do comércio exterior ×2" : ""})</small>` + (city.country === active && hb < maxHarbor(eco, city.country) ? ` <button data-harbor="${k}">Melhorar (${RULES.harborCost * (hb + 1)})</button>` : "");
+      h += `<br><i class=i-road></i> Estrada nível ${lv}/${maxRoad(eco, city.country)} <small>(+${Math.round(RULES.roadTrade * lv * 100)}% comércio terrestre, +${Math.round(RULES.roadControl * lv * 100)}% controle)</small>` + (city.country === active && lv < maxRoad(eco, city.country) ? ` <button data-road="${k}">Melhorar (${RULES.roadCost * (lv + 1)})</button>` : ""); }
     if (city.identity) {
       const main = (m: Record<number, number>) => +Object.entries(m).sort((a, b) => b[1] - a[1])[0][0];
       const acc = acceptedShare(eco, eco.cities.indexOf(city));
-      h += `<br>🎭 ${cultureName(world, main(city.identity.culture))} · 🗣 ${languageName(main(city.identity.language))} · ⛪ ${RELIGIONS[main(city.identity.religion)]}` +
+      h += `<br><i class=i-mask></i> ${cultureName(world, main(city.identity.culture))} · <i class=i-speech></i> ${languageName(main(city.identity.language))} · <i class=i-church></i> ${RELIGIONS[main(city.identity.religion)]}` +
         (acc < 0.99 ? ` <span class="bad">(${pct(1 - acc)} de cultura não aceita)</span>` : "");
     }
-    h += `<br><b>${city.name}</b>${city.country === active ? ` <button data-rename="city:${eco.cities.indexOf(city)}" title="Renomear">✏</button>` : ""} · tamanho ${city.size} · pop urbana ${fmt(city.urban.reduce((s, j) => s + world.pop[j], 0))}` +
+    h += `<br><b>${city.name}</b>${city.country === active ? ` <button data-rename="city:${eco.cities.indexOf(city)}" title="Renomear"><i class=i-edit></i></button>` : ""} · tamanho ${city.size} · pop urbana ${fmt(city.urban.reduce((s, j) => s + world.pop[j], 0))}` +
       ` <small>(cresce comprando centro urbano vizinho)</small>` +
       (others.length && city.size > 1 ? `<br>Passar 1 de tamanho para: ${others.map(([k, idx]) => `<button data-transfer="${idx}">${k.name}</button>`).join(" ")}` : "");
   }

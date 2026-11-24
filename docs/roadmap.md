@@ -64,9 +64,11 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Interface, fase 2: Economia em abas (Visão Geral com cartões e crescimento de 12 meses; Mercados por cidade com produção, consumo, abastecimento, estrada e porto, e botão que leva ao mapa; Mercadorias em cartões por categoria com preço, tendência de 6 meses, produção, consumo, importação e exportação). Preço de cada bem guardado por 24 meses. Tecnologia em árvore: linhas por área (Militar, Ciência, Comércio, Indústria, Agricultura), colunas por era até a próxima, cartões conhecidos/disponíveis/bloqueados ligados aos pré-requisitos por linhas; clicar num disponível muda a pesquisa.
 
+- Interface: todos os emojis da interface viraram ícones de linha (39 tipos); notificações classificadas pelo ícone e mostradas como texto puro.
+
 ## Próximos (nesta ordem)
 
-1. **Interface, fases seguintes** (docs/interface.md): trocar os emojis que sobraram nos painéis por ícones; Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Política com cartões dos grupos; Militar operacional (frentes, logística); eventos com moldura de documento e imagem; camadas novas (cultura, religião, língua, alfabetização, infraestrutura); estilo que muda devagar por era; painéis redimensionáveis.
+1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Política com cartões dos grupos; Militar operacional (frentes, logística); eventos com moldura de documento e imagem; camadas novas (cultura, religião, língua, alfabetização, infraestrutura); estilo que muda devagar por era; painéis redimensionáveis.
 2. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
 3. **Mercados**
    - Mercado nacional como soma dos metropolitanos.
