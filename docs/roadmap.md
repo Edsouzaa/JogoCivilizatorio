@@ -97,6 +97,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Rios navegáveis com nome: trechos navegáveis ligados viram um rio (15+ hexes) com nome na língua da região e o nó de mar da foz (se deságua noutro rio, o mar mais perto). Nome aparece no mapa de perto; o hex mostra o rio e a foz; renomear pelo lápis (no multiplayer, votação como os continentes).
 
+- Rios espalhados: as nascentes saem de uma grade (uma chance a cada 26 × 16 hexes, no ponto mais alto de algumas amostras), em qualquer terra um pouco acima do mar, em vez de sorteadas no mapa todo (o que juntava tudo nas serras). Metade dos rios de antes, espalhados por todos os continentes.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.

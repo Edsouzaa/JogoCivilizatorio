@@ -30,7 +30,8 @@ assert.deepEqual(a.e.humans, [1]);
 assert.equal(checksum(copy!.e), checksum(a.e), "quem entrou no meio (pela foto) divergiu");
 
 // comandos só valem para o próprio país
-const enemyUnit = a.e.divisions.find((d) => d.country === 2)!;
+if (!a.e.divisions.some((d) => d.country !== 1)) a.e.divisions.push({ id: 9999, kind: "army", country: 2, hex: a.e.cities.find((k) => k.country === 2)!.hex, strength: 10, org: 1, target: null, progress: 0, equip: 1 });
+const enemyUnit = a.e.divisions.find((d) => d.country !== 1)!;
 assert.match(applyCommand(a.w, a.e, 1, { t: "move", id: enemyUnit.id, target: 0 })!, /não é sua/);
 assert.match(applyCommand(a.w, a.e, 1, { t: "build", i: a.e.cities[1].hex, b: 0 })!, /não é seu/);
 assert.match(applyCommand(a.w, a.e, 99, { t: "settlers" })!, /País inválido/);

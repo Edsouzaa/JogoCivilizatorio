@@ -262,7 +262,7 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
   // Países: uma capital em terra fértil, com território de raio START_RADIUS. O resto do mundo começa livre.
   const owner = new Uint16Array(N), countries: World["countries"] = [];
   const w: World = { W, H, seed, terrain, resource, resource2, reserve, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
-  generateRivers(w, elev, hills, rand);
+  generateRivers(w, elev, sea + (hills - sea) * 0.25, rand); // nasce em qualquer terra um pouco acima do mar
   generateSeaZones(w);
   generateContinents(w);
   generateRiverSystems(w);
@@ -349,6 +349,8 @@ export function across(W: number, H: number, h: number, k: number) {
 /** Tem rio na borda k do hex h? */
 export const riverAt = (w: World, h: number, k: number) => (w.river[h] >> k) & 1;
 
+/** Grade das nascentes: uma chance de rio a cada tantas colunas × linhas. */
+export const RIVER_SPACING = { cols: 26, rows: 16, chance: 0.75 };
 function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () => number) {
   const { W, H, terrain } = w;
   const N = W * H;
@@ -366,11 +368,19 @@ function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () 
     return Math.min(h * 6 + k, a >= 0 ? a * 6 + ((k + 2) % 6) : Infinity, b >= 0 ? b * 6 + ((k + 4) % 6) : Infinity);
   };
   const riverCorner = new Set<number>();
-  const sources = Math.round(w.landCount / 250);
-  for (let s = 0, tries = 0; s < sources && tries < sources * 50; tries++) {
-    const src = (rand() * N) | 0;
-    if (!isLand(terrain[src]) || elev[src] < minElev) continue;
-    s++;
+  // nascentes espalhadas: uma por célula de uma grade (o ponto mais alto de algumas amostras da célula),
+  // em vez de sortear no mapa todo (que juntava rios nas serras)
+  const sources: number[] = [];
+  for (let r0 = 0; r0 < H; r0 += RIVER_SPACING.rows) for (let c0 = 0; c0 < W; c0 += RIVER_SPACING.cols) {
+    if (rand() > RIVER_SPACING.chance) continue;
+    let best = -1;
+    for (let t = 0; t < 12; t++) {
+      const i = Math.min(H - 1, r0 + ((rand() * RIVER_SPACING.rows) | 0)) * W + Math.min(W - 1, c0 + ((rand() * RIVER_SPACING.cols) | 0));
+      if (isLand(terrain[i]) && elev[i] > minElev && (best < 0 || elev[i] > elev[best])) best = i;
+    }
+    if (best >= 0) sources.push(best);
+  }
+  for (const src of sources) {
     let h = src, k = 0; // começa no canto de cima do hex de origem
     const path: [number, number][] = []; // bordas do caminho (hex, k)
     const seen = new Set<number>([key(h, k)]);

@@ -11,6 +11,7 @@ tick(w, e);
 const [A, B] = [1, 2], ca = e.countries[A - 1], cb = e.countries[B - 1];
 ca.manpower = cb.manpower = 1e5; ca.treasury = cb.treasury = 1e5;
 const capA = e.cities[A - 1].hex, capB = e.cities[B - 1].hex;
+w.pop[capA] += 1e4; w.pop[capB] += 1e4; // tribo grande o bastante para os soldados não serem cortados pela população
 
 // recrutar só em cidade própria; custa manpower e dinheiro
 const ruralA = [...e.owned].find((i) => w.owner[i] === A && !e.urban[i])!;
