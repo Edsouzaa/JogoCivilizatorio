@@ -169,6 +169,8 @@ export type Economy = {
   wars: Set<string>;    // pares de países em guerra, "a-b" com a < b
   pacts: Set<string>;   // pares com acordo comercial, mesmo formato
   states: State[]; nextState: number;
+  humans: number[];     // países com jogador (fora da IA)
+  aiWarStart: Record<string, number>; // semana em que cada guerra da IA começou (para a paz)
   occupier: Uint8Array; // país que ocupa o hex (0 = ninguém); hex ocupado não produz para o dono
 };
 
@@ -221,7 +223,7 @@ export function createEconomy(w: World): Economy {
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
-    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), states: [], nextState: 1, occupier: new Uint8Array(N),
+    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), states: [], nextState: 1, humans: [], aiWarStart: {}, occupier: new Uint8Array(N),
   };
   refresh(w, e);
   for (const i of e.owned) {

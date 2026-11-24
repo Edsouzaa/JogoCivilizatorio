@@ -11,7 +11,8 @@ import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo, buildBorders } from "./fog.ts";
-import { runAI } from "./ai.ts";
+import { applyCommand, type Cmd } from "./commands.ts";
+import { advanceWeek, checksum } from "./sim.ts";
 import { saveGame, loadGame } from "./save.ts";
 import { listAutosaves, writeAutosave, readAutosave, autosaveClock, AUTOSAVE, type AutosaveMeta } from "./autosave.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, statesLocked, STATES } from "./states.ts";
@@ -165,7 +166,7 @@ canvas.addEventListener("pointerup", (e) => {
   if (drag && drag.moved < 5) { // clique sem arrastar = selecionar hex
     const [c, r] = hexAt(e.clientX, e.clientY);
     selected = inMap(c, r) ? r * W + c : -1;
-    if (selected >= 0 && world.owner[selected]) active = world.owner[selected];
+    if (!net && selected >= 0 && world.owner[selected]) { active = world.owner[selected]; eco.humans = [active]; }
     // clicar num hex com divisões seleciona a próxima delas (cliques repetidos alternam)
     const here = eco.divisions.filter((d) => d.hex === selected);
     const k = here.findIndex((d) => d.id === selectedDiv);
@@ -191,7 +192,7 @@ canvas.addEventListener("pointermove", (e) => {
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   const [c, r] = hexAt(e.clientX, e.clientY);
-  if (selectedDiv && inMap(c, r)) act(orderMove(world, eco, selectedDiv, r * W + c));
+  if (selectedDiv && inMap(c, r)) cmd({ t: "move", id: selectedDiv, target: r * W + c });
 });
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -201,10 +202,82 @@ canvas.addEventListener("wheel", (e) => {
   cam.x += before[0] - after[0]; cam.y += before[1] - after[1]; // zoom em volta do cursor
 }, { passive: false });
 
-function togglePause() { if (speed) { lastSpeed = speed; speed = 0; } else speed = lastSpeed; }
+function togglePause() {
+  if (net) return net.send(JSON.stringify({ t: mp?.paused ? "unpause" : "pause" }));
+  if (speed) { lastSpeed = speed; speed = 0; } else speed = lastSpeed;
+}
+function setSpeed(i: number) { if (net) net.send(JSON.stringify({ t: "speed", i })); else speed = i; }
+/** Ação do jogador: no single-player vale na hora; no multiplayer vai para o servidor e volta para todos no próximo passo. */
+function cmd(c: Cmd) {
+  if (net) { net.send(JSON.stringify({ t: "cmd", cmd: c })); message = ""; return updateUI(); }
+  act(applyCommand(world, eco, active, c));
+}
+
+// ---------------- multiplayer (lockstep; ver server/server.ts) ----------------
+type RoomStatus = { code: string; speed: number; paused: string | null; votes: number; needed: number; players: { id: number; name: string; country: number }[] };
+let net: WebSocket | null = null, mp: RoomStatus | null = null, myId = 0, synced = false;
+const pendingSteps: { week: number; cmds: [number, Cmd][] }[] = [];
+const mpBox = document.createElement("div");
+mpBox.id = "mpbox";
+mpBox.style.cssText = "display:none;position:fixed;top:120px;left:8px;background:#000c;padding:10px;border-radius:6px;width:300px;line-height:1.8";
+mpBox.innerHTML = `<b>🌐 Multiplayer</b> <small>(servidor: npm run server)</small><br>
+  Servidor <input id="mp-url" style="width:200px"><br>Seu nome <input id="mp-name" maxlength="24" style="width:120px"><br>
+  <button id="mp-create">Criar sala (mapa deste tamanho)</button><br>
+  Código <input id="mp-code" maxlength="4" style="width:60px;text-transform:uppercase"> <button id="mp-join">Entrar</button>`;
+document.body.appendChild(mpBox);
+const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
+$("mp-url").value = params.get("server") ?? `ws://${location.hostname || "localhost"}:8787`;
+$("mp-name").value = params.get("name") ?? "";
+$("mp-create").onclick = () => connect({ t: "create", name: $("mp-name").value, w: W, h: H });
+$("mp-join").onclick = () => connect({ t: "join", code: $("mp-code").value.toUpperCase(), name: $("mp-name").value });
+
+function applyStep(m: { week: number; cmds: [number, Cmd][] }) {
+  for (const [country, c] of m.cmds) applyCommand(world, eco, country, c);
+  advanceWeek(world, eco);
+  if (eco.week !== m.week) { synced = false; net?.send(JSON.stringify({ t: "resync" })); } // fora de passo: pede a foto
+}
+
+function connect(hello: object) {
+  net?.close();
+  let ws: WebSocket;
+  try { ws = new WebSocket($("mp-url").value); } catch { return notify("⚠ Endereço de servidor inválido"); }
+  ws.binaryType = "arraybuffer";
+  net = ws; synced = false; pendingSteps.length = 0;
+  ws.onopen = () => ws.send(JSON.stringify(hello));
+  ws.onmessage = async (ev) => {
+    if (ev.data instanceof ArrayBuffer) { // foto da partida
+      try {
+        const d = await loadGame(new Blob([ev.data]));
+        world = d.world; eco = d.eco; synced = true;
+        explored.clear(); selected = -1; selectedDiv = null;
+        for (const st of pendingSteps.splice(0)) if (st.week > eco.week) applyStep(st);
+        recolor();
+        updateUI();
+      } catch (err) { notify(`⚠ ${(err as Error).message}`); }
+      return;
+    }
+    const m = JSON.parse(ev.data as string);
+    if (m.t === "welcome") {
+      if (m.w !== W || m.h !== H) { // a sala tem outro tamanho de mapa: recarrega a página no tamanho certo e entra de novo
+        location.search = new URLSearchParams({ w: m.w, h: m.h, server: $("mp-url").value, room: m.code, name: $("mp-name").value }).toString();
+        return;
+      }
+      myId = m.id; mpBox.style.display = "none"; notify(`Na sala ${m.code}`);
+    } else if (m.t === "step") { if (synced) applyStep(m); else pendingSteps.push(m); }
+    else if (m.t === "check" && synced && checksum(eco) !== m.sum) { synced = false; notify("Fora de sincronia: recebendo a partida de novo..."); ws.send(JSON.stringify({ t: "resync" })); }
+    else if (m.t === "status") {
+      mp = m; speed = m.paused ? 0 : m.speed; lastSpeed = m.speed;
+      active = m.players.find((p: { id: number }) => p.id === myId)?.country ?? 0;
+    } else if (m.t === "err") notify(`⚠ ${m.msg}`);
+    updateUI();
+  };
+  ws.onclose = () => { if (net === ws) { net = null; mp = null; notify("Desconectado do servidor (a partida continua só aqui)"); } };
+}
+if (params.get("server") && params.get("room")) setTimeout(() => connect({ t: "join", code: params.get("room"), name: params.get("name") ?? "" }), 0);
+
 function act(result: string | null) { message = result ?? ""; if (eco.version !== drawnVersion) recolor(); updateUI(); }
 function doBuild(b = buildingsFor(world.resource[selected], !!eco.urban[selected])[0]) { // B sem escolha = 1ª construção do hex
-  if (selected >= 0 && b !== undefined) act(build(world, eco, selected, b));
+  if (selected >= 0 && b !== undefined) cmd({ t: "build", i: selected, b });
 }
 window.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); doSave(); return; }
@@ -213,45 +286,48 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "r" || e.key === "R") newWorld((Math.random() * 2 ** 31) | 0);
   if (e.key === "f" || e.key === "F") fit();
   if (e.key === "b" || e.key === "B") doBuild();
-  if ((e.key === "c" || e.key === "C") && selectedDiv) act(foundCity(world, eco, selectedDiv));
+  if ((e.key === "c" || e.key === "C") && selectedDiv) cmd({ t: "found", unit: selectedDiv });
   if (e.key === " ") { e.preventDefault(); togglePause(); }
-  if (e.key === "+" || e.key === "=") speed = Math.min(SPEEDS.length - 1, speed + 1);
-  if (e.key === "-") speed = Math.max(1, speed - 1);
+  if (e.key === "+" || e.key === "=") setSpeed(Math.min(SPEEDS.length - 1, (speed || lastSpeed) + 1));
+  if (e.key === "-") setSpeed(Math.max(1, (speed || lastSpeed) - 1));
   updateUI();
 });
 // pointerdown, não click: o HUD é redesenhado a cada 500 ms e um click pode cair entre o down e o up.
 document.addEventListener("pointerdown", (e) => {
   const d = (e.target as HTMLElement).dataset;
   if (d.build) return doBuild(Number(d.build));
-  if (d.transfer) return act(transferSize(world, eco, eco.market[selected] - 1, Number(d.transfer)));
-  if (d.act === "found" && selectedDiv) return act(foundCity(world, eco, selectedDiv));
-  if (d.act === "settlers") return act(trainSettlers(world, eco, active));
-  if (d.tech && active) { eco.countries[active - 1].research.researching = d.tech; return updateUI(); }
+  if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
+  if (d.act === "found" && selectedDiv) return cmd({ t: "found", unit: selectedDiv });
+  if (d.act === "settlers") return cmd({ t: "settlers" });
+  if (d.tech && active) return cmd({ t: "tech", name: d.tech });
   if (d.law && active) {
     const [cat, name] = d.law.split("|"), c = eco.countries[active - 1];
-    return act(proposeLaw(c.politics, cat, name, c.research.era));
+    void c;
+    return cmd({ t: "law", cat, name });
   }
-  if (d.act === "cancel-law" && active) { cancelLaw(eco.countries[active - 1].politics); return updateUI(); }
-  if (d.act === "recruit") return act(recruit(world, eco, active, selected));
-  if (d.act === "fleet") return act(buildFleet(world, eco, active, selected));
-  if (d.stateNew) return act(createState(eco, active, Number(d.stateNew)));
-  if (d.stateJoin) { const [city, st] = d.stateJoin.split("|").map(Number); return act(addCityToState(eco, city, st)); }
-  if (d.stateLeave) return act(removeCityFromState(eco, Number(d.stateLeave)));
-  if (d.stateTax) { const [st, law] = d.stateTax.split("|"); return act(setStateTax(eco, Number(st), law || null)); }
-  if (d.act === "air") return act(buildAir(world, eco, active, selected));
-  if (d.act === "war") return act(declareWar(eco, active, world.owner[selected]));
-  if (d.peace) return act(makePeace(world, eco, active, Number(d.peace)));
-  if (d.act === "disband" && selectedDiv) { disband(world, eco, selectedDiv); selectedDiv = null; return updateUI(); }
+  if (d.act === "cancel-law" && active) return cmd({ t: "cancelLaw" });
+  if (d.act === "recruit") return cmd({ t: "recruit", hex: selected });
+  if (d.act === "fleet") return cmd({ t: "fleet", hex: selected });
+  if (d.stateNew) return cmd({ t: "stateNew", city: Number(d.stateNew) });
+  if (d.stateJoin) { const [city, st] = d.stateJoin.split("|").map(Number); return cmd({ t: "stateJoin", city, state: st }); }
+  if (d.stateLeave) return cmd({ t: "stateLeave", city: Number(d.stateLeave) });
+  if (d.stateTax) { const [st, law] = d.stateTax.split("|"); return cmd({ t: "stateTax", state: Number(st), law: law || null }); }
+  if (d.act === "air") return cmd({ t: "air", hex: selected });
+  if (d.act === "war") return cmd({ t: "war", target: world.owner[selected] });
+  if (d.peace) return cmd({ t: "peace", target: Number(d.peace) });
+  if (d.act === "disband" && selectedDiv) { cmd({ t: "disband", id: selectedDiv }); selectedDiv = null; return updateUI(); }
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
-  if (d.pact && active) return act(proposePact(eco, active, Number(d.pact)));
-  if (d.unpact && active) { cancelPact(eco, active, Number(d.unpact)); return updateUI(); }
+  if (d.pact && active) return cmd({ t: "pact", target: Number(d.pact) });
+  if (d.unpact && active) return cmd({ t: "unpact", target: Number(d.unpact) });
   if (d.act === "save") doSave();
   if (d.act === "load") fileInput.click();
   if (d.act === "continue") continueAutosave();
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
-  if (d.speed) speed = Number(d.speed);
+  if (d.speed) setSpeed(Number(d.speed));
+  if (d.act === "claim" && net) net.send(JSON.stringify({ t: "claim", country: world.owner[selected] }));
+  if (d.act === "mp") mpBox.style.display = mpBox.style.display === "none" ? "block" : "none";
   if (d.act || d.mode || d.speed) updateUI();
 });
 window.addEventListener("resize", resize);
@@ -275,7 +351,9 @@ function updateUI() {
   hud.innerHTML =
     MAP_MODES.map((n, k) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}">${k + 1} ${n}</button>`).join(" ") +
     ` <button data-act="new" title="Gera um mapa novo">R Novo</button> <button data-act="save" title="Salvar partida em arquivo (Ctrl+S)">💾</button> <button data-act="load" title="Carregar partida de arquivo">📂</button>` +
-    (lastAuto ? ` <button data-act="continue" title="Continuar o último salvamento automático">↺ ${lastAuto.label}</button>` : "") + ` <span title="${help}" style="cursor:help">❓</span>` +
+    (lastAuto ? ` <button data-act="continue" title="Continuar o último salvamento automático">↺ ${lastAuto.label}</button>` : "") + ` <button data-act="mp" title="Multiplayer">🌐</button> <span title="${help}" style="cursor:help">❓</span>` +
+    (mp ? `<br>🌐 Sala <b>${mp.code}</b> · ${mp.players.map((p) => `${p.name}${p.country ? ` (${world.countries[p.country - 1].name})` : ""}`).join(", ")}` +
+      (mp.paused ? ` · ⏸ pausado por ${mp.paused}${mp.votes ? ` (votos para continuar ${mp.votes}/${mp.needed})` : ""}` : "") : "") +
     `<br><b>${timeLabel()}</b> · ${ERAS[worldEra()]} <button data-act="pause">${speed ? "⏸" : "▶"}</button> ` +
     SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${SPEED_NAMES[k + 1]}: ${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${s}×</button>`).join(" ") +
     `<br><small>${info}</small>` + (performance.now() < hudMsgUntil ? `<br><b>${hudMsg}</b>` : "") +
@@ -289,14 +367,14 @@ function updateUI() {
 
 /** Resumo do país sempre visível no topo do painel. */
 function headerHtml() {
-  if (!active) return "<i>Clique num país para controlá-lo.</i>";
+  if (!active) return net ? "<i>Clique num país livre e use \"Assumir este país\".</i>" : "<i>Clique num país para controlá-lo.</i>";
   const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics;
-  const net = c.income + c.tariffs - c.upkeep - c.interest;
+  const weekly = c.income + c.tariffs - c.upkeep - c.interest;
   return `<h3 style="color:rgb(${meta.color})">${meta.name} <small style="color:#aaa">(você) · Era ${ERAS[c.research.era]}</small></h3>` +
     `<div class="stats">` +
     `<span title="População">👥 ${fmt(c.pop)}</span>` +
     `<span title="PIB anual">📈 ${fmt(c.gdpWeek * 52)}</span>` +
-    `<span title="Tesouro e saldo por semana">💰 ${fmt(c.treasury)} <small class="${net < 0 ? "up" : "down"}">${signed(net)}/sem</small></span>` +
+    `<span title="Tesouro e saldo por semana">💰 ${fmt(c.treasury)} <small class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}/sem</small></span>` +
     `<span title="Dívida">🏦 <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span></span>` +
     `<span title="Legitimidade do governo">🏛 <span class="${p.legitimacy < 0.4 ? "up" : "down"}">${pct(p.legitimacy)}</span></span>` +
     `<span title="Lealdade média · radicais">❤ ${Math.round(averageLoyalty(c.pops))} · <span class="${c.radicals > 0.1 ? "bad" : ""}">${pct(c.radicals)} rad.</span></span>` +
@@ -451,6 +529,7 @@ function hexHtml() {
   if (eco.urban[i]) h += " · <b>urbano</b>";
   if (world.owner[i] !== active || !active) {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
+    if (net && world.owner[i] && !mp?.players.some((p) => p.country === world.owner[i])) h += ` <button data-act="claim">Assumir este país</button>`;
     if (active && world.owner[i] && !atWar(eco, active, world.owner[i])) {
       h += hasPact(eco, active, world.owner[i]) ? ` <button data-unpact="${world.owner[i]}">Cancelar acordo</button>` : ` <button data-pact="${world.owner[i]}">Propor acordo comercial</button>`;
       h += ` <button data-act="war">Declarar guerra</button>`;
@@ -562,13 +641,10 @@ function frame(now: number) {
   const dt = now - prev;
   worst = Math.max(worst, dt); prev = now;
   acc = Math.min(acc + (Math.min(dt, 250) / 1000) * SPEEDS[speed] * ERA_WEEKS_PER_SECOND[worldEra()], 10);
-  if (autoClock.tick(Math.min(dt, 250), speed > 0 && active > 0)) doAutosave();
-  for (; acc >= 1; acc--) {
+  if (!net && autoClock.tick(Math.min(dt, 250), speed > 0 && active > 0)) doAutosave(); // no multiplayer quem guarda é o servidor
+  for (; !net && acc >= 1; acc--) {
     const t = performance.now();
-    tick(world, eco);
-    stepWar(world, eco);
-    // shortcut: só o país ativo é humano; com multiplayer, todos os países com jogador ficam fora da IA
-    if (eco.week % 4 === 0) for (let k = 1; k <= eco.countries.length; k++) if (k !== active) runAI(world, eco, k);
+    advanceWeek(world, eco);
     tickMs = performance.now() - t;
   }
   if (eco.version !== drawnVersion || (mode === 2 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou

@@ -2,7 +2,7 @@
 
 ## Partida
 
-- Até 20 jogadores por sala; por enquanto o jogo roda só no PC do jogador (sem servidor).
+- Até 20 jogadores por sala; o servidor roda no PC de quem hospeda (ver Multiplayer).
 - Uma partida dura de 7 a 12 horas, conforme a era em que começa e termina.
 - Tempo real. Qualquer jogador pode pausar; os outros despausam por votação, ou quem pausou despausa.
 
@@ -135,6 +135,15 @@ Todo país que não é o do jogador decide uma vez por mês:
 - **IA:** um esquadrão a cada 3 cidades quando tem Aviação; em guerra cobre a cidade inimiga mais perto ao alcance.
 - A fazer: bombardeio de construções e de frotas, interceptação de transporte naval.
 
+## Multiplayer (server/server.ts)
+
+- **Como jogar:** quem hospeda roda  (porta 8787) e . Cada jogador abre o jogo, clica em **🌐**, põe o endereço do servidor () e o nome, e **cria uma sala** (com o tamanho de mapa da página) ou **entra com o código** de 4 letras. Também dá para entrar direto pela URL: . Na mesma rede, use o IP local do PC que hospeda; pela internet é preciso abrir a porta 8787 no roteador.
+- **País:** clique num país livre e use **Assumir este país**. Países sem jogador ficam com a IA. Quem sai devolve o país para a IA.
+- **Lockstep:** o servidor e todos os navegadores simulam a mesma partida; pela rede vão só os comandos de cada semana. Quem entra recebe uma foto da partida (o formato do save). Uma vez por ano o servidor manda uma soma de conferência; quem divergir recebe a foto de novo.
+- **Pausa:** a sala começa pausada. Qualquer jogador pausa; quem pausou despausa, ou os outros despausam por maioria (votos no topo). Velocidade: qualquer jogador muda.
+- **Segurança:** tudo que vem do jogador é validado no servidor (formato, tamanho das mensagens, só comanda o próprio país, nome sem HTML).
+- A fazer: salvar a sala no servidor, senha de sala, chat, escolher quem pode mudar a velocidade.
+
 ## O que fica fora da primeira versão jogável
 
 A primeira versão jogável é: economia + cidades + política básica, em uma ou duas eras, single-player. O resto entra depois que isso estiver divertido.
@@ -142,7 +151,6 @@ A primeira versão jogável é: economia + cidades + política básica, em uma o
 | Cortado por enquanto | Por quê |
 |---|---|
 | Editor de mapas e mapas pagos | O mapa aleatório já cobre as partidas; o editor só vale quando houver jogadores |
-| Multiplayer em rede | O jogo precisa ser divertido sozinho antes; hoje é só no PC do jogador |
 | Todas as eras de uma vez | Fazer tribal → clássica bem feitas e depois avançar |
 | Cultura, religião e assimilação | Dependem de população com tipos de POP e de leis, que vêm antes |
 | Comércio entre países e rotas com custo | Hoje só as cidades do mesmo país trocam entre si, sem custo de distância; rotas, nós e comércio exterior depois |

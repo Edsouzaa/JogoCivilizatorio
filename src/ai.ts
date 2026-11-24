@@ -21,7 +21,6 @@ export const AI = {
   maxWarWeeks: 104,     // faz a paz depois de 2 anos
 };
 
-const warStart = new Map<string, number>(); // quando cada guerra começou (para fazer a paz)
 
 /** Quanto vale fundar uma cidade no hex i: fertilidade, rios e recursos livres em volta. */
 export function siteScore(w: World, i: number) {
@@ -114,8 +113,8 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   const enemies = e.countries.map((_, k) => k + 1).filter((b) => atWar(e, country, b));
   for (const b of enemies) { // paz quando decidiu ou se arrastou
     const key = `${Math.min(country, b)}-${Math.max(country, b)}`, s = warScore(w, e, country, b);
-    if (!warStart.has(key)) warStart.set(key, e.week);
-    if (Math.abs(s) > 0.3 || e.week - warStart.get(key)! > AI.maxWarWeeks) { makePeace(w, e, country, b); warStart.delete(key); }
+    e.aiWarStart[key] ??= e.week; // na economia: vai no save e na foto do multiplayer
+    if (Math.abs(s) > 0.3 || e.week - e.aiWarStart[key] > AI.maxWarWeeks) { makePeace(w, e, country, b); delete e.aiWarStart[key]; }
   }
   const still = enemies.filter((b) => atWar(e, country, b));
   if (still.length) { // ataque: cada divisão parada vai para a cidade inimiga mais perto
