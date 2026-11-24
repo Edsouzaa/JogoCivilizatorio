@@ -77,5 +77,6 @@ export async function loadGame(file: Blob): Promise<SaveData> {
   w.reserve ??= new Float32Array(N).fill(Infinity);
   w.resource2 ??= new Uint8Array(N); // saves de antes das reservas
   e.exhausted ??= [];
+  e.control ??= new Float32Array(N).fill(1);
   return raw as SaveData;
 }

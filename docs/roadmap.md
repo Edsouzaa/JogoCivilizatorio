@@ -18,12 +18,12 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Cidades não crescem sozinhas: compra-se um hex vizinho como centro urbano (150 × tamanho; a IA compra quando a cidade enche). Teto de população por hex (rural pela fertilidade, urbano 2.500 + 25% por era). Centro urbano tira metade do recurso natural e a indústria rende 25% a mais.
 
+- Controle (estilo EU5): 0–100% por hex; o máximo cai com a distância da sede mais perto (capital ou 1ª cidade de cada estado), com alcance 6 + 3 por era; o atual sobe 4% por mês. Pouco controle: menos imposto, metade da produção pode não chegar ao mercado, menos recrutas. Mapa "5 Controle" e 🏛 no painel.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
-2. **Controle e proximidade (estilo EU5)**
-   - Controle de 0 a 100% por hex e controle máximo pela proximidade da capital.
-   - Efeitos em imposto, adesão ao mercado e recrutamento.
+2. **Controle (resto)**
    - Pontos administrativos gerados por centros administrativos, que consomem papel.
 3. **Mercados**
    - Mercado nacional como soma dos metropolitanos.

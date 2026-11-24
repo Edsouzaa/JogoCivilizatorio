@@ -170,7 +170,7 @@ function newWorld(seed: number) {
 }
 function recolor() {
   const t = performance.now();
-  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba));
+  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba, eco.control));
   colorMs = performance.now() - t;
   drawnVersion = eco.version;
   renderer.uploadBorders(buildBorders(world, eco, borders)); // fronteiras mudam junto com o mapa político
@@ -505,6 +505,7 @@ function headerHtml() {
     `<div class="stats">` +
     `<span title="População">👥 ${fmt(c.pop)}</span>` +
     `<span title="PIB anual">📈 ${fmt(c.gdpWeek * 52)}</span>` +
+    `<span title="Controle médio do território (pela população): imposto, produção e recrutas">🏛 ${pct(c.control ?? 1)}</span> ` +
     `<span title="Tesouro e saldo por semana">💰 ${fmt(c.treasury)} <small class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}/sem</small></span>` +
     `<span title="Dívida">🏦 <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span></span>` +
     `<span title="Legitimidade do governo">🏛 <span class="${p.legitimacy < 0.4 ? "up" : "down"}">${pct(p.legitimacy)}</span></span>` +
@@ -669,7 +670,7 @@ function hexHtml() {
   let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]}${world.resource2[i] ? ` + ${RESOURCES[world.resource2[i]]}` : ""} · pop ${fmt(world.pop[i])}`;
   if (world.reserve[i] !== Infinity) h += ` · jazida para ~${Math.round(world.reserve[i] / 52)} anos (com 1 nível)`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
-  h += ` · cabem ${fmt(popCap(world, eco, i))}`;
+  h += ` · cabem ${fmt(popCap(world, eco, i))}` + (world.owner[i] ? ` · controle ${pct(eco.control[i])}` : "");
   if (active && world.owner[i] === active && !eco.urban[i] && isLand(world.terrain[i])) { // comprar como centro urbano da cidade vizinha
     const k = eco.cities.findIndex((cc) => cc.country === active && cc.urban.some((u) => hexDistance(u % W, (u / W) | 0, i % W, (i / W) | 0, W) === 1));
     if (k >= 0) h += `<br><button data-urbanize="${k}">🏙 Virar centro urbano de ${eco.cities[k].name} (${fmt(urbanCost(eco.cities[k]))})</button> <small>cidade +1 tamanho; menos recurso natural, mais indústria</small>`;

@@ -5,6 +5,7 @@ import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClass
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 import type { Flag } from "./flags.ts";
+import { updateControl, CONTROL } from "./control.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
 export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas"];
@@ -149,6 +150,7 @@ export type Country = {
   subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
+  control?: number;     // controle médio (pela população) na última semana
   drive: number;        // 0,3–1: vontade de sair da era tribal (tribos isoladas ficam paradas mais tempo)
   exports: number; imports: number; tariffs: number; // comércio exterior na última semana (valor) e tarifas cobradas
   infamy: number;       // reputação de agressor (ver INFAMY)
@@ -182,6 +184,7 @@ export type Economy = {
   states: State[]; nextState: number;
   humans: number[];     // países com jogador (fora da IA)
   aiWarStart: Record<string, number>; // semana em que cada guerra da IA começou (para a paz)
+  control: Float32Array; // 0..1: quanto o governo administra o hex (control.ts)
   exhausted: number[];   // hexes cuja jazida acabou nesta semana (para avisar o jogador)
   occupier: Uint16Array; // país que ocupa o hex (0 = ninguém); hex ocupado não produz para o dono
 };
@@ -239,7 +242,7 @@ export function createEconomy(w: World): Economy {
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
-    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), states: [], nextState: 1, humans: [], aiWarStart: {}, occupier: new Uint16Array(N), exhausted: [],
+    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), states: [], nextState: 1, humans: [], aiWarStart: {}, occupier: new Uint16Array(N), exhausted: [], control: new Float32Array(N),
   };
   refresh(w, e);
   for (const i of e.owned) {
@@ -248,6 +251,7 @@ export function createEconomy(w: World): Economy {
     const ex = w.resource[i] ? extractorFor(w.resource[i]) : -1;
     if (ex >= 0) { e.levels[ex][i] = 1; e.producers.add(i); } // começa com extratora nível 1
   }
+  updateControl(w, e, true);
   for (const c of e.countries) c.manpower += c.pop * RULES.manpowerShare;
   e.cities.forEach((city) => { for (let k = 0; k < RULES.startSettlers; k++) spawnSettlers(e, city.country, city.hex); });
   return e;
@@ -498,6 +502,8 @@ export function migrate(w: World, e: Economy) {
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
   e.exhausted = [];
+  if (e.week % 4 === 0) updateControl(w, e);
+  const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
   for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); }
 
@@ -510,9 +516,9 @@ export function tick(w: World, e: Economy) {
       const moved = Math.min(w.pop[i] * RULES.migrationWeek, Math.max(0, popCap(w, e, to) - w.pop[to]));
       w.pop[i] -= moved; w.pop[to] += moved;
     }
-    city.market.pop += w.pop[i];
+    city.market.pop += w.pop[i]; ctrlCity[k - 1] += w.pop[i] * e.control[i];
     const c = e.countries[w.owner[i] - 1];
-    c.pop += w.pop[i];
+    c.pop += w.pop[i]; ctrlCountry[w.owner[i] - 1] += w.pop[i] * e.control[i];
     if (e.occupier[i]) continue; // ocupado: a população continua, mas não produz para o dono
     // subsistência: caça, coleta e roças sem construção; fazendas vêm por cima disso
     const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence
@@ -543,7 +549,7 @@ export function tick(w: World, e: Economy) {
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals);
-    const natural = e.urban[i] ? RULES.urbanExtract : 1;
+    const natural = (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // pouco controle: parte some no caminho
     for (const [g, q] of out) m.supply[g] += q * mult * staffing * penalty * natural;
     if (mined && w.reserve[i] !== Infinity) { // jazida: cada semana de extração gasta a reserva
       w.reserve[i] -= (mined / RULES.outputPerLevel) * staffing;
@@ -594,16 +600,16 @@ export function tick(w: World, e: Economy) {
   });
 
   e.countries.forEach((c, ci) => {
-    let gdp = 0, taxed = 0; // taxed = PIB × imposto de cada cidade (na Federação, o do estado dela)
+    let gdp = 0, taxed = 0, nominal = 0; // taxed = PIB × imposto de cada cidade (na Federação, o do estado dela)
     e.cities.forEach((city, k) => {
       if (city.country !== ci + 1) return;
       const m = city.market;
       let g = 0;
       for (let gi = 1; gi < NG; gi++) g += m.supply[gi] * BASE_PRICE[gi] * m.price[gi];
-      gdp += g; taxed += g * cityTax(e, k);
+      gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
     });
     c.gdpWeek = gdp;
-    c.tax = gdp ? taxed / gdp : lawOf(c.politics, "Impostos").tax!; // imposto médio
+    c.tax = gdp ? nominal / gdp : lawOf(c.politics, "Impostos").tax!; // imposto médio
     // governo legítimo arrecada mais; no Centralizado, estados melhoram a administração
     c.income = taxed * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1));
     c.interest = (c.debt * RULES.interestYear) / 52;
@@ -617,7 +623,8 @@ export function tick(w: World, e: Economy) {
     }
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
     updatePops(e, c, ci + 1);
-    const cap = c.pop * (RULES.manpowerShare + techSum(c.research, "manpower")) - c.pops.count[P["Soldados"]];
+    c.control = c.pop ? ctrlCountry[ci] / c.pop : 1;
+    const cap = c.pop * c.control * (RULES.manpowerShare + techSum(c.research, "manpower")) - c.pops.count[P["Soldados"]];
     c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen);
     updatePolitics(c.politics, c.pops, c.research.era);
     c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest"));
