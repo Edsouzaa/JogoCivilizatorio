@@ -9,6 +9,7 @@ import { makeName } from "./names.ts";
 import { updateControl, CONTROL } from "./control.ts";
 import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
 import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
+import { stepClaims, type Claim } from "./claims.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
@@ -229,6 +230,7 @@ export type Economy = {
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
   characters?: Character[]; nextCharacter?: number; // personagens (characters.ts)
   obituaries?: { name: string; country: number; age: number }[]; // governantes que morreram nesta semana (aviso)
+  claims?: Claim[];                   // reivindicações sobre cidades (claims.ts)
   subjects?: Record<number, Subject>; // súdito → ligação com o soberano (subjects.ts)
   freed?: number[];                   // súditos que se soltaram neste mês (aviso)
   relations?: Record<string, number>; // "a-b" → −100..100 (diplomacy.ts); ausente = 0
@@ -423,7 +425,8 @@ export function foundCity(w: World, e: Economy, unit: number, later = false): st
 
 /** Treina um grupo de colonos: custa dinheiro e gente da capital. */
 export function trainSettlers(w: World, e: Economy, country: number): string | null {
-  const c = e.countries[country - 1], capital = e.cities.find((k) => k.country === country)!;
+  const c = e.countries[country - 1], capital = e.cities.find((k) => k.country === country);
+  if (!capital) return "Sem cidades";
   if (w.pop[capital.hex] < RULES.settlerPop * 2) return "Capital pequena demais";
   if (c.treasury < RULES.settlerCost) return `Precisa de ${RULES.settlerCost} no tesouro`;
   c.treasury -= RULES.settlerCost;
@@ -553,7 +556,8 @@ function updatePops(e: Economy, c: Country, country: number) {
   if (counted > c.pop) { const k = c.pop / counted; for (let t = 0; t < n.length; t++) n[t] *= k; } // empregos além da população
   else add(idleType(r.known.has("Agricultura")), c.pop - counted);
   // custo semanal das necessidades de 1 pessoa, pelos preços da capital
-  const cap = e.cities.find((k) => k.country === country)!.market;
+  const cap = e.cities.find((k) => k.country === country)?.market;
+  if (!cap) return; // país sem cidades: sem mercado para medir qualidade de vida
   let needCost = 0; // só necessidades básicas: comida, peles e madeira (QV 25 = básicas cobertas)
   for (const gi of BASIC_NEEDS) needCost += POP_DEMAND[gi] * BASE_PRICE[gi] * cap.price[gi];
   distributeIncome(c.pops, c.gdpWeek, c.subsistence, needCost);
@@ -607,10 +611,18 @@ export const cityName = (w: World, e: Economy, country: number) => {
   return lang === undefined ? `Cidade ${e.cities.length + 1}` : makeName(lang, w.seed * 53 + e.cities.length * 7 + country);
 };
 
+/** País que ficou sem cidades perde as tropas (não há de onde abastecer, pagar nem para onde recuar). */
+export function dropHomeless(e: Economy) {
+  const alive = new Set(e.cities.map((k) => k.country));
+  e.divisions = e.divisions.filter((d) => alive.has(d.country));
+}
+
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
   e.exhausted = []; e.freed = [];
+  dropHomeless(e);
   if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); }
+  if (e.week % 52 === 26) stepClaims(w, e);
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }

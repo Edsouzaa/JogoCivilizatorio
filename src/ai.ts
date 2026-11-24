@@ -10,6 +10,7 @@ import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { relation, DIPLO } from "./diplomacy.ts";
 import { proposeSubject } from "./subjects.ts";
+import { personality, PERSONALITIES } from "./claims.ts";
 import { bestUnit, bestCraft, SHIPS, PLANES } from "./units.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 
@@ -188,8 +189,10 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
     if (k.country === country || e.countries[k.country - 1].infamy < INFAMY.coalition) continue;
     if (mine.some((m) => dist(w, m.hex, k.hex) <= AI.warReach * 2)) { declareWar(e, country, k.country); return; }
   }
-  if (!armies.length || rand() > AI.warChancePerMonth) return;
-  for (const k of e.cities) {
+  const pers = PERSONALITIES[personality(w, e, country)];
+  if (!armies.length || rand() > AI.warChancePerMonth * pers.war) return;
+  const claimed = new Set((e.claims ?? []).filter((x) => x.country === country).map((x) => e.cities[x.city]?.country));
+  for (const k of [...e.cities].sort((a, b) => +claimed.has(b.country) - +claimed.has(a.country))) { // reivindicados primeiro
     if (k.country === country || relation(e, country, k.country) > DIPLO.warMax || !mine.some((m) => dist(w, m.hex, k.hex) <= AI.warReach)) continue;
     const theirs = e.divisions.filter((d) => d.kind === "army" && d.country === k.country).length;
     if (theirs * 2 < armies.length) { declareWar(e, country, k.country); return; }
@@ -204,7 +207,7 @@ export function runAI(w: World, e: Economy, country: number) {
   expand(w, e, country, c.research.era);
   invest(w, e, country);
   legislate(c);
-  if (rand() < AI.pactChancePerMonth) { // acordo comercial com o vizinho mais perto que ainda não tem
+  if (rand() < AI.pactChancePerMonth * PERSONALITIES[personality(w, e, country)].pact) { // acordo comercial com o vizinho mais perto que ainda não tem
     const mine = e.cities.filter((k) => k.country === country);
     let best = 0, bestD = RULES.foreignRange;
     for (const k of e.cities) {
@@ -214,7 +217,7 @@ export function runAI(w: World, e: Economy, country: number) {
     if (best) proposePact(e, country, best);
   }
   // dependências: país forte tenta pôr um vizinho (da IA) sob a sua asa; quem aceita é decidido pelas regras
-  if (!e.subjects?.[country] && rand() < AI.subjectChancePerMonth)
+  if (!e.subjects?.[country] && rand() < AI.subjectChancePerMonth * PERSONALITIES[personality(w, e, country)].subject)
     for (const k of e.contacts?.[country - 1] ?? []) if (!e.humans.includes(k) && proposeSubject(e, country, k, relation(e, country, k) >= 40 ? "Vassalo" : "Tributário") === null) break;
   military(w, e, country, rand);
 }

@@ -1,9 +1,10 @@
 // Guerra terrestre (estilo HOI4 simplificado, sem customizar divisões).
 // Divisões andam hex a hex, lutam contra o hex vizinho que querem entrar, ocupam território inimigo,
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
-import { refresh, GOODS, RULES, INFAMY, type Economy, type Division, type WarStats } from "./economy.ts";
+import { refresh, dropHomeless, GOODS, RULES, INFAMY, type Economy, type Division, type WarStats } from "./economy.ts";
 import { DIPLO } from "./diplomacy.ts";
 import { warAllies } from "./subjects.ts";
+import { lostCity, hasClaimOn, CLAIM } from "./claims.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, note } from "./characters.ts";
 import { UNITS, unitOf, SHIPS, PLANES, craftOf } from "./units.ts";
 import { techSum } from "./tech.ts";
@@ -150,7 +151,7 @@ export function declareWar(e: Economy, a: number, b: number): string | null {
     (e.warStats ??= {})[key(x, y)] = { start: e.week, dead: { [x]: 0, [y]: 0 }, civil: { [x]: 0, [y]: 0 }, cost: { [x]: 0, [y]: 0 } };
   }
   (e.warStats ??= {})[key(a, b)] = { start: e.week, dead: { [a]: 0, [b]: 0 }, civil: { [a]: 0, [b]: 0 }, cost: { [a]: 0, [b]: 0 } };
-  e.countries[a - 1].infamy += INFAMY.declareWar;
+  e.countries[a - 1].infamy += INFAMY.declareWar * (hasClaimOn(e, a, b) ? CLAIM.infamyCut : 1); // com justificativa pesa menos
   e.pacts.delete(key(a, b)); // guerra cancela o acordo comercial
   noteRuler(e, a, `declarou guerra a §${b}§`); noteRuler(e, b, `foi atacado por §${a}§`);
   return null;
@@ -505,12 +506,13 @@ export function makePeace(w: World, e: Economy, a: number, b: number): string | 
     if (winner && w.owner[i] === loser && i !== loserCapital) { w.owner[i] = winner; e.countries[winner - 1].infamy += INFAMY.perHexTaken; }
     e.occupier[i] = 0;
   }
-  for (const city of e.cities) if (w.owner[city.hex] !== city.country) city.country = w.owner[city.hex];
+  e.cities.forEach((city, k) => { if (w.owner[city.hex] !== city.country) { lostCity(e, city.country, k); city.country = w.owner[city.hex]; } });
   e.wars.delete(key(a, b));
   delete e.warStats?.[key(a, b)];
   noteRuler(e, a, winner === a ? `venceu a guerra contra §${b}§` : winner === b ? `perdeu a guerra contra §${b}§` : `fez a paz com §${b}§ sem vencedor`);
   noteRuler(e, b, winner === b ? `venceu a guerra contra §${a}§` : winner === a ? `perdeu a guerra contra §${a}§` : `fez a paz com §${a}§ sem vencedor`);
   if (winner) { e.countries[winner - 1].glory = (e.countries[winner - 1].glory ?? 0) + DIPLO.warWin; e.countries[loser - 1].glory = (e.countries[loser - 1].glory ?? 0) - DIPLO.warWin; }
+  dropHomeless(e);
   // tropas que ficaram em território que agora é do outro voltam para a capital
   for (const d of e.divisions) if (d.kind !== "fleet" && !canEnter(w, e, d.country, d.hex)) { d.hex = e.cities.find((k) => k.country === d.country)!.hex; d.target = null; }
   refresh(w, e);

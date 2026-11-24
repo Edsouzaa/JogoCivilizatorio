@@ -12,6 +12,7 @@ import { countryMix, cultureName, languageName, RELIGIONS, acceptedShare } from 
 import { SERIES } from "./history.ts";
 import { relation, prestige, DIPLO } from "./diplomacy.ts";
 import { subjectOf, SUBJECT_KINDS, SUBJ, type SubjectKind } from "./subjects.ts";
+import { personality, desires, claimsOf, hasClaimOn } from "./claims.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
@@ -880,15 +881,16 @@ function diplomacyHtml() {
   const known = new Set<number>([...(eco.contacts?.[active - 1] ?? [])]);
   for (let k = 1; k <= eco.countries.length; k++) if (k !== active && (atWar(eco, active, k) || hasPact(eco, active, k) || relation(eco, active, k) !== 0)) known.add(k);
   const rows = [...known].sort((a, b) => relation(eco, active, b) - relation(eco, active, a)).map((k) => {
-    const r = relation(eco, active, k), sub = subjectOf(eco, k);
+    const r = relation(eco, active, k), sub = subjectOf(eco, k), theirClaims = (eco.claims ?? []).filter((c) => c.country === k && eco.cities[c.city]?.country === active).length;
     const link = sub?.overlord === active ? `<br><small>${sub.kind} seu · autonomia ${Math.round(sub.autonomy)}</small> <button data-free="${k}">Soltar</button>`
       : sub ? `<br><small>${sub.kind} de ${world.countries[sub.overlord - 1].name}</small>`
       : !subjectOf(eco, active) ? `<br><small>Propor:</small> ${(Object.keys(SUBJECT_KINDS) as SubjectKind[]).map((kind) => `<button data-subject="${k}|${kind}" title="${SUBJECT_KINDS[kind].desc} Precisa de relação ${SUBJECT_KINDS[kind].relationMin} e ${SUBJ.prestigeRatio}× o prestígio deles.">${kind}</button>`).join(" ")}` : "";
-    return `<tr><td><img src="${flagURL(flagOf(k))}" width="21" height="14" style="vertical-align:-2px"> ${world.countries[k - 1].name}${atWar(eco, active, k) ? ' <span class="bad">guerra</span>' : hasPact(eco, active, k) ? " <small>acordo</small>" : ""}${link}</td>` +
+    return `<tr><td><img src="${flagURL(flagOf(k))}" width="21" height="14" style="vertical-align:-2px"> ${world.countries[k - 1].name}${atWar(eco, active, k) ? ' <span class="bad">guerra</span>' : hasPact(eco, active, k) ? " <small>acordo</small>" : ""}${link}<br><small style="color:var(--dim)">${personality(world, eco, k)}${theirClaims ? ` · <span class="warn">reivindica ${theirClaims} cidade${theirClaims > 1 ? "s" : ""} sua${theirClaims > 1 ? "s" : ""}</span>` : ""}${hasClaimOn(eco, active, k) ? " · você reivindica terra deles" : ""}</small><br><small style="color:var(--dim)">Quer: ${desires(world, eco, k).slice(0, 2).map((x) => lifeText(world, x)).join("; ") || "—"}</small></td>` +
       `<td class="${r < 0 ? "up" : "down"}">${Math.round(r)}</td><td>${prestige(eco, k)}</td><td><button data-improve="${k}" title="+${DIPLO.improve} de relação por ${DIPLO.improveCost} pontos administrativos">Melhorar</button></td></tr>`;
   }).join("");
   const me = subjectOf(eco, active);
   return (me ? `<div class="card">Você é <b>${me.kind}</b> de ${world.countries[me.overlord - 1].name} · autonomia ${Math.round(me.autonomy)}/100 <small>(em 100 você se solta sozinho)</small> <button data-act="independence" title="Romper agora: a relação com o soberano despenca">Romper</button></div>` : "") +
+    (claimsOf(eco, active).length ? `<h3>Suas reivindicações</h3><table>${claimsOf(eco, active).map((c) => `<tr><td>${eco.cities[c.city].name} <small>(${world.countries[eco.cities[c.city].country - 1].name})</small></td><td>${c.type}</td><td>força ${Math.round(c.strength)}</td></tr>`).join("")}</table><small>Guerra contra quem você reivindica dá metade da infâmia.</small>` : "") +
     `<table><tr><td><b>País</b></td><td><b>Relação</b></td><td><b>Prestígio</b></td><td></td></tr>${rows}</table>` +
     (known.size ? "" : "<small>Ninguém conhecido ainda: vizinhos e parceiros aparecem aqui.</small>");
 }
