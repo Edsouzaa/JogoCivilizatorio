@@ -100,7 +100,8 @@ Todo país que não é o do jogador decide uma vez por mês:
 - **💾** (ou **Ctrl+S**) baixa um arquivo `.save` com a partida inteira: mundo, economia, cidades, unidades, guerras, pesquisa, política, o país controlado, a câmera e o que cada país já explorou. **📂** carrega um arquivo salvo.
 - O arquivo é JSON compactado com gzip (cerca de 1,3 MB no mapa de 1 milhão de hexes; salvar leva ~1,5 s e carregar ~0,3 s).
 - Ao carregar, o jogo confere se o arquivo é um save, a versão do formato e os tamanhos; se o save for de outro tamanho de mapa, avisa qual endereço abrir (`?w=…&h=…`).
-- A fazer: salvamento automático e lista de saves dentro do jogo.
+- **Salvamento automático:** a cada 5 minutos de jogo rodando (pausa não conta), depois de escolher um país, a partida é salva no próprio navegador (IndexedDB), nos 3 últimos em rodízio. O botão **↺** no topo mostra a data do último e continua dele, inclusive ao abrir o jogo de novo. Se o navegador bloquear o armazenamento (aba anônima, dados apagados), o jogo avisa e segue; o 💾 continua funcionando. Para testar, `?autosave=10` na URL salva a cada 10 s.
+- A fazer: lista dos 3 autosaves para escolher qual carregar.
 
 ## Comércio exterior (acordos comerciais)
 

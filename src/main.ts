@@ -13,14 +13,36 @@ import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo, buildBorders } from "./fog.ts";
 import { runAI } from "./ai.ts";
 import { saveGame, loadGame } from "./save.ts";
+import { listAutosaves, writeAutosave, readAutosave, autosaveClock, AUTOSAVE, type AutosaveMeta } from "./autosave.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, statesLocked, STATES } from "./states.ts";
 
 let hudMsg = "", hudMsgUntil = 0; // aviso rápido no topo (salvou, erro ao carregar...)
 const notify = (m: string) => { hudMsg = m; hudMsgUntil = performance.now() + 5000; };
 
+const snapshot = () => saveGame({ world, eco, ui: { active, cam: { ...cam }, mode, speed, explored: [...explored] } });
+
+// salvamento automático: a cada AUTOSAVE.everyMs de jogo rodando (?autosave=segundos na URL para testar)
+const autoClock = autosaveClock(Number(new URLSearchParams(location.search).get("autosave")) * 1000 || AUTOSAVE.everyMs);
+let lastAuto: AutosaveMeta | null = null, autosaving = false;
+listAutosaves().then((m) => { lastAuto = m[0] ?? null; });
+async function doAutosave() {
+  if (autosaving) return;
+  autosaving = true;
+  try {
+    lastAuto = await writeAutosave(await snapshot(), dateLabel(eco.week));
+    notify(`Salvo automaticamente (${lastAuto.label})`);
+  } catch {
+    notify("⚠ Salvamento automático indisponível neste navegador (use 💾)");
+  } finally { autosaving = false; }
+}
+async function continueAutosave() {
+  const blob = lastAuto && (await readAutosave(lastAuto.slot));
+  if (blob) doLoad(blob); else notify("⚠ Nenhum salvamento automático encontrado");
+}
+
 async function doSave() {
   notify("Salvando...");
-  const blob = await saveGame({ world, eco, ui: { active, cam: { ...cam }, mode, speed, explored: [...explored] } });
+  const blob = await snapshot();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `jogo-civilizatorio-${dateLabel(eco.week).replace(/[^0-9a-zA-Z]+/g, "-")}.save`;
@@ -29,7 +51,7 @@ async function doSave() {
   notify(`Partida salva (${(blob.size / 1024 / 1024).toFixed(1)} MB)`);
 }
 
-async function doLoad(file: File) {
+async function doLoad(file: Blob) {
   try {
     const d = await loadGame(file);
     if (d.world.W !== W || d.world.H !== H) throw new Error(`Save de mapa ${d.world.W}×${d.world.H}: abra o jogo com ?w=${d.world.W}&h=${d.world.H}`);
@@ -226,6 +248,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.unpact && active) { cancelPact(eco, active, Number(d.unpact)); return updateUI(); }
   if (d.act === "save") doSave();
   if (d.act === "load") fileInput.click();
+  if (d.act === "continue") continueAutosave();
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
   if (d.speed) speed = Number(d.speed);
@@ -251,7 +274,8 @@ function updateUI() {
   const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";
   hud.innerHTML =
     MAP_MODES.map((n, k) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}">${k + 1} ${n}</button>`).join(" ") +
-    ` <button data-act="new" title="Gera um mapa novo">R Novo</button> <button data-act="save" title="Salvar partida em arquivo (Ctrl+S)">💾</button> <button data-act="load" title="Carregar partida de arquivo">📂</button> <span title="${help}" style="cursor:help">❓</span>` +
+    ` <button data-act="new" title="Gera um mapa novo">R Novo</button> <button data-act="save" title="Salvar partida em arquivo (Ctrl+S)">💾</button> <button data-act="load" title="Carregar partida de arquivo">📂</button>` +
+    (lastAuto ? ` <button data-act="continue" title="Continuar o último salvamento automático">↺ ${lastAuto.label}</button>` : "") + ` <span title="${help}" style="cursor:help">❓</span>` +
     `<br><b>${timeLabel()}</b> · ${ERAS[worldEra()]} <button data-act="pause">${speed ? "⏸" : "▶"}</button> ` +
     SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${SPEED_NAMES[k + 1]}: ${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${s}×</button>`).join(" ") +
     `<br><small>${info}</small>` + (performance.now() < hudMsgUntil ? `<br><b>${hudMsg}</b>` : "") +
@@ -538,6 +562,7 @@ function frame(now: number) {
   const dt = now - prev;
   worst = Math.max(worst, dt); prev = now;
   acc = Math.min(acc + (Math.min(dt, 250) / 1000) * SPEEDS[speed] * ERA_WEEKS_PER_SECOND[worldEra()], 10);
+  if (autoClock.tick(Math.min(dt, 250), speed > 0 && active > 0)) doAutosave();
   for (; acc >= 1; acc--) {
     const t = performance.now();
     tick(world, eco);
