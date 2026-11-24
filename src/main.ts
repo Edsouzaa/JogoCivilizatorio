@@ -1,11 +1,11 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, type World } from "./world.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, CLIMATES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, type Pops } from "./pops.ts";
-import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, type Politics } from "./politics.ts";
+import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, WAR } from "./war.ts";
 import { createRenderer } from "./render.ts";
@@ -42,8 +42,8 @@ function timeLabel() {
   const q = Math.floor(acc * 28); // 7 dias × 4 fases dentro da semana atual
   return `${dateLabel(eco.week)} · dia ${Math.floor(q / 4) + 1} · ${PHASES[q % 4]}`;
 }
-const SPEED_NAMES = ["", "Muito lenta", "Lenta", "Média", "Rápida", "Muito rápida"];
-let speed = 3, lastSpeed = 3, acc = 0;
+const SPEED_NAMES = ["", "Lenta", "Média", "Rápida", "Muito rápida", "Máxima"];
+let speed = 2, lastSpeed = 2, acc = 0; // 2 = média (1×)
 
 function newWorld(seed: number) {
   let t = performance.now();
@@ -156,6 +156,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "war") return act(declareWar(eco, active, world.owner[selected]));
   if (d.peace) return act(makePeace(world, eco, active, Number(d.peace)));
   if (d.act === "disband" && selectedDiv) { disband(world, eco, selectedDiv); selectedDiv = null; return updateUI(); }
+  if (d.tab) { tab = Number(d.tab); return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
@@ -166,42 +167,84 @@ window.addEventListener("resize", resize);
 
 const fmt = (v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(1)} mi` : v >= 1e3 ? `${(v / 1e3).toFixed(1)} mil` : v.toFixed(0);
 
+const TABS = ["Hex", "Economia", "Pesquisa", "Sociedade", "Política", "Mercado"] as const;
+let tab = 0; // aba aberta no painel
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+const signed = (v: number) => `${v >= 0 ? "+" : "−"}${fmt(Math.abs(v))}`;
+
 function updateUI() {
   const [hc, hr] = hover, hi = hr * W + hc;
   const hcity = inMap(hc, hr) ? cityOf(hi) : undefined;
   const info = inMap(hc, hr)
-    ? `Hex (${hc}, ${hr}) · ${TERRAINS[world.terrain[hi]].name} · ${RESOURCES[world.resource[hi]]} · pop ${Math.round(world.pop[hi])}` +
+    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]} · pop ${Math.round(world.pop[hi])}` +
       (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
     : "—";
+  const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";
   hud.innerHTML =
     MAP_MODES.map((n, k) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}">${k + 1} ${n}</button>`).join(" ") +
-    ` <button data-act="new">R Novo mapa</button>` +
-    `<br><b>${timeLabel()}</b> · Era ${ERAS[worldEra()]} <button data-act="pause">${speed ? "⏸ Pausar" : "▶ Continuar"}</button> ` +
-    SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${SPEED_NAMES[k + 1]}</button>`).join(" ") +
-    `<br>${(W * H).toLocaleString("pt-BR")} hexágonos · ${world.landCount.toLocaleString("pt-BR")} em terra · ${eco.cities.length} cidades · seed ${world.seed}` +
-    `<br>${fps.toFixed(0)} FPS · pior frame ${worst.toFixed(1)} ms · gerar ${genMs.toFixed(0)} ms · colorir ${colorMs.toFixed(0)} ms · semana ${tickMs.toFixed(1)} ms` +
-    `<br>${info}<br><small>Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover divisão · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo</small>`;
+    ` <button data-act="new" title="Gera um mapa novo">R Novo</button> <span title="${help}" style="cursor:help">❓</span>` +
+    `<br><b>${timeLabel()}</b> · ${ERAS[worldEra()]} <button data-act="pause">${speed ? "⏸" : "▶"}</button> ` +
+    SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${SPEED_NAMES[k + 1]}: ${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${s}×</button>`).join(" ") +
+    `<br><small>${info}</small>` +
+    `<br><small style="opacity:.6">${fps.toFixed(0)} FPS · semana ${tickMs.toFixed(1)} ms · ${eco.cities.length} cidades · seed ${world.seed}</small>`;
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = null; // destruída
-  panel.innerHTML = selected >= 0 ? divisionHtml() + countryHtml() + hexHtml() + marketHtml() : "";
+  const show = selected >= 0 || selectedDiv;
+  panel.innerHTML = show ? divisionHtml() + headerHtml() + tabsHtml() + [hexHtml, economyHtml, researchTab, societyHtml, politicsTab, marketHtml][tab]() : "";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
 }
 
-function countryHtml() {
-  if (!active) return "<i>Clique num país para controlá-lo.</i><hr>";
-  const c = eco.countries[active - 1], meta = world.countries[active - 1];
-  return `<h3 style="color:rgb(${meta.color})">${meta.name} <small>(você)</small></h3>` +
-    `População ${fmt(c.pop)} · ${eco.cities.filter((k) => k.country === active).length} cidade(s)<br>PIB anual <b>${fmt(c.gdpWeek * 52)}</b>` +
-    `<canvas id="gdp" width="300" height="80" style="width:100%;background:#111;margin:4px 0"></canvas>` +
-    `Tesouro ${fmt(c.treasury)} · Dívida <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span>` +
-    `<br>Lealdade média ${Math.round(averageLoyalty(c.pops))} · radicais <span class="${c.radicals > 0.1 ? "bad" : ""}">${Math.round(c.radicals * 100)}%</span>` +
-    ` · migração no mês <span class="${c.migration < 0 ? "up" : c.migration > 0 ? "down" : ""}">${c.migration > 0 ? "+" : c.migration < 0 ? "−" : ""}${fmt(Math.abs(c.migration))}</span>` +
-    `<br>Manpower livre <b class="${c.manpower < 20 ? "bad" : ""}">${fmt(c.manpower)}</b>` +
-    `<br>Semana: +${fmt(c.income)} impostos (${Math.round(c.tax * 100)}%) − ${fmt(c.upkeep)} manutenção − ${fmt(c.interest)} juros` +
-    (c.bankruptWeeks ? `<br><span class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</span>` : "") +
+/** Resumo do país sempre visível no topo do painel. */
+function headerHtml() {
+  if (!active) return "<i>Clique num país para controlá-lo.</i>";
+  const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics;
+  const net = c.income - c.upkeep - c.interest;
+  return `<h3 style="color:rgb(${meta.color})">${meta.name} <small style="color:#aaa">(você) · Era ${ERAS[c.research.era]}</small></h3>` +
+    `<div class="stats">` +
+    `<span title="População">👥 ${fmt(c.pop)}</span>` +
+    `<span title="PIB anual">📈 ${fmt(c.gdpWeek * 52)}</span>` +
+    `<span title="Tesouro e saldo por semana">💰 ${fmt(c.treasury)} <small class="${net < 0 ? "up" : "down"}">${signed(net)}/sem</small></span>` +
+    `<span title="Dívida">🏦 <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span></span>` +
+    `<span title="Legitimidade do governo">🏛 <span class="${p.legitimacy < 0.4 ? "up" : "down"}">${pct(p.legitimacy)}</span></span>` +
+    `<span title="Lealdade média · radicais">❤ ${Math.round(averageLoyalty(c.pops))} · <span class="${c.radicals > 0.1 ? "bad" : ""}">${pct(c.radicals)} rad.</span></span>` +
+    `<span title="Manpower livre (só para o exército)">🪖 ${fmt(c.manpower)}</span>` +
+    `<span title="Grupos de colonos">⛺ ${settlersOf(eco, active)}</span>` +
+    `</div>` +
+    (c.bankruptWeeks ? `<div class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</div>` : "") +
+    (p.rival >= 0 ? `<div class="bad">⚠ ${GROUPS[p.rival].name} tem mais apoio popular que o governo</div>` : "");
+}
+
+function tabsHtml() {
+  return `<div class="tabs">${TABS.map((t, k) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${t}</button>`).join("")}</div>`;
+}
+
+function economyHtml() {
+  if (!active) return "";
+  const c = eco.countries[active - 1];
+  return `<canvas id="gdp" width="300" height="70" style="width:100%;background:#111"></canvas>` +
+    `<table><tr><td>Impostos (${pct(c.tax)})</td><td class="down">+${fmt(c.income)}</td></tr>` +
+    `<tr><td>Manutenção</td><td class="up">−${fmt(c.upkeep)}</td></tr><tr><td>Juros</td><td class="up">−${fmt(c.interest)}</td></tr>` +
+    `<tr><td><b>Saldo por semana</b></td><td><b>${signed(c.income - c.upkeep - c.interest)}</b></td></tr></table>` +
     warsHtml() +
-    `<br>Colonos: <b>${settlersOf(eco, active)}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>` +
-    researchHtml(c.research, c.researchWeek) + popsHtml(c.pops) + politicsHtml(c.politics, c.research.era) + "<hr>";
+    `<br><button data-act="settlers" title="Cria um grupo de colonos na capital">Treinar colonos (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>`;
+}
+
+const researchTab = () => (active ? researchHtml(eco.countries[active - 1].research, eco.countries[active - 1].researchWeek) : "");
+const politicsTab = () => (active ? politicsHtml(eco.countries[active - 1].politics, eco.countries[active - 1].research.era) : "");
+
+function societyHtml() {
+  if (!active) return "";
+  const c = eco.countries[active - 1], p = c.pops;
+  const qolColor = (q: number) => (q < 15 ? "up" : q >= 30 ? "down" : "");
+  const rows = POP_TYPES.map((t, k) => [t, k] as const).filter(([, k]) => p.count[k] >= 0.5)
+    .sort(([a], [b]) => a.cls - b.cls)
+    .map(([t, k]) => `<tr><td>${t.name}</td><td>${CLASSES[t.cls]}</td><td>${fmt(p.count[k])}</td>` +
+      `<td>${(p.income[k] / p.count[k]).toFixed(2)}</td><td class="${qolColor(p.qol[k])}">${Math.round(p.qol[k])}</td>` +
+      `<td class="${p.loyalty[k] < POP_RULES.radicalBelow ? "bad" : ""}">${Math.round(p.loyalty[k])}</td></tr>`);
+  const weight = politicalWeight(p), total = weight.reduce((s, v) => s + v, 0) || 1;
+  return `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td><td><b title="Lealdade, 0 a 100 (abaixo de 30 = radical)">Leal</b></td></tr>${rows.join("")}</table>` +
+    `<small>Peso político: ${CLASSES.map((cl, k) => `${cl} ${pct(weight[k] / total)}`).join(" · ")}` +
+    ` · migração no mês <span class="${c.migration < 0 ? "up" : c.migration > 0 ? "down" : ""}">${signed(c.migration)}</span></small>`;
 }
 
 function divisionHtml() {
@@ -210,82 +253,73 @@ function divisionHtml() {
   const t = d.target === null ? "parada" : `indo para (${d.target % W}, ${(d.target / W) | 0})`;
   if (d.kind === "settler") {
     const dist = settlerDistance(world, eco, d), out = dist > RULES.settlerSupplyRange;
-    return `<b>⛺ Colonos</b> · ${world.countries[d.country - 1].name} · ${t}<br>Pessoas ${Math.round(d.strength)} · ${dist} hex da cidade mais próxima` +
+    return `<div class="unit"><b>⛺ Colonos</b> · ${t} · ${Math.round(d.strength)} pessoas · ${dist} hex da cidade` +
       (out ? ` <span class="bad">sem suprimentos (máx. ${RULES.settlerSupplyRange}): morrendo</span>` : "") +
-      `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="disband">Voltar para casa</button>${message ? `<br><span class="bad">${message}</span>` : ""}<hr>`;
+      `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="disband">Voltar para casa</button>${message ? ` <span class="bad">${message}</span>` : ""}</div>`;
   }
-  return `<b>⚔ Divisão ${d.id}</b> · ${world.countries[d.country - 1].name} · ${t}` +
-    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · organização ${Math.round(d.org * 100)}% · armas ${Math.round(d.equip * 100)}%` +
-    `<br><small>Botão direito no mapa = mover · clique de novo no hex = próxima divisão</small> <button data-act="disband">Desfazer</button><hr>`;
+  return `<div class="unit"><b>⚔ Divisão ${d.id}</b> · ${t}` +
+    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button></div>`;
 }
 
 function warsHtml() {
   const enemies = world.countries.map((_, k) => k + 1).filter((b) => atWar(eco, active, b));
-  const n = eco.divisions.filter((d) => d.country === active).length;
-  return `<br>Exército: ${n} divisão(ões)` + (enemies.length ? " · <span class='bad'>Em guerra com</span> " + enemies.map((b) => {
+  const n = eco.divisions.filter((d) => d.country === active && d.kind === "army").length;
+  return `Exército: ${n} divisão(ões)` + (enemies.length ? " · <span class='bad'>Em guerra com</span> " + enemies.map((b) => {
     const s = warScore(world, eco, active, b);
     return `${world.countries[b - 1].name} (${s >= 0 ? "+" : ""}${Math.round(s * 100)}) <button data-peace="${b}">Paz</button>`;
   }).join(" ") : "");
 }
 
+/** O que a lei muda, em texto, comparando com a lei em vigor. */
+function lawEffect(l: Law, cat: string, p: Politics) {
+  const c = eco.countries[active - 1], cur = lawOf(p, cat), parts: string[] = [];
+  if (l.tax !== undefined) {
+    const delta = c.gdpWeek * (l.tax - cur.tax!) * (RULES.taxBaseEfficiency + p.legitimacy);
+    parts.push(`imposto ${pct(l.tax)} do PIB (agora ${pct(cur.tax!)}): <b class="${delta >= 0 ? "down" : "up"}">${signed(delta)}/semana</b>`);
+  }
+  if (l.tradeShare !== undefined) parts.push(`cidades trocam ${pct(l.tradeShare)} da sobra por semana (agora ${pct(cur.tradeShare!)})`);
+  return `${l.desc ?? ""}${parts.length ? "<br>" + parts.join(" · ") : ""}`;
+}
+
 function politicsHtml(p: Politics, era: number) {
-  const pct = (v: number) => `${Math.round(v * 100)}%`;
   const groups = GROUPS.map((g, k) => [g, k] as const).filter(([, k]) => p.political[k] > 0.005 || p.popular[k] > 0.005)
     .sort(([, a], [, b]) => p.political[b] - p.political[a])
     .map(([g, k]) => `<tr><td>${p.government.includes(k) ? "🏛 " : ""}${k === p.rival ? "⚠ " : ""}${g.name}</td><td>${pct(p.political[k])}</td><td>${pct(p.popular[k])}</td></tr>`);
   const laws = Object.entries(LAWS).map(([cat, list]) => {
-    const opts = list.filter((l) => l.era <= era && l.name !== p.laws[cat]).map((l) => {
+    const cur = lawOf(p, cat);
+    const opts = list.filter((l) => l.name !== cur.name).map((l) => {
+      if (l.era > era) return `<tr><td colspan="2"><small style="opacity:.55">🔒 ${l.name} — era ${ERAS[l.era]}</small></td></tr>`;
       const s = lawSupport(p, l);
-      return `<button data-law="${cat}|${l.name}" title="Gostam: ${l.likes.join(", ") || "—"} · Não gostam: ${l.dislikes.join(", ") || "—"}">${l.name} <small class="${s > 0 ? "down" : "up"}">${s > 0 ? "+" : ""}${pct(s)}</small></button>`;
+      return `<tr><td>${p.enacting ? `<b>${l.name}</b>` : `<button data-law="${cat}|${l.name}">${l.name}</button>`}<br><small class="${s > 0 ? "down" : "up"}" title="Gostam: ${l.likes.join(", ") || "—"} · Não gostam: ${l.dislikes.join(", ") || "—"}">apoio ${s > 0 ? "+" : ""}${pct(s)}</small></td>` +
+        `<td style="text-align:left"><small>${lawEffect(l, cat, p)}</small></td></tr>`;
     });
-    return `<tr><td>${cat}</td><td><b>${p.laws[cat]}</b></td></tr>` + (opts.length && !p.enacting ? `<tr><td></td><td>${opts.join(" ")}</td></tr>` : "");
+    return `<tr><td colspan="2" class="law-cat"><b>${cat}:</b> ${cur.name} <small style="opacity:.75">— ${cur.desc ?? ""}</small></td></tr>${opts.join("")}`;
   });
   const voting = p.enacting
-    ? `<br>Votando <b>${p.enacting.law}</b> · apoio <span class="${p.support > 0 ? "down" : "up"}">${pct(p.support)}</span>${p.support > 0 ? "" : " <span class='bad'>(travada)</span>"} <button data-act="cancel-law">Cancelar</button>` +
-      `<div style="background:#333;height:6px;border-radius:3px"><div style="background:#fa6;height:6px;border-radius:3px;width:${Math.min(100, p.enacting.progress * 100)}%"></div></div>` : "";
-  return `<details id="politics" ${politicsOpen ? "open" : ""}><summary><b>Política</b> · legitimidade <span class="${p.legitimacy < 0.4 ? "up" : "down"}">${pct(p.legitimacy)}</span>` +
-    (p.rival >= 0 ? ` <span class="bad">⚠ ${GROUPS[p.rival].name} tem mais apoio popular que o governo</span>` : "") + `</summary>` +
+    ? `<div>Votando <b>${p.enacting.law}</b> · apoio <span class="${p.support > 0 ? "down" : "up"}">${pct(p.support)}</span>${p.support > 0 ? "" : " <span class='bad'>(travada)</span>"} <button data-act="cancel-law">Cancelar</button>` +
+      `<div class="bar"><div style="background:#fa6;width:${Math.min(100, p.enacting.progress * 100)}%"></div></div></div>` : "";
+  return voting +
     `<table><tr><td><b>Grupo</b> <small>(🏛 governo)</small></td><td><b title="decide leis e governo">Político</b></td><td><b title="dá legitimidade">Popular</b></td></tr>${groups.join("")}</table>` +
-    `<b>Leis</b> <small>(número = apoio do Poder Político)</small><table>${laws.join("")}</table>${voting}</details>`;
-}
-
-let popsOpen = false; // o painel é redesenhado a cada 500 ms; lembra se a lista estava aberta
-let politicsOpen = false;
-document.addEventListener("toggle", (e) => {
-  const d = e.target as HTMLDetailsElement;
-  if (d.id === "pops") popsOpen = d.open;
-  if (d.id === "politics") politicsOpen = d.open;
-}, true);
-
-function popsHtml(p: Pops) {
-  const qolColor = (q: number) => (q < 15 ? "up" : q >= 30 ? "down" : "");
-  const rows = POP_TYPES.map((t, k) => [t, k] as const).filter(([, k]) => p.count[k] >= 0.5)
-    .sort(([a], [b]) => a.cls - b.cls)
-    .map(([t, k]) => `<tr><td>${t.name}</td><td>${CLASSES[t.cls]}</td><td>${fmt(p.count[k])}</td>` +
-      `<td>${(p.income[k] / p.count[k]).toFixed(2)}</td><td class="${qolColor(p.qol[k])}">${Math.round(p.qol[k])}</td>` +
-      `<td class="${p.loyalty[k] < POP_RULES.radicalBelow ? "bad" : ""}">${Math.round(p.loyalty[k])}</td></tr>`);
-  const weight = politicalWeight(p), total = weight.reduce((s, v) => s + v, 0) || 1;
-  return `<details id="pops" ${popsOpen ? "open" : ""}><summary><b>População por classe</b></summary>` +
-    `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td><td><b title="Lealdade, 0 a 100 (abaixo de 30 = radical)">Leal</b></td></tr>${rows.join("")}</table>` +
-    `<small>Peso político: ${CLASSES.map((c, k) => `${c} ${Math.round((weight[k] / total) * 100)}%`).join(" · ")}</small></details>`;
+    `<table class="laws">${laws.join("")}</table>`;
 }
 
 function researchHtml(r: Economy["countries"][number]["research"], perWeek: number) {
   const cur = TECHS.find((t) => t.name === r.researching);
-  const pct = cur ? Math.min(100, ((r.progress.get(cur.name) ?? 0) / cur.cost) * 100) : 0;
+  const done = cur ? (r.progress.get(cur.name) ?? 0) / cur.cost : 0;
   const effect = (t: (typeof TECHS)[number]) => [
     ...(t.unlocks ?? []).map((b) => `libera ${b}`),
     ...(t.bonus ?? []).map(([b, v]) => `+${Math.round(v * 100)}% ${b}`),
     ...(t.research ? [`+${Math.round(t.research * 100)}% pesquisa`] : []),
   ].join(", ");
-  const opts = available(r).map((t) => `<button data-tech="${t.name}" class="${t.name === r.researching ? "on" : ""}" title="${effect(t)}">${t.name} (${t.cost})</button>`);
-  return `<br><b>Era ${ERAS[r.era]}</b> · ${r.known.size}/${TECHS.length} tecnologias · ${perWeek.toFixed(1)} pesquisa/semana` +
-    (cur ? `<br>Pesquisando <b>${cur.name}</b> <small>(${effect(cur)})</small>` +
-      `<div style="background:#333;height:6px;border-radius:3px"><div style="background:#6af;height:6px;border-radius:3px;width:${pct}%"></div></div>` : "<br>Nada para pesquisar nesta era") +
-    (opts.length ? `<small>Escolher:</small> ${opts.join(" ")}` : "");
+  const weeks = cur ? Math.ceil(((1 - done) * cur.cost) / Math.max(perWeek, 1e-9)) : 0;
+  const opts = available(r).map((t) => `<tr><td><button data-tech="${t.name}" class="${t.name === r.researching ? "on" : ""}">${t.name}</button></td><td style="text-align:left"><small>${effect(t)}</small></td><td>${fmt(t.cost)}</td></tr>`);
+  return `${r.known.size}/${TECHS.length} tecnologias · ${perWeek.toFixed(1)} pontos/semana` +
+    (cur ? `<br>Pesquisando <b>${cur.name}</b> · faltam ~${weeks} semanas<div class="bar"><div style="background:#6af;width:${done * 100}%"></div></div>` : "<br>Nada para pesquisar nesta era") +
+    (opts.length ? `<table>${opts.join("")}</table>` : "");
 }
 
 function hexHtml() {
+  if (selected < 0) return "<i>Clique num hexágono.</i>";
   const i = selected, res = world.resource[i], city = cityOf(i);
   let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]} · pop ${fmt(world.pop[i])}`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
@@ -293,7 +327,7 @@ function hexHtml() {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
     if (active && world.owner[i] && !atWar(eco, active, world.owner[i])) h += ` <button data-act="war">Declarar guerra</button>`;
     if (eco.occupier[i]) h += `<br>Ocupado por ${world.countries[eco.occupier[i] - 1].name}`;
-    return h + (message ? `<br><span class="bad">${message}</span>` : "") + "<hr>";
+    return h + (message ? `<br><span class="bad">${message}</span>` : "");
   }
   const rows = buildingsFor(res, !!eco.urban[i]).map((b) => {
     const def = BUILDINGS[b], lv = eco.levels[b][i];
@@ -312,10 +346,11 @@ function hexHtml() {
       ` (cresce com ${fmt(city.size * RULES.cityGrowthPop)})` +
       (others.length && city.size > 1 ? `<br>Passar 1 de tamanho para: ${others.map(([k, idx]) => `<button data-transfer="${idx}">${k.name}</button>`).join(" ")}` : "");
   }
-  return h + (message ? `<br><span class="bad">${message}</span>` : "") + "<hr>";
+  return h + (message ? `<br><span class="bad">${message}</span>` : "");
 }
 
 function marketHtml() {
+  if (selected < 0) return "<i>Clique num hexágono do país para ver o mercado da cidade dele.</i>";
   const city = cityOf(selected);
   if (!city) return "";
   const m = city.market, rows = [];

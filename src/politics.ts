@@ -50,29 +50,30 @@ for (const s of Object.values(SUPPORT)) for (const [g] of s) if (G[g] === undefi
 
 export type Law = {
   name: string; era: number; likes: string[]; dislikes: string[];
+  desc?: string;        // o que a lei faz, em uma frase
   tax?: number;         // Impostos: taxa sobre o PIB
   tradeShare?: number;  // Economia: fração da sobra que circula entre as cidades do país
   singleParty?: boolean; // Governo: só o partido tem Poder Político
 };
 export const LAWS: Record<string, Law[]> = {
   "Governo": [
-    { name: "Chefia tribal", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
-    { name: "Monarquia", era: era("Clássica"), likes: ["Latifundiários", "Forças Armadas", "Devotos"], dislikes: ["Intelectuais"] },
-    { name: "Teocracia", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Intelectuais", "Mercadores"] },
-    { name: "República", era: era("Clássica"), likes: ["Mercadores", "Intelectuais", "Povo do Campo"], dislikes: ["Latifundiários", "Anciãos e Clãs"] },
-    { name: "Partido único", era: era("Guerras"), likes: ["Forças Armadas"], dislikes: ["Intelectuais", "Mercadores"], singleParty: true },
+    { name: "Chefia tribal", desc: "Os chefes e anciãos decidem. Simples, mas só os clãs apoiam.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
+    { name: "Monarquia", desc: "Um rei governa apoiado pela nobreza, pelo exército e pelo clero.", era: era("Clássica"), likes: ["Latifundiários", "Forças Armadas", "Devotos"], dislikes: ["Intelectuais"] },
+    { name: "Teocracia", desc: "O clero governa em nome da religião.", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Intelectuais", "Mercadores"] },
+    { name: "República", desc: "Cidadãos escolhem quem governa; agrada comerciantes, intelectuais e camponeses.", era: era("Clássica"), likes: ["Mercadores", "Intelectuais", "Povo do Campo"], dislikes: ["Latifundiários", "Anciãos e Clãs"] },
+    { name: "Partido único", desc: "Só o partido governa: grupos de fora perdem todo o Poder Político, mas não o apoio popular (risco de rival).", era: era("Guerras"), likes: ["Forças Armadas"], dislikes: ["Intelectuais", "Mercadores"], singleParty: true },
   ],
   "Impostos": [
-    { name: "Tributo em espécie", era: 0, likes: ["Anciãos e Clãs", "Povo do Campo"], dislikes: [], tax: 0.1 },
-    { name: "Dízimo", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Mercadores"], tax: 0.12 },
-    { name: "Imposto por cabeça", era: era("Clássica"), likes: ["Latifundiários"], dislikes: ["Povo do Campo", "Mercadores"], tax: 0.18 },
-    { name: "Imposto proporcional", era: era("Colonial"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Latifundiários"], tax: 0.2 },
+    { name: "Tributo em espécie", desc: "Cada família entrega parte da colheita. Pouco, mas fácil de cobrar.", era: 0, likes: ["Anciãos e Clãs", "Povo do Campo"], dislikes: [], tax: 0.1 },
+    { name: "Dízimo", desc: "Um décimo da produção vai para o governo e o templo.", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Mercadores"], tax: 0.12 },
+    { name: "Imposto por cabeça", desc: "Valor fixo por pessoa: arrecada mais, pesa sobre os pobres.", era: era("Clássica"), likes: ["Latifundiários"], dislikes: ["Povo do Campo", "Mercadores"], tax: 0.18 },
+    { name: "Imposto proporcional", desc: "Cada um paga conforme a renda.", era: era("Colonial"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Latifundiários"], tax: 0.2 },
   ],
   "Economia": [
-    { name: "Subsistência", era: 0, likes: ["Anciãos e Clãs"], dislikes: [], tradeShare: 0.4 },
-    { name: "Tradicionalismo", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores"], tradeShare: 0.5 },
-    { name: "Mercantilismo", era: era("Colonial"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7 },
-    { name: "Livre comércio", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], tradeShare: 0.9 },
+    { name: "Subsistência", desc: "Cada comunidade vive do que produz; quase não há troca entre cidades.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [], tradeShare: 0.4 },
+    { name: "Tradicionalismo", desc: "Comércio pelas rotas e costumes de sempre.", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores"], tradeShare: 0.5 },
+    { name: "Mercantilismo", desc: "O Estado incentiva comércio e acumula riqueza.", era: era("Colonial"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7 },
+    { name: "Livre comércio", desc: "Mercadorias circulam livremente entre as cidades.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], tradeShare: 0.9 },
   ],
 };
 for (const laws of Object.values(LAWS)) for (const l of laws) for (const g of [...l.likes, ...l.dislikes]) if (G[g] === undefined) throw new Error(`lei ${l.name}: grupo ${g}`);
