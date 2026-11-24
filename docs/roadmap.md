@@ -5,7 +5,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 ## Feito
 
 - 10 eras com datas, começo em 600 a.C., ritmo por era e custos de pesquisa (docs/escopo.md).
-- 1 tribo a cada 1.000 hexes de terra; algumas tribos demoram mais a sair da era tribal, e o comércio ajuda.
+- 1 tribo a cada 10.000 hexes de terra; algumas tribos demoram mais a sair da era tribal, e o comércio ajuda.
 - Movimento inteligente: as tropas andam pelo menor caminho. Se o alvo é inalcançável (mar sem frota), elas vão até o ponto possível mais perto e param.
 - Painel de notificações (tecnologia, guerra, paz e avisos) e linha do equador.
 - Testes movidos para `tests/`.

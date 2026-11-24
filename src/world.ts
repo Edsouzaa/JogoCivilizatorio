@@ -159,7 +159,7 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
   generateSeaZones(w);
   generateRivers(w, elev, hills, rand);
   for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água
-  const target = Math.min(nCountries ?? Math.max(4, Math.round(landCount / 1000)), 65535); // 1 tribo a cada 1000 hexes de terra
+  const target = Math.min(nCountries ?? Math.max(4, Math.round(landCount / 10000)), 65535); // 1 tribo a cada 10.000 hexes de terra
   for (let tries = 0; countries.length < target && tries < 2000000; tries++) {
     const i = (rand() * N) | 0;
     if (!isLand(terrain[i]) || TERRAINS[terrain[i]].fertility < 0.5 || owner[i]) continue;

@@ -43,7 +43,7 @@ assert.ok(snowAt(w, cn, 0) && !snowAt(w, cn, 26), "continental norte: neve em ja
 assert.ok(!snowAt(w, cs, 0) && snowAt(w, cs, 26), "continental sul: hemisfério invertido");
 assert.ok(!snowAt(w, tr, 0) && !snowAt(w, tr, 26));
 if (po >= 0) assert.ok(snowAt(w, po, 26));
-// sem número de países: 1 tribo a cada 1000 hexes de terra (dono cabe em 16 bits)
+// sem número de países: 1 tribo a cada 10.000 hexes de terra (mínimo 4)
 const big = generateWorld(600, 300, 3);
-assert.ok(big.owner instanceof Uint16Array && Math.abs(big.countries.length - Math.round(big.landCount / 1000)) <= 2, `${big.countries.length} tribos`);
+assert.ok(big.owner instanceof Uint16Array && Math.abs(big.countries.length - Math.max(4, Math.round(big.landCount / 10000))) <= 2, `${big.countries.length} tribos`);
 console.log("world ok");
