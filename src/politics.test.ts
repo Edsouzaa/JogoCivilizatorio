@@ -4,7 +4,7 @@ import { newPops, P } from "./pops.ts";
 import { ERAS } from "./tech.ts";
 
 const g = (name: string) => GROUPS.findIndex((x) => x.name === name);
-const CLASSICAL = ERAS.indexOf("Clássica"), WARS = ERAS.indexOf("Guerras");
+const CLASSICAL = ERAS.indexOf("Clássica"), WARS = ERAS.indexOf("Grandes Guerras");
 
 // era tribal: caçadores e chefes → Anciãos e Clãs governam; poderes somam 1
 const pops = newPops();

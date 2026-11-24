@@ -1,6 +1,6 @@
 import { RESOURCES, TERRAINS, isLand, claim, snowAt, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
-import { newResearch, research, techSum, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
+import { newResearch, research, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
@@ -140,6 +140,7 @@ export type Country = {
   subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
+  drive: number;        // 0,3–1: vontade de sair da era tribal (tribos isoladas ficam paradas mais tempo)
   exports: number; imports: number; tariffs: number; // comércio exterior na última semana (valor) e tarifas cobradas
   infamy: number;       // reputação de agressor (ver INFAMY)
 };
@@ -216,7 +217,8 @@ export function createEconomy(w: World): Economy {
   const N = w.W * w.H;
   const e: Economy = {
     week: 0, levels: Array.from({ length: NB }, () => new Uint8Array(N)), producers: new Set(),
-    countries: w.countries.map(() => ({
+    countries: w.countries.map((_, k) => ({
+      drive: 0.3 + 0.7 * (((Math.imul(w.seed + 1, 2654435761) ^ Math.imul(k + 1, 40503)) >>> 0) % 1000) / 1000, // determinístico (lockstep)
       treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
       manpower: 0, gdpHistory: [],
       research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, exports: 0, imports: 0, tariffs: 0, infamy: 0, bonus: new Float64Array(NB), researchWeek: 0,
@@ -563,7 +565,13 @@ export function tick(w: World, e: Economy) {
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     advanceLaw(c.politics);
-    c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic;
+    // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
+    c.researchWeek = (RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
+    if (c.research.era === 0) { // comércio puxa a tribo para fora do isolamento, mas não garante
+      let partners = 0;
+      for (const key of e.pacts) if (key.split("-").includes(String(ci + 1))) partners++;
+      c.researchWeek *= Math.min(1, c.drive + 0.15 * partners);
+    }
     const learned = research(c.research, c.researchWeek);
     if (learned) { updateBonus(c); c.infamy += learned.infamy ?? 0; }
     c.infamy = Math.max(0, c.infamy - INFAMY.decayWeek);
@@ -587,7 +595,7 @@ export function tick(w: World, e: Economy) {
 }
 
 export function dateLabel(week: number) {
-  const year = -2000 + Math.floor(week / 52), w = (week % 52) + 1;
+  const year = START_YEAR + Math.floor(week / 52), w = (week % 52) + 1;
   return `${year < 0 ? `${-year} a.C.` : `${year + 1} d.C.`} · semana ${w}`; // não existe ano 0
 }
 

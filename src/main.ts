@@ -4,7 +4,7 @@ import {
   proposePact, cancelPact, hasPact, INFAMY,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
-import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
+import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
@@ -109,15 +109,15 @@ let message = "";
 let selectedDiv: number | null = null; // divisão selecionada (id)
 
 // Multiplicador sobre o ritmo da era (ERA_WEEKS_PER_SECOND). "Média" = 1×.
-const SPEEDS = [0, 0.5, 1, 3, 10, 30];
+const SPEEDS = [0, 0.5, 1, 3, 10, MAX_SPEED];
 // O ritmo segue a era do país mais avançado.
 // shortcut: em multiplayer isso deve ser decidido pela sala (era mais comum ou votação), quando houver salas.
 const worldEra = () => Math.max(...eco.countries.map((c) => c.research.era));
-const PHASES = ["madrugada", "manhã", "tarde", "noite"];
+const PHASES = ["noite", "manhã", "tarde"];
 function timeLabel() {
-  if (worldEra() < REVOLUTIONS) return dateLabel(eco.week);
-  const q = Math.floor(acc * 28); // 7 dias × 4 fases dentro da semana atual
-  return `${dateLabel(eco.week)} · dia ${Math.floor(q / 4) + 1} · ${PHASES[q % 4]}`;
+  if (worldEra() < DAY_PHASES_ERA) return dateLabel(eco.week);
+  const q = Math.floor(acc * 21); // 7 dias × 3 fases dentro da semana atual
+  return `${dateLabel(eco.week)} · dia ${Math.floor(q / 3) + 1} · ${PHASES[q % 3]}`;
 }
 const SPEED_NAMES = ["", "Lenta", "Média", "Rápida", "Muito rápida", "Máxima"];
 let speed = 2, lastSpeed = 2, acc = 0; // 2 = média (1×)

@@ -62,13 +62,13 @@ export const LAWS: Record<string, Law[]> = {
     { name: "Monarquia", desc: "Um rei governa apoiado pela nobreza, pelo exército e pelo clero.", era: era("Clássica"), likes: ["Latifundiários", "Forças Armadas", "Devotos"], dislikes: ["Intelectuais"] },
     { name: "Teocracia", desc: "O clero governa em nome da religião.", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Intelectuais", "Mercadores"] },
     { name: "República", desc: "Cidadãos escolhem quem governa; agrada comerciantes, intelectuais e camponeses.", era: era("Clássica"), likes: ["Mercadores", "Intelectuais", "Povo do Campo"], dislikes: ["Latifundiários", "Anciãos e Clãs"] },
-    { name: "Partido único", desc: "Só o partido governa: grupos de fora perdem todo o Poder Político, mas não o apoio popular (risco de rival).", era: era("Guerras"), likes: ["Forças Armadas"], dislikes: ["Intelectuais", "Mercadores"], singleParty: true },
+    { name: "Partido único", desc: "Só o partido governa: grupos de fora perdem todo o Poder Político, mas não o apoio popular (risco de rival).", era: era("Grandes Guerras"), likes: ["Forças Armadas"], dislikes: ["Intelectuais", "Mercadores"], singleParty: true },
   ],
   "Impostos": [
     { name: "Tributo em espécie", desc: "Cada família entrega parte da colheita. Pouco, mas fácil de cobrar.", era: 0, likes: ["Anciãos e Clãs", "Povo do Campo"], dislikes: [], tax: 0.1 },
     { name: "Dízimo", desc: "Um décimo da produção vai para o governo e o templo.", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Mercadores"], tax: 0.12 },
     { name: "Imposto por cabeça", desc: "Valor fixo por pessoa: arrecada mais, pesa sobre os pobres.", era: era("Clássica"), likes: ["Latifundiários"], dislikes: ["Povo do Campo", "Mercadores"], tax: 0.18 },
-    { name: "Imposto proporcional", desc: "Cada um paga conforme a renda.", era: era("Colonial"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Latifundiários"], tax: 0.2 },
+    { name: "Imposto proporcional", desc: "Cada um paga conforme a renda.", era: era("Descobertas"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Latifundiários"], tax: 0.2 },
   ],
   "Estados": [
     { name: "Centralizado", desc: "Os estados só administram: cada estado dá +2% de arrecadação (até +10%).", era: 0, likes: ["Latifundiários", "Pequena Burguesia"], dislikes: [] },
@@ -77,7 +77,7 @@ export const LAWS: Record<string, Law[]> = {
   "Economia": [
     { name: "Subsistência", desc: "Cada comunidade vive do que produz; quase não há troca entre cidades.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [], tradeShare: 0.4 },
     { name: "Tradicionalismo", desc: "Comércio pelas rotas e costumes de sempre.", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores"], tradeShare: 0.5 },
-    { name: "Mercantilismo", desc: "O Estado incentiva comércio e acumula riqueza.", era: era("Colonial"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7 },
+    { name: "Mercantilismo", desc: "O Estado incentiva comércio e acumula riqueza.", era: era("Descobertas"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7 },
     { name: "Livre comércio", desc: "Mercadorias circulam livremente entre as cidades.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], tradeShare: 0.9 },
   ],
 };

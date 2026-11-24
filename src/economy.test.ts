@@ -11,8 +11,8 @@ assert.equal(priceFactor(0, 100), MAX_PRICE);   // só demanda: +75%
 assert.equal(priceFactor(100, 0), MIN_PRICE);   // só oferta: -50%
 assert.ok(priceFactor(100, 120) > 1 && priceFactor(120, 100) < 1);
 
-assert.equal(dateLabel(0), "2000 a.C. · semana 1");
-assert.equal(dateLabel(2000 * 52), "1 d.C. · semana 1");
+assert.equal(dateLabel(0), "600 a.C. · semana 1");
+assert.equal(dateLabel(600 * 52), "1 d.C. · semana 1");
 
 const w = generateWorld(300, 150, 1, 4);
 const e = createEconomy(w);
