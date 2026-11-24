@@ -99,5 +99,6 @@ console.log("open sea ok");
     assert.ok(wet, `rio em (${s % big.W}, ${(s / big.W) | 0}) não chega ao mar nem a um lago`);
   }
   assert.ok(groups > 0);
+  for (let s = 0; s < big.W * big.H; s++) assert.ok(!(big.terrain[s] === T.OCEAN && big.river[s]), `rio passando por dentro da água em (${s % big.W}, ${(s / big.W) | 0})`);
 }
 console.log("rivers to water ok");

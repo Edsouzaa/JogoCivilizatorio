@@ -356,6 +356,8 @@ export const riverAt = (w: World, h: number, k: number) => (w.river[h] >> k) & 1
 export const RIVER_SPACING = { cols: 26, rows: 16, chance: 0.75 };
 /** Rio que não chega ao mar só fica se tiver pelo menos isto de bordas (e então termina num lago). */
 export const RIVER_LAKE_MIN = 12;
+/** Ruído suave somado à altura que o rio "vê" (só para o traçado): entorta a descida e faz curvas. */
+export const RIVER_MEANDER = { amount: 0.02, size: 10 };
 function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () => number) {
   const { W, H, terrain } = w;
   const N = W * H;
@@ -366,7 +368,12 @@ function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () 
   };
   // um canto é (hex, k); os 3 hexes em volta dele: o próprio, o do outro lado da borda k−1 e o da borda k
   const around = (h: number, k: number) => [h, across(W, H, h, (k + 5) % 6), across(W, H, h, k)];
-  const cornerElev = (h: number, k: number) => { const hs = around(h, k); return hs.some((x) => x < 0) ? 1 : hs.reduce((s, x) => s + elev[x], 0) / 3; };
+  const pR = Math.max(1, Math.round(W / RIVER_MEANDER.size)), route = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const row = (i / W) | 0, x = ((i % W) + 0.5 * (row & 1)) / W, y = (row * 0.866) / W;
+    route[i] = elev[i] + (fbm(x * pR, y * pR, w.seed + 211, 2, pR) - 0.5) * RIVER_MEANDER.amount;
+  }
+  const cornerElev = (h: number, k: number) => { const hs = around(h, k); return hs.some((x) => x < 0) ? 1 : hs.reduce((s, x) => s + route[x], 0) / 3; };
   const touchesSea = (h: number, k: number) => around(h, k).some((x) => x >= 0 && terrain[x] === T.OCEAN);
   const key = (h: number, k: number) => { // mesmo canto visto por qualquer um dos 3 hexes
     const a = across(W, H, h, (k + 5) % 6), b = across(W, H, h, k);
@@ -389,8 +396,8 @@ function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () 
     let h = src, k = 0; // começa no canto de cima do hex de origem
     const path: [number, number][] = []; // bordas do caminho (hex, k)
     const seen = new Set<number>([key(h, k)]);
-    const edgesOn = new Map<number, number>(); // bordas do caminho por hex (3+ = rio dando voltas num hex)
-    const useEdge = (x: number) => (edgesOn.get(x) ?? 0) < 2;
+    const edgesOn = new Map<number, number>(); // bordas do caminho por hex: 3 = curva (o rio contorna o hex); 4+ = rio dando voltas
+    const useEdge = (x: number) => (edgesOn.get(x) ?? 0) < 3;
     let reachedSea = false;
     for (let step = 0; step < 300; step++) {
       if (touchesSea(h, k)) { reachedSea = true; break; }
@@ -426,6 +433,12 @@ function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () 
     // rio comprido que chega ao mar ou a outro rio: o trecho de baixo é navegável
     path.forEach(([ph, pk], idx) => mark(ph, pk, reachedSea && path.length >= 14 && idx >= path.length * 0.4));
     for (const [ph, pk] of path) { riverCorner.add(key(ph, pk)); riverCorner.add(key(ph, (pk + 1) % 6)); }
+  }
+  // lagos abertos depois podem cobrir trechos de rios: rio não corre por dentro da água nem pela margem dela
+  for (let i = 0; i < N; i++) if (terrain[i] === T.OCEAN && w.river[i]) for (let k = 0; k < 6; k++) if (riverAt(w, i, k)) {
+    const n = across(W, H, i, k), bit = ~(1 << k), back = ~(1 << ((k + 3) % 6));
+    w.river[i] &= bit; w.navigable[i] &= bit;
+    if (n >= 0) { w.river[n] &= back; w.navigable[n] &= back; }
   }
 }
 

@@ -110,6 +110,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - IA na expansão: quando a capacidade de expansão está cheia, os colonos da IA viram posto avançado (em vez de esperar parados) e as próximas cidades partem também dos postos; posto avançado abastece colonos. Camada de mapa "Expansão": território, área de influência em tom claro e cidades isoladas em vermelho.
 
 - Rios sempre chegam à água: todo rio termina no mar, num lago ou noutro rio; o que para numa bacia ganha um lago no fim (se for curto ou não couber lago, o rio não fica). Teste novo garante que todo rio encosta em água.
+- Rios sinuosos: a trava contra espiral deixava só 2 bordas do rio por hex, e toda curva precisa de 3 (por isso os rios eram retos). Agora vale 3, e um ruído suave entorta a descida (RIVER_MEANDER). Rio não corre por dentro nem pela margem de lago aberto depois dele.
 - Oceano profundo visível: azul bem escuro no mapa (a faixa rasa do litoral continua clara). Além de barrar navio sem Navegação, atrapalha o comércio além-mar: entre países de continentes diferentes, quem não tem Navegação só consegue exportar 20% do que exportaria.
 
 ## Próximos (nesta ordem)
