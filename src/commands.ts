@@ -23,7 +23,8 @@ export type Cmd =
   | { t: "harbor"; city: number }
   | { t: "acceptCulture"; culture: number; off?: boolean }
   | { t: "choose"; option: number }
-  | { t: "improve"; target: number } // melhorar relações // resposta ao evento pendente
+  | { t: "improve"; target: number } // melhorar relações
+  | { t: "saveCharacter"; id: number } // guardar na história (o livro continua depois da morte) // resposta ao evento pendente
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
@@ -76,6 +77,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       return err;
     }
     case "settlers": return trainSettlers(w, e, country);
+    case "saveCharacter": { const ch = e.characters?.find((x) => x.id === c.id && x.country === country); if (!ch) return "Personagem não é seu"; ch.saved = true; return null; }
     case "improve": return isInt(c.target, 1) && c.target <= e.countries.length ? improveRelations(e, country, c.target) : "País inválido";
     case "choose": {
       const ev = e.choices?.[country];

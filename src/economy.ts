@@ -8,6 +8,7 @@ import type { Flag } from "./flags.ts";
 import { makeName } from "./names.ts";
 import { updateControl, CONTROL } from "./control.ts";
 import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
+import { rulerOf, attrMod, CHAR, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
 
@@ -176,6 +177,7 @@ export type Country = {
   primaryCulture?: number; acceptedCultures?: number[]; officialLanguage?: number; stateReligion?: number; // culture.ts
   investPool?: number;  // fundo de investimento privado (sim.ts → ai.ts privateInvest)
   investWeek?: number;  // quanto entrou na última semana
+  ruler?: number;       // id do governante (characters.ts)
   glory?: number;       // prestígio de guerras (diplomacy.ts), se apaga devagar
   culturePenalty?: number; // pontos de lealdade perdidos por gente de cultura não aceita
   adminWeek?: number;   // produzidos na última semana
@@ -220,6 +222,8 @@ export type Economy = {
   warStats?: Record<string, WarStats>; // por guerra ("a-b"): baixas, custo, desde quando
   control: Float32Array; // 0..1: quanto o governo administra o hex (control.ts)
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
+  characters?: Character[]; nextCharacter?: number; // personagens (characters.ts)
+  obituaries?: { name: string; country: number; age: number }[]; // governantes que morreram nesta semana (aviso)
   relations?: Record<string, number>; // "a-b" → −100..100 (diplomacy.ts); ausente = 0
   choices?: Record<number, { id: number; week: number }>; // evento esperando a escolha do jogador (choices.ts)
   incentives?: Incentive[]; // incentivos ativos (admin.ts)
@@ -712,7 +716,8 @@ export function tick(w: World, e: Economy) {
     c.investPool = (c.investPool ?? 0) + c.investWeek;
     c.tax = gdp ? nominal / gdp : lawOf(c.politics, "Impostos").tax!; // imposto médio
     // governo legítimo arrecada mais; no Centralizado, estados melhoram a administração
-    c.income = taxed * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1));
+    const ruler = rulerOf(e, ci + 1);
+    c.income = taxed * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1)) * (1 + (ruler ? CHAR.admTax * attrMod(ruler.adm) : 0)); // governante bom administrador arrecada mais
     c.interest = (c.debt * RULES.interestYear) / 52;
     c.treasury += c.income + c.tariffs - c.upkeep - c.interest;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }

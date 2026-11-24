@@ -14,6 +14,8 @@ import { relation, prestige, DIPLO } from "./diplomacy.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
+import { rulerOf, ageOf } from "./characters.ts";
+import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, warSupport, WAR, NAVY, AIR } from "./war.ts";
@@ -72,6 +74,7 @@ function showNotes(cat: string | null) {
 
 /** Depois de cada semana simulada: avisos que só existem naquela semana. */
 function afterWeek() {
+  for (const o of eco.obituaries ?? []) if (o.country === active) notify(`<i class=i-politics></i> Morreu ${o.name}, aos ${o.age} anos. Um novo governante assumiu.`);
   for (const n of eco.news ?? []) if (eco.cities[n.city]?.country === active) notify(n.kind === "fome" ? `<i class=i-bread></i> Fome em ${eco.cities[n.city].name}: falta comida no mercado, o povo está morrendo` : `<i class=i-skull></i> Peste em ${eco.cities[n.city].name}`);
   for (const i of eco.exhausted) if (world.owner[i] === active) notify(`<i class=i-pick></i> Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
 }
@@ -512,6 +515,7 @@ document.addEventListener("pointerdown", (e) => {
     if (name) cmd({ t: "continent", id: +d.continent, name });
     return;
   }
+  if (d.saveChar) return cmd({ t: "saveCharacter", id: Number(d.saveChar) });
   if (d.improve) return cmd({ t: "improve", target: Number(d.improve) });
   if (d.chart) { chartKey = d.chart; return updateUI(); }
   if (d.rank) { rankKey = d.rank; return updateUI(); }
@@ -627,9 +631,9 @@ function topbarHtml() {
   const era = worldEra(), y0 = ERA_YEARS[era], y1 = ERA_YEARS[era + 1], year = START_YEAR + eco.week / 52;
   const when = `<div class="when"><div class="date">${timeLabel()}</div><div class="sub">Era ${ERAS[era]}</div><div class="bar"><div style="width:${Math.min(100, Math.max(0, ((year - y0) / (y1 - y0)) * 100))}%"></div></div></div>`;
   if (!active) return `<div class="who"><div><div class="name">Jogo Civilizatório</div><div class="sub">Clique num país no mapa para governá-lo</div></div></div>${when}<div class="stats"></div>`;
-  const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics;
+  const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics, ruler = rulerOf(eco, active);
   const weekly = c.income + c.tariffs - c.upkeep - c.interest;
-  return `<div class="who"><img src="${flagURL(flagOf(active))}" alt=""><div><div class="name">${meta.name}</div><div class="sub">${lawOf(p, "Governo").name} · ${p.government.map((g) => GROUPS[g].name).join(", ") || "sem governo"}</div></div></div>` + when +
+  return `<div class="who">${ruler ? portraitSVG(ruler, c.research.era, 44) : ""}<img src="${flagURL(flagOf(active))}" alt=""><div><div class="name">${meta.name}</div><div class="sub">${ruler ? `${ruler.name} (${ageOf(ruler, eco.week)}) · ` : ""}${lawOf(p, "Governo").name} · ${p.government.map((g) => GROUPS[g].name).join(", ") || "sem governo"}</div></div></div>` + when +
     `<div class="stats">` +
     stat("treasury", "Tesouro nacional e saldo por semana", fmt(c.treasury), `<span class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}</span>`) +
     stat("prestige", "Prestígio nacional (média do mundo = 100)", String(prestige(eco, active))) +
@@ -996,6 +1000,18 @@ function lawEffect(l: Law, cat: string, p: Politics) {
   return `${l.desc ?? ""}${parts.length ? "<br>" + parts.join(" · ") : ""}`;
 }
 
+/** Cartão do governante: retrato, idade, atributos, traços e a vida dele (aba Política). */
+function rulerHtml() {
+  const r = active ? rulerOf(eco, active) : undefined;
+  if (!r) return "";
+  const attr = (k: string, v: number) => `<small style="display:block">${k} ${v}</small><div class="bar"><div style="background:${v >= 60 ? "var(--green)" : v < 40 ? "var(--red)" : "var(--gold)"};width:${v}%"></div></div>`;
+  return `<h3>Governante</h3><div class="card" style="display:flex;gap:10px">${portraitSVG(r, eco.countries[active - 1].research.era, 72)}` +
+    `<div style="flex:1"><div class="serif" style="font-size:17px;font-weight:600">${r.name}</div><small style="display:block">${ageOf(r, eco.week)} anos · ${r.traits.join(", ")}</small>` +
+    attr("Administração (impostos)", r.adm) + attr("Diplomacia (relações)", r.dip) + attr("Militar (exército)", r.mil) +
+    (r.saved ? "<small>Guardado na história</small>" : `<button data-save-char="${r.id}" title="O livro dele continua depois que ele morrer">Guardar na história</button>`) + `</div></div>` +
+    `<details><summary><small>Vida</small></summary><small>${r.life.join("<br>")}</small></details>`;
+}
+
 function politicsHtml(p: Politics, era: number) {
   const groups = GROUPS.map((g, k) => [g, k] as const).filter(([, k]) => p.political[k] > 0.005 || p.popular[k] > 0.005)
     .sort(([, a], [, b]) => p.political[b] - p.political[a])
@@ -1030,7 +1046,7 @@ function politicsHtml(p: Politics, era: number) {
   });
   const statesTable = `<b>Estados</b> <small>(${federal ? "Federação: cada estado escolhe o imposto" : `Centralizado: +${Math.round(STATES.adminPerState * 100)}% de arrecadação por estado`}; crie no hex de uma cidade)</small>` +
     (states.length ? `<table>${states.join("")}</table>` : "<br><small>Nenhum estado ainda.</small>");
-  return voting +
+  return rulerHtml() + voting +
     `<h3>Grupos de interesse</h3><div class="cards">${groups.join("")}</div><h3>Leis</h3>` +
     `<table class="laws">${laws.join("")}</table>` + statesTable;
 }

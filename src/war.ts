@@ -3,6 +3,7 @@
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
 import { refresh, GOODS, RULES, INFAMY, type Economy, type Division, type WarStats } from "./economy.ts";
 import { DIPLO } from "./diplomacy.ts";
+import { rulerOf, attrMod, CHAR } from "./characters.ts";
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
@@ -222,7 +223,7 @@ export function crossesRiver(w: World, a: number, b: number) {
 
 /** Força de combate: soldados × organização × armas × tecnologia militar do país. */
 const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "fleet")), 0);
-const power = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army")), 0);
+const power = (e: Economy, ds: Division[]) => ds.reduce((s, d) => { const r = rulerOf(e, d.country); return s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army")) * (1 + (r ? CHAR.milArmy * attrMod(r.mil) : 0)); }, 0);
 
 /** Tira baixas das divisões proporcionalmente à força, e a mesma gente da população da capital. */
 function takeLosses(w: World, e: Economy, ds: Division[], losses: number) {

@@ -7,12 +7,14 @@ import type { World } from "./world.ts";
 import { stepEvents } from "./events.ts";
 import { stepChoices } from "./choices.ts";
 import { recordHistory } from "./history.ts";
+import { stepCharacters } from "./characters.ts";
 
 export function advanceWeek(w: World, e: Economy) {
   tick(w, e);
   e.news = stepEvents(w, e);
   stepChoices(w, e);
   recordHistory(e);
+  e.obituaries = e.week % 4 === 1 ? stepCharacters(w, e).map((c) => ({ name: c.name, country: c.country, age: Math.floor((e.week - c.born) / 52) })) : [];
   if (e.week % 4 === 2) privateInvest(w, e);
   stepWar(w, e);
   // cada país pensa uma vez por mês, em semanas alternadas: com centenas de tribos o custo não cai todo numa semana só

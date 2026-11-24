@@ -68,6 +68,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Interface, fase 3: camadas Cultura, Língua, Religião, Alfabetização e Infraestrutura; grupos de interesse em cartões (papel no governo, barras de poder político e apoio popular); evento como documento histórico (bandeira, data, país, ilustração, texto em serifa, opções com consequências).
 
+- Personagens, primeira parte: cada país tem um governante (nome na língua do país, idade, administração/diplomacia/militar de 0 a 100, 2 traços, aparência). Administração mexe no imposto (±10%), militar na força do exército (±10%), diplomacia nas relações com vizinhos. Morre de velhice e o sucessor vem pela forma de governo (herdeiro, eleito, clero, partido), com aviso. Retrato gerado pela aparência (rosto, pele, cabelo, barba, cicatriz, corpo e roupa da era) na barra superior e na aba Política, com a vida dele e o botão "Guardar na história".
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -96,7 +98,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 12. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
 13. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
 14. **Personagens**
-    - Ficha, atributos e retrato gerado.
+    - Outros personagens (generais, ministros, líderes de grupo, empresários), família, mortes por eventos.
     - Comandantes e generais.
     - Livro de história exportável em PDF.
 15. **Militar completo**
