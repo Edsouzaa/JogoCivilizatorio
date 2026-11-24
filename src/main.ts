@@ -4,7 +4,7 @@ import {
   proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
-import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available } from "./tech.ts";
+import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
@@ -13,6 +13,7 @@ import { SERIES } from "./history.ts";
 import { relation, prestige, DIPLO } from "./diplomacy.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
+import { icon } from "./icons.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, warSupport, WAR, NAVY, AIR } from "./war.ts";
@@ -25,25 +26,43 @@ import { listAutosaves, writeAutosave, readAutosave, autosaveClock, AUTOSAVE, ty
 import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, statesLocked, STATES } from "./states.ts";
 
 let hudMsg = "", hudMsgUntil = 0; // aviso rápido no topo (salvou, erro ao carregar...)
-// Painel de notificações (canto de baixo): guarda as últimas, cada uma com a data do jogo; × apaga.
-const notesBox = document.createElement("div");
-notesBox.style.cssText = "position:fixed;bottom:8px;left:340px;width:300px;max-height:30vh;overflow-y:auto;font-size:12px;display:flex;flex-direction:column-reverse;gap:3px";
-document.body.appendChild(notesBox);
+// Notificações por categoria: contador na barra inferior; clicar abre a lista. A última aparece um instante no meio.
+const NOTE_CATS = ["Diplomacia", "Militar", "Economia", "Política", "Sociedade", "Geral"] as const;
+const NOTE_ICON: Record<string, string> = { Diplomacia: "diplomacy", Militar: "military", Economia: "economy", Política: "politics", Sociedade: "society", Geral: "bell" };
+const notes: { cat: string; text: string; date: string }[] = [];
+const unread: Record<string, number> = {};
+let noteFilter: string | null = null;
+/** Categoria pelo começo da mensagem (os avisos já começam com um símbolo do assunto). */
+const noteCat = (m: string) =>
+  /^(⚔|🕊|🏰|🪖)/u.test(m) ? "Militar" : /^(🤝|🌐)/u.test(m) ? "Diplomacia" : /^(⛏|🍞|💰|🏦)/u.test(m) ? "Economia"
+  : /^(📰|📜|🏛)/u.test(m) ? "Política" : /^(☠|🎭|🔬)/u.test(m) ? "Sociedade" : "Geral";
 const notify = (m: string) => {
   hudMsg = m; hudMsgUntil = performance.now() + 5000;
-  const n = document.createElement("div");
-  n.style.cssText = "background:#000c;border-radius:5px;padding:4px 22px 4px 8px;position:relative";
-  const close = document.createElement("button");
-  close.textContent = "×"; close.title = "Dispensar";
-  close.style.cssText = "position:absolute;right:3px;top:2px;background:none;border:0;color:#aaa;cursor:pointer";
-  close.onclick = () => n.remove();
-  const when = document.createElement("small");
-  when.style.opacity = ".6";
-  try { when.textContent = dateLabel(eco.week) + " — "; } catch { /* antes do mundo existir */ }
-  n.append(when, document.createTextNode(m), close);
-  notesBox.prepend(n);
-  while (notesBox.childElementCount > 30) notesBox.lastChild!.remove();
+  let date = "";
+  try { date = dateLabel(eco.week); } catch { /* antes do mundo existir */ }
+  const cat = noteCat(m);
+  notes.unshift({ cat, text: m, date });
+  if (notes.length > 60) notes.pop();
+  unread[cat] = (unread[cat] ?? 0) + 1;
+  const toast = document.getElementById("toast")!;
+  toast.textContent = m; toast.style.display = "block";
 };
+/** Lista aberta (ou fechada) das notificações de uma categoria. */
+function showNotes(cat: string | null) {
+  const box = document.getElementById("notelist")!;
+  noteFilter = noteFilter === cat ? null : cat;
+  if (noteFilter === null) { box.style.display = "none"; return; }
+  unread[noteFilter] = 0;
+  const list = notes.filter((n) => n.cat === noteFilter);
+  box.innerHTML = `<h3>${noteFilter}</h3>` + (list.length ? "" : "<small>Nada por aqui.</small>");
+  for (const n of list) { // texto como texto (nomes vêm de jogadores)
+    const d = document.createElement("div"); d.className = "n";
+    const s = document.createElement("small"); s.textContent = n.date + " — ";
+    d.append(s, document.createTextNode(n.text)); box.appendChild(d);
+  }
+  box.style.display = "block";
+}
+
 /** Depois de cada semana simulada: avisos que só existem naquela semana. */
 function afterWeek() {
   for (const n of eco.news ?? []) if (eco.cities[n.city]?.country === active) notify(n.kind === "fome" ? `🍞 Fome em ${eco.cities[n.city].name}: falta comida no mercado, o povo está morrendo` : `☠ Peste em ${eco.cities[n.city].name}`);
@@ -120,7 +139,6 @@ const W = Number(params.get("w")) || 1600, H = Number(params.get("h")) || 640;
 const WORLD_W = SQRT3 * W; // largura do mundo em unidades do mapa (uma volta)
 
 const canvas = document.getElementById("map") as HTMLCanvasElement;
-const hud = document.getElementById("hud")!;
 const panel = document.getElementById("panel")!;
 const renderer = createRenderer(canvas, W, H, BIOME_FILES.map((f) => `/biomas/${f}`));
 const unitsCanvas = document.getElementById("units") as HTMLCanvasElement;
@@ -275,7 +293,7 @@ function cmd(c: Cmd) {
 
 // ---------------- identidade do país: nome, cor e bandeira ----------------
 const idBox = document.createElement("div");
-idBox.style.cssText = "display:none;position:fixed;top:120px;left:8px;background:#000d;padding:10px;border-radius:6px;width:300px;line-height:1.9;z-index:5";
+idBox.style.cssText = "display:none;position:fixed;top:90px;left:calc(var(--menu) + 16px);background:var(--panel);border:1px solid var(--gold);padding:12px;width:300px;line-height:1.9;z-index:7";
 idBox.innerHTML = `<b id="id-title">🏳 Identidade do país</b><br>
   Nome <input id="id-name" maxlength="30" style="width:200px"><br>
   <span id="id-colorrow">Cor no mapa <input id="id-color" type="color"><br></span>
@@ -351,7 +369,7 @@ let net: WebSocket | null = null, mp: RoomStatus | null = null, myId = 0, synced
 const pendingSteps: { t?: string; week: number; cmds: [number, Cmd][] }[] = [];
 const mpBox = document.createElement("div");
 mpBox.id = "mpbox";
-mpBox.style.cssText = "display:none;position:fixed;top:120px;left:8px;background:#000c;padding:10px;border-radius:6px;width:300px;line-height:1.8";
+mpBox.style.cssText = "display:none;position:fixed;top:90px;left:calc(var(--menu) + 16px);background:var(--panel);border:1px solid var(--gold);padding:12px;width:300px;line-height:1.8;z-index:7";
 mpBox.innerHTML = `<b>🌐 Multiplayer</b> <small>(servidor: npm run server)</small><br>
   Servidor <input id="mp-url" style="width:200px"><br>Seu nome <input id="mp-name" maxlength="24" style="width:120px"><br>
   Senha <input id="mp-pass" type="password" maxlength="64" style="width:120px" placeholder="opcional"><br>
@@ -366,7 +384,7 @@ $("mp-join").onclick = () => connect({ t: "join", code: $("mp-code").value.toUpp
 
 // chat da sala: mensagens viram texto (textContent), nunca HTML
 const chatBox = document.createElement("div");
-chatBox.style.cssText = "display:none;position:fixed;bottom:8px;left:8px;width:320px;background:#000b;border-radius:6px;padding:6px;font-size:12px";
+chatBox.style.cssText = "display:none;position:fixed;bottom:calc(var(--bottom) + 8px);left:calc(var(--menu) + 8px);width:320px;background:var(--panel);border:1px solid var(--line);padding:6px;font-size:12px;z-index:4";
 chatBox.innerHTML = `<div id="chat-log" style="max-height:140px;overflow-y:auto;margin-bottom:4px"></div><input id="chat-in" maxlength="200" placeholder="Mensagem para a sala (Enter)" style="width:100%;box-sizing:border-box">`;
 document.body.appendChild(chatBox);
 const chatLog = document.getElementById("chat-log")!;
@@ -502,6 +520,10 @@ document.addEventListener("pointerdown", (e) => {
   if (d.peace) return cmd({ t: "peace", target: Number(d.peace) });
   if (d.act === "disband" && selectedDiv) { cmd({ t: "disband", id: selectedDiv }); selectedDiv = null; return updateUI(); }
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
+  if (d.menu) { menuCat = menuCat === d.menu ? null : d.menu; return updateUI(); }
+  if (d.notes) return showNotes(d.notes);
+  if (d.selectDiv) { selectedDiv = Number(d.selectDiv); group = [selectedDiv]; const u = eco.divisions.find((x) => x.id === selectedDiv); if (u) selected = u.hex; return updateUI(); }
+  if (d.act === "close-panel") { selected = -1; selectedDiv = null; group = []; return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
   if (d.pact && active) return cmd({ t: "pact", target: Number(d.pact) });
   if (d.unpact && active) return cmd({ t: "unpact", target: Number(d.unpact) });
@@ -531,7 +553,7 @@ function chartsHtml() {
   const ranked = eco.countries.map((x, i) => [i + 1, SERIES[rankKey](x, i + 1, eco)] as const).sort((a, b) => b[1] - a[1]);
   const mine = ranked.findIndex(([k]) => k === active);
   return keys.map((k) => btn(k, chartKey, "chart")).join("") +
-    `<canvas id="series" width="300" height="110" style="width:100%;background:#111;margin-top:4px"></canvas>` +
+    `<canvas id="series" width="600" height="160" style="width:100%;height:160px;background:#111;margin-top:4px"></canvas>` +
     `<small>${(h[chartKey]?.length ?? 0)} meses · agora ${fmt(SERIES[chartKey](c, active, eco))}</small>` +
     `<br><b>🏆 Ranking mundial</b> ` + ["Prestígio", "PIB", "População", "Tecnologias", "Cidades"].map((k) => btn(k, rankKey, "rank")).join("") +
     `<table>${ranked.slice(0, 10).map(([k, v], n) => `<tr${k === active ? ' style="color:#fd6"' : ""}><td>${n + 1}º ${world.countries[k - 1].name}</td><td>${fmt(v)}</td></tr>`).join("")}` +
@@ -542,29 +564,154 @@ let tab = 0; // aba aberta no painel
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const signed = (v: number) => `${v >= 0 ? "+" : "−"}${fmt(Math.abs(v))}`;
 
-function updateUI() {
+// ---------------- layout: barra superior, camadas do mapa, menu lateral, painéis e barra inferior ----------------
+const MENU = [
+  ["overview", "Visão Geral"], ["people", "População"], ["economy", "Economia"], ["build", "Construções"], ["trade", "Comércio"],
+  ["diplomacy", "Diplomacia"], ["politics", "Política"], ["tech", "Tecnologia"], ["military", "Militar"], ["admin", "Administração"],
+  ["society", "Sociedade"], ["charts", "Gráficos"],
+] as const;
+let menuCat: string | null = null; // item do menu lateral aberto (null = só o mapa)
+const LAYERS: [string, [number, string][]][] = [
+  ["Geografia", [[0, "Terreno"], [5, "Clima"], [3, "Recursos"]]],
+  ["Território", [[1, "Político"], [4, "Controle"]]],
+  ["Sociedade", [[2, "População"], [7, "Satisfação"]]],
+  ["Ciência", [[6, "Tecnologia"]]],
+];
+const flagCache = new Map<string, string>();
+/** Bandeira como imagem (data URL), guardada enquanto não mudar. */
+function flagURL(f: Flag) {
+  const key = JSON.stringify(f);
+  let u = flagCache.get(key);
+  if (!u) { const cv = document.createElement("canvas"); cv.width = 60; cv.height = 40; drawFlag(cv.getContext("2d")!, 0, 0, 60, 40, f); u = cv.toDataURL(); flagCache.set(key, u); }
+  return u;
+}
+const stat = (ic: string, title: string, value: string, extra = "") => `<span class="stat" title="${title}">${icon(ic)} <b class="num">${value}</b>${extra ? ` <small class="num">${extra}</small>` : ""}</span>`;
+
+function topbarHtml() {
+  const era = worldEra(), y0 = ERA_YEARS[era], y1 = ERA_YEARS[era + 1], year = START_YEAR + eco.week / 52;
+  const when = `<div class="when"><div class="date">${timeLabel()}</div><div class="sub">Era ${ERAS[era]}</div><div class="bar"><div style="width:${Math.min(100, Math.max(0, ((year - y0) / (y1 - y0)) * 100))}%"></div></div></div>`;
+  if (!active) return `<div class="who"><div><div class="name">Jogo Civilizatório</div><div class="sub">Clique num país no mapa para governá-lo</div></div></div>${when}<div class="stats"></div>`;
+  const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics;
+  const weekly = c.income + c.tariffs - c.upkeep - c.interest;
+  return `<div class="who"><img src="${flagURL(flagOf(active))}" alt=""><div><div class="name">${meta.name}</div><div class="sub">${lawOf(p, "Governo").name} · ${p.government.map((g) => GROUPS[g].name).join(", ") || "sem governo"}</div></div></div>` + when +
+    `<div class="stats">` +
+    stat("treasury", "Tesouro nacional e saldo por semana", fmt(c.treasury), `<span class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}</span>`) +
+    stat("prestige", "Prestígio nacional (média do mundo = 100)", String(prestige(eco, active))) +
+    stat("stability", "Estabilidade: lealdade média da população (radicais ao lado)", String(Math.round(averageLoyalty(c.pops))), c.radicals > 0.05 ? `<span class="up">${pct(c.radicals)} rad.</span>` : "") +
+    stat("legitimacy", "Legitimidade do governo", pct(p.legitimacy)) +
+    stat("admin", "Pontos administrativos (por semana ao lado)", `${Math.floor(c.admin ?? 0)}`, signed(c.adminWeek ?? 0)) +
+    `</div>`;
+}
+
+const maptoolsHtml = () => LAYERS.map(([g, ms]) => `<div class="grp"><span>${g}</span>${ms.map(([k, n]) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}" title="Tecla ${k + 1}">${n}</button>`).join("")}</div>`).join("");
+
+function leftmenuHtml() {
+  return MENU.map(([ic, n]) => `<button class="item ${menuCat === ic ? "on" : ""}" data-menu="${ic}">${icon(ic, 18)} ${n}</button>`).join("") +
+    `<div class="sep"></div><div class="tools">` +
+    `<button data-act="save" title="Salvar partida em arquivo (Ctrl+S)">${icon("save")} Salvar</button>` +
+    `<button data-act="load" title="Carregar partida de arquivo">${icon("load")} Abrir</button>` +
+    (lastAuto ? `<button data-act="continue" title="Continuar o último salvamento automático">${icon("load")} ${lastAuto.label}</button>` : "") +
+    `<button data-act="mp" title="Multiplayer">${icon("globe")} Multiplayer</button>` +
+    `<button data-act="new" title="Gera um mapa novo (R)">${icon("newmap")} Novo mapa</button></div>`;
+}
+
+/** Conteúdo de cada item do menu (no painel ao lado do menu). */
+const CAT_VIEWS: Record<string, () => string> = {
+  overview: () => overviewHtml(), people: () => societyHtml("pops"), economy: () => economyHtml() + goodsHtml(), build: () => buildingsHtml(),
+  trade: () => pactsHtml() + (selected >= 0 && cityOf(selected) ? marketHtml() : "<small>Clique numa cidade sua para ver o mercado dela.</small>"),
+  diplomacy: () => diplomacyHtml(), politics: () => politicsTab(), tech: () => researchTab(), military: () => militaryHtml(),
+  admin: () => adminHtml(), society: () => societyHtml("culture"), charts: () => chartsHtml(),
+};
+
+function bottombarHtml() {
   const [hc, hr] = hover, hi = hr * W + hc;
   const hcity = inMap(hc, hr) ? cityOf(hi) : undefined;
   const hidden = inMap(hc, hr) && active > 0 && !explored.get(active)?.[hi];
   const info = hidden ? "Inexplorado" : inMap(hc, hr)
-    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.seaZone[hi] ? ` · zona marítima ${world.seaZone[hi]}${deepOcean(world)[hi] ? " · oceano profundo (precisa de Navegação)" : ""}` : ""}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]}${world.resource2[hi] ? ` + ${RESOURCES[world.resource2[hi]]}` : ""}${world.reserve[hi] !== Infinity ? ` (jazida ~${Math.round(world.reserve[hi] / 52)} anos)` : ""} · pop ${Math.round(world.pop[hi])}` +
+    ? `${TERRAINS[world.terrain[hi]].name}${world.seaZone[hi] ? ` · zona marítima ${world.seaZone[hi]}${deepOcean(world)[hi] ? " · oceano profundo (precisa de Navegação)" : ""}` : ""}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]}${world.resource2[hi] ? ` + ${RESOURCES[world.resource2[hi]]}` : ""}${world.reserve[hi] !== Infinity ? ` (jazida ~${Math.round(world.reserve[hi] / 52)} anos)` : ""} · pop ${Math.round(world.pop[hi])}` +
       (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` + (mode === 6 ? ` (${eco.countries[world.owner[hi] - 1].research.known.size}/${TECHS.length} tecnologias)` : mode === 7 ? ` (satisfação ${Math.round(averageLoyalty(eco.countries[world.owner[hi] - 1].pops))}%)` : "") : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
-    : "—";
-  const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";
-  hud.innerHTML =
-    MAP_MODES.map((n, k) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}">${k + 1} ${n}</button>`).join(" ") +
-    ` <button data-act="new" title="Gera um mapa novo">R Novo</button> <button data-act="save" title="Salvar partida em arquivo (Ctrl+S)">💾</button> <button data-act="load" title="Carregar partida de arquivo">📂</button>` +
-    (lastAuto ? ` <button data-act="continue" title="Continuar o último salvamento automático">↺ ${lastAuto.label}</button>` : "") + ` <button data-act="mp" title="Multiplayer">🌐</button> <span title="${help}" style="cursor:help">❓</span>` +
-    (mp ? `<br>🌐 Sala <b>${mp.code}</b> · ${mp.players.map((p) => `${p.name}${p.country ? ` (${world.countries[p.country - 1].name})` : ""}`).join(", ")}` +
-      (mp.paused ? ` · ⏸ pausado por ${mp.paused}${mp.votes ? ` (votos para continuar ${mp.votes}/${mp.needed})` : ""}` : "") : "") +
-    `<br><b>${timeLabel()}</b> · ${ERAS[worldEra()]} <button data-act="pause">${speed ? "⏸" : "▶"}</button> ` +
-    SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${SPEED_NAMES[k + 1]}: ${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${s}×</button>`).join(" ") +
-    `<br><small>${info}</small>` + (performance.now() < hudMsgUntil ? `<br><b>${hudMsg}</b>` : "") +
-    `<br><small style="opacity:.6">${fps.toFixed(0)} FPS · semana ${tickMs.toFixed(1)} ms · ${eco.cities.length} cidades · seed ${world.seed}</small>`;
+    : "";
+  const room = mp ? ` · Sala ${mp.code}${mp.paused ? ` · pausado por ${mp.paused}${mp.votes ? ` (${mp.votes}/${mp.needed} votos)` : ""}` : ""}` : "";
+  return `<button data-act="pause" title="Pausar / continuar (Espaço)">${icon(speed ? "pause" : "play")}</button>` +
+    SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${SPEED_NAMES[k + 1]}: ${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${s}×</button>`).join("") +
+    `<span class="num">${timeLabel()}</span><span class="hover">${info}${room} · <span style="opacity:.6">${fps.toFixed(0)} FPS · semana ${tickMs.toFixed(1)} ms</span></span>` +
+    `<div class="notes">${NOTE_CATS.map((c) => `<button data-notes="${c}" title="${c}">${icon(NOTE_ICON[c])}${unread[c] ? `<b>${unread[c]}</b>` : ""}</button>`).join("")}</div>`;
+}
+
+function overviewHtml() {
+  if (!active) return "<i>Clique num país no mapa para governá-lo.</i>";
+  const c = eco.countries[active - 1], card = (k: string, v: string) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  return `<div class="cards">${card("População", fmt(c.pop))}${card("PIB anual", fmt(c.gdpWeek * 52))}${card("Dívida", fmt(c.debt))}${card("Controle", pct(c.control ?? 1))}` +
+    `${card("Recrutas", fmt(c.manpower))}${card("Infâmia", String(Math.round(c.infamy)))}${card("Cidades", String(eco.cities.filter((k) => k.country === active).length))}${card("Colonos", String(settlersOf(eco, active)))}</div>` +
+    headerHtml() + warsHtml();
+}
+
+/** Mercadorias do país inteiro: soma dos mercados das cidades (o único lugar com recursos como estoque e fluxo). */
+function goodsHtml() {
+  if (!active) return "";
+  const cs = eco.cities.filter((k) => k.country === active);
+  const rows = GOODS.map((name, g) => {
+    if (!g) return "";
+    let prod = 0, cons = 0, trade = 0, price = 0, pop = 0;
+    for (const k of cs) { const m = k.market; prod += m.supply[g] - Math.max(0, m.trade[g]); cons += m.demand[g]; trade += m.trade[g]; price += m.price[g] * m.pop; pop += m.pop; }
+    if (prod < 0.5 && cons < 0.5) return ""; // bem que o país nem produz nem usa
+    const p = pop ? price / pop : 1;
+    return `<tr><td>${name}</td><td>${fmt(prod)}</td><td>${fmt(cons)}</td><td class="${prod >= cons ? "down" : "up"}">${signed(prod - cons)}</td><td class="${p > 1.2 ? "up" : p < 0.8 ? "down" : ""}">${Math.round((p - 1) * 100)}%</td></tr>`;
+  }).join("");
+  return `<h3>Mercadorias</h3><table><tr><td><b>Bem</b></td><td><b>Produção/sem</b></td><td><b>Consumo/sem</b></td><td><b>Saldo</b></td><td><b>Preço</b></td></tr>${rows}</table>`;
+}
+
+function buildingsHtml() {
+  if (!active) return "";
+  const total = BUILDINGS.map((_, b) => { let n = 0; for (const i of eco.owned) if (world.owner[i] === active) n += eco.levels[b][i]; return n; });
+  const rows = BUILDINGS.map((b, k) => (total[k] ? `<tr><td>${b.name}</td><td>${total[k]}</td><td>${b.workers * total[k]}</td></tr>` : "")).join("");
+  return `<table><tr><td><b>Construção</b></td><td><b>Níveis</b></td><td><b>Vagas</b></td></tr>${rows}</table><small>Para construir, clique num hex seu no mapa.</small>` +
+    `<br><button data-act="settlers" title="Cria um grupo de colonos na capital">Treinar colonos (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>`;
+}
+
+function diplomacyHtml() {
+  if (!active) return "";
+  const known = new Set<number>([...(eco.contacts?.[active - 1] ?? [])]);
+  for (let k = 1; k <= eco.countries.length; k++) if (k !== active && (atWar(eco, active, k) || hasPact(eco, active, k) || relation(eco, active, k) !== 0)) known.add(k);
+  const rows = [...known].sort((a, b) => relation(eco, active, b) - relation(eco, active, a)).map((k) => {
+    const r = relation(eco, active, k);
+    return `<tr><td><img src="${flagURL(flagOf(k))}" width="21" height="14" style="vertical-align:-2px"> ${world.countries[k - 1].name}${atWar(eco, active, k) ? ' <span class="bad">guerra</span>' : hasPact(eco, active, k) ? " <small>acordo</small>" : ""}</td>` +
+      `<td class="${r < 0 ? "up" : "down"}">${Math.round(r)}</td><td>${prestige(eco, k)}</td><td><button data-improve="${k}" title="+${DIPLO.improve} de relação por ${DIPLO.improveCost} pontos administrativos">Melhorar</button></td></tr>`;
+  }).join("");
+  return `<table><tr><td><b>País</b></td><td><b>Relação</b></td><td><b>Prestígio</b></td><td></td></tr>${rows}</table>` +
+    (known.size ? "" : "<small>Ninguém conhecido ainda: vizinhos e parceiros aparecem aqui.</small>");
+}
+
+function militaryHtml() {
+  if (!active) return "";
+  const mine = eco.divisions.filter((d) => d.country === active);
+  const rows = mine.map((d) => `<tr><td><button data-select-div="${d.id}">${KIND_NAMES[d.kind]?.replace(/s$/, "") ?? d.kind} ${d.id}</button></td><td>${fmt(d.strength)}</td><td>${pct(d.org)}</td><td>${d.target === null ? "parada" : "em marcha"}</td></tr>`).join("");
+  return warsHtml() + `<h3>Forças</h3><table><tr><td><b>Unidade</b></td><td><b>Força</b></td><td><b>Org.</b></td><td><b>Ordem</b></td></tr>${rows}</table>` + (mine.length ? "" : "<small>Sem unidades: recrute numa cidade sua.</small>");
+}
+
+function adminHtml() {
+  if (!active) return "";
+  const c = eco.countries[active - 1];
+  const inc = (eco.incentives ?? []).filter((x) => eco.cities[x.city]?.country === active);
+  return `<div class="cards"><div class="card"><div class="k">Pontos administrativos</div><div class="v">${Math.floor(c.admin ?? 0)} / ${adminCap(eco, active)}</div></div>` +
+    `<div class="card"><div class="k">Por semana</div><div class="v">${signed(c.adminWeek ?? 0)}</div></div><div class="card"><div class="k">Controle médio</div><div class="v">${pct(c.control ?? 1)}</div></div></div>` +
+    `<h3>Incentivos ativos</h3>` + (inc.length ? `<table>${inc.map((x) => `<tr><td>${x.kind}</td><td>${eco.cities[x.city].name}</td><td><button data-incentive="${x.kind}|${x.city}|off">Encerrar</button></td></tr>`).join("")}</table>` : "<small>Nenhum. Clique numa cidade sua para criar.</small>") +
+    `<h3>Estados</h3>` + (statesOf(eco, active).map((s) => `<div>${s.name} · ${s.interest} ${s.happy ? "" : '<span class="bad">insatisfeito</span>'}</div>`).join("") || "<small>Nenhum estado.</small>");
+}
+
+function updateUI() {
+  document.getElementById("topbar")!.innerHTML = topbarHtml();
+  document.getElementById("maptools")!.innerHTML = maptoolsHtml();
+  document.getElementById("leftmenu")!.innerHTML = leftmenuHtml();
+  const cat = document.getElementById("catpanel")!, title = MENU.find(([k]) => k === menuCat)?.[1];
+  cat.className = menuCat === "economy" || menuCat === "charts" ? "wide" : "";
+  cat.innerHTML = menuCat && title ? `<h2>${icon(menuCat, 20)} ${title} <button data-menu="${menuCat}" style="float:right" title="Fechar">${icon("close")}</button></h2>` + CAT_VIEWS[menuCat]() : "";
   group = group.filter((id) => eco.divisions.some((d) => d.id === id));
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = group[0] ?? null; // destruída
   const show = selected >= 0 || selectedDiv;
-  panel.innerHTML = show ? divisionHtml() + headerHtml() + tabsHtml() + [hexHtml, economyHtml, researchTab, societyHtml, politicsTab, marketHtml, chartsHtml][tab]() : "";
+  panel.innerHTML = show ? `<button data-act="close-panel" style="float:right" title="Fechar">${icon("close")}</button>` + divisionHtml() + hexHtml() : "";
+  document.getElementById("bottombar")!.innerHTML = bottombarHtml();
+  if (performance.now() >= hudMsgUntil) document.getElementById("toast")!.style.display = "none";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
   const series = document.getElementById("series") as HTMLCanvasElement | null;
@@ -602,7 +749,7 @@ function economyHtml() {
   if (!active) return "";
   const c = eco.countries[active - 1];
   const pool = `<div>🏦 Fundo de investimento privado: <b>${fmt(c.investPool ?? 0)}</b> <small>(+${fmt(c.investWeek ?? 0)}/sem pela lei de Economia; os investidores constroem sozinhos onde dá mais lucro)</small></div>`;
-  return pool + `<canvas id="gdp" width="300" height="70" style="width:100%;background:#111"></canvas>` +
+  return pool + `<canvas id="gdp" width="600" height="110" style="width:100%;height:110px;background:#111"></canvas>` +
     `<table><tr><td>Impostos (${pct(c.tax)})</td><td class="down">+${fmt(c.income)}</td></tr>` +
     `<tr><td>Tarifas (comércio exterior)</td><td class="down">+${fmt(c.tariffs)}</td></tr>` +
     `<tr><td>Manutenção</td><td class="up">−${fmt(c.upkeep)}</td></tr><tr><td>Juros</td><td class="up">−${fmt(c.interest)}</td></tr>` +
@@ -615,7 +762,7 @@ function economyHtml() {
 const researchTab = () => (active ? researchHtml(eco.countries[active - 1].research, eco.countries[active - 1].researchWeek) : "");
 const politicsTab = () => (active ? politicsHtml(eco.countries[active - 1].politics, eco.countries[active - 1].research.era) : "");
 
-function societyHtml() {
+function societyHtml(part: "pops" | "culture" = "pops") {
   if (!active) return "";
   const c = eco.countries[active - 1], p = c.pops;
   const top = (field: "culture" | "language" | "religion", name: (id: number) => string) =>
@@ -636,7 +783,8 @@ function societyHtml() {
       `<td>${(p.income[k] / p.count[k]).toFixed(2)}</td><td class="${qolColor(p.qol[k])}">${Math.round(p.qol[k])}</td>` +
       `<td class="${p.loyalty[k] < POP_RULES.radicalBelow ? "bad" : ""}">${Math.round(p.loyalty[k])}</td></tr>`);
   const weight = politicalWeight(p), total = weight.reduce((s, v) => s + v, 0) || 1;
-  return lit + `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td><td><b title="Lealdade, 0 a 100 (abaixo de 30 = radical)">Leal</b></td></tr>${rows.join("")}</table>` +
+  if (part === "culture") return lit;
+  return `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td><td><b title="Lealdade, 0 a 100 (abaixo de 30 = radical)">Leal</b></td></tr>${rows.join("")}</table>` +
     `<small>Peso político: ${CLASSES.map((cl, k) => `${cl} ${pct(weight[k] / total)}`).join(" · ")}` +
     ` · migração no mês <span class="${c.migration < 0 ? "up" : c.migration > 0 ? "down" : ""}">${signed(c.migration)}</span></small>`;
 }

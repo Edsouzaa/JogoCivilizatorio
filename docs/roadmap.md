@@ -59,42 +59,46 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Território ocupado aparece em listras diagonais na cor de quem ocupa (mapa Político).
 
+- Histórico dos gráficos: a cada 30 anos os países na metade de baixo do prestígio, sem jogador, perdem o histórico (o save fica menor).
+- Interface, fase 1 (docs/interface.md): tema escuro de atlas (grafite, dourado fosco, serifa nos títulos), barra superior (bandeira, nome, governo, data/era com barra de progresso, tesouro, prestígio, estabilidade, legitimidade, pontos adm.; nenhum recurso material), barra de camadas do mapa por grupo, menu lateral com 12 categorias e ícones de linha (sem emoji), painel da categoria ao lado do menu (Economia e Gráficos largos), painel contextual à direita para o que foi clicado, barra inferior com pausa, velocidades, data, info do hex e notificações por categoria com contador e lista.
+
 ## Próximos (nesta ordem)
 
-1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
-2. **Mercados**
+1. **Interface, fases seguintes** (docs/interface.md): trocar os emojis que sobraram nos painéis por ícones; Economia com abas (Mercados, Mercadorias em cartões com tendência, Produção/Consumo com barras); Diplomacia com influência e claims; Política com cartões dos grupos; Tecnologia em árvore; Militar operacional (frentes, logística); eventos com moldura de documento e imagem; camadas novas (cultura, religião, língua, alfabetização, infraestrutura); estilo que muda devagar por era; painéis redimensionáveis.
+2. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
+3. **Mercados**
    - Mercado nacional como soma dos metropolitanos.
    - Cada hex compra da cidade mais barata, não só da mais próxima.
    - Centros comerciais e mercado mundial (Vic3 1.9) no lugar do comércio por pactos.
-3. **Infraestrutura**
+4. **Infraestrutura**
    - Ferrovias (gastam carvão e locomotivas).
-4. **Rios**
+5. **Rios**
    - Rios navegáveis largos, ligados a um nó de mar, com nome (votação no multiplayer).
    - Cidades e portos na margem.
    - Disputa de navegação.
-5. **Guerra**
+6. **Guerra**
     - Exploração por unidades terrestres e aéreas.
-6. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
-7. **População**
+7. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
+8. **População**
     - Cultura/língua/religião por POP (hoje é por cidade), grupos culturais, famílias de línguas e religiões, surgimento e divisão de culturas.
-8. **Leis**
-9. **Construção estilo Vic3 (resto)**: setor de construção (capacidade, materiais), propriedade dos edifícios, privatização e nacionalização, investimento estrangeiro.
-10. **Diplomacia**
+9. **Leis**
+10. **Construção estilo Vic3 (resto)**: setor de construção (capacidade, materiais), propriedade dos edifícios, privatização e nacionalização, investimento estrangeiro.
+11. **Diplomacia**
     - Confiança, influência e esferas.
     - Tratados com manutenção em pontos administrativos.
     - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
-11. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
-12. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
-13. **Personagens**
+12. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
+13. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
+14. **Personagens**
     - Ficha, atributos e retrato gerado.
     - Comandantes e generais.
     - Livro de história exportável em PDF.
-14. **Militar completo**
+15. **Militar completo**
     - Categorias de unidade por era e comandantes por domínio.
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
-15. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
-16. **Gráficos (resto)**: comparação entre países, preços, composição cultural ao longo do tempo, modos Cidade/Estado/Mundo.
+16. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
+17. **Gráficos (resto)**: comparação entre países, preços, composição cultural ao longo do tempo, modos Cidade/Estado/Mundo.
 
 ## Fora por enquanto
 
