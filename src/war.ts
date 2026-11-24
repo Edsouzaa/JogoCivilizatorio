@@ -496,3 +496,39 @@ export function makePeace(w: World, e: Economy, a: number, b: number): string | 
 }
 
 for (let t = 0; t < TERRAINS.length; t++) if (MOVE_WEEKS[t] === undefined) throw new Error(`terreno sem custo de movimento: ${TERRAINS[t].name}`);
+
+/**
+ * Frente (estilo HOI4, simplificado): o grupo inteiro recebe ordens de uma vez.
+ * "defend": as divisões se espalham pela fronteira com o inimigo (hexes nossos encostados nele).
+ * "attack": cada divisão vai para o centro de uma cidade do inimigo (as mais perto primeiro, repartidas).
+ */
+export function frontOrder(w: World, e: Economy, country: number, ids: number[], enemy: number, mode: "defend" | "attack"): string | null {
+  const ds = ids.map((id) => e.divisions.find((d) => d.id === id && d.country === country && d.kind === "army")).filter((d): d is Division => !!d);
+  if (!ds.length) return "Selecione exércitos seus";
+  if (!e.countries[enemy - 1] || enemy === country) return "Escolha outro país";
+  const dist = (a: number, b: number) => hexDistance(a % w.W, (a / w.W) | 0, b % w.W, (b / w.W) | 0, w.W);
+  let targets: number[];
+  if (mode === "defend") {
+    targets = [];
+    for (const i of e.owned) {
+      if (w.owner[i] !== country) continue;
+      let touches = false;
+      forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { if (w.owner[j] === enemy) touches = true; });
+      if (touches) targets.push(i);
+    }
+    if (!targets.length) return "Não há fronteira com esse país";
+    // espalha: pega hexes da fronteira em intervalos iguais (ordenados pela posição para a linha ficar contínua)
+    targets.sort((a, b) => (a % w.W) - (b % w.W) || a - b);
+    const step = targets.length / ds.length;
+    targets = ds.map((_, k) => targets[Math.floor(k * step + step / 2) % targets.length]);
+  } else {
+    const cities = e.cities.filter((k) => k.country === enemy).map((k) => k.hex);
+    if (!cities.length) return "Esse país não tem cidades";
+    const center = ds[0].hex;
+    cities.sort((a, b) => dist(center, a) - dist(center, b));
+    const n = Math.max(1, Math.min(cities.length, Math.ceil(ds.length / 2))); // ataca em duplas: cerco é mais rápido com 2
+    targets = ds.map((_, k) => cities[k % n]);
+  }
+  ds.forEach((d, k) => orderMove(w, e, d.id, targets[k]));
+  return null;
+}

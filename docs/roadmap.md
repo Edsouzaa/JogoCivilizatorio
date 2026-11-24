@@ -78,6 +78,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Navios por era (Galés, Caravelas, Navios de linha, Couraçados, Submarinos, Porta-aviões) e aviões (Caças, Caças a jato, Drones), liberados por tecnologia, com força e custo próprios; a IA constrói o melhor. Botões por tipo no hex da cidade.
 
+- Frentes (estilo HOI4, simplificado): com exércitos selecionados (um ou a caixa), "Defender fronteira" espalha as tropas por igual na fronteira com o vizinho escolhido, e "Atacar cidades" (em guerra) manda as tropas em duplas para as cidades inimigas mais perto, para cercá-las.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.

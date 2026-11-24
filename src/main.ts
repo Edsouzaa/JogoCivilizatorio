@@ -545,6 +545,7 @@ document.addEventListener("pointerdown", (e) => {
     return cmd({ t: "law", cat, name });
   }
   if (d.act === "cancel-law" && active) return cmd({ t: "cancelLaw" });
+  if (d.front) { const [k, mode, ids] = d.front.split("|"); return cmd({ t: "front", enemy: +k, mode: mode as "defend" | "attack", ids: ids.split(",").map(Number) }); }
   if (d.recruit) return cmd({ t: "recruit", hex: selected, unit: d.recruit });
   if (d.act === "hire-general" && selectedDiv) return cmd({ t: "general", id: selectedDiv });
   if (d.fleet) return cmd({ t: "fleet", hex: selected, unit: d.fleet });
@@ -934,12 +935,24 @@ function societyHtml(part: "pops" | "culture" = "pops") {
 }
 
 const KIND_NAMES: Record<string, string> = { army: "<i class=i-military></i> Divisões", fleet: "<i class=i-ship></i> Frotas", air: "<i class=i-plane></i> Esquadrões", settler: "<i class=i-tent></i> Colonos" };
+/** Ordens de frente para os exércitos selecionados: contra vizinhos e inimigos. */
+function frontHtml(ids: number[]) {
+  const armies = ids.filter((id) => eco.divisions.some((d) => d.id === id && d.kind === "army" && d.country === active));
+  if (!armies.length || !active) return "";
+  const foes = new Set<number>(eco.contacts?.[active - 1] ?? []);
+  for (let k = 1; k <= eco.countries.length; k++) if (atWar(eco, active, k)) foes.add(k);
+  if (!foes.size) return "";
+  return `<div style="margin-top:6px"><small>Frente (${armies.length} exército${armies.length > 1 ? "s" : ""}):</small>` + [...foes].map((k) =>
+    `<br>${world.countries[k - 1].name}${atWar(eco, active, k) ? ' <span class="bad">guerra</span>' : ""} <button data-front="${k}|defend|${armies.join(",")}" title="Espalha as tropas pela fronteira">Defender fronteira</button>` +
+    (atWar(eco, active, k) ? ` <button data-front="${k}|attack|${armies.join(",")}" title="Marcham para as cidades deles">Atacar cidades</button>` : "")).join("") + "</div>";
+}
+
 function groupHtml() {
   const ds = eco.divisions.filter((d) => group.includes(d.id));
   const kinds = Object.keys(KIND_NAMES).filter((k) => ds.some((d) => d.kind === k));
   return `<div class="unit"><b>${ds.length} unidades selecionadas</b> <small>(botão direito: todas vão)</small><table>` +
     kinds.map((k) => { const of = ds.filter((d) => d.kind === k); return `<tr><td><button data-group-kind="${k}">${KIND_NAMES[k]}</button></td><td>${of.length}</td><td>${fmt(of.reduce((s, d) => s + d.strength, 0))} homens</td></tr>`; }).join("") +
-    `</table></div>`;
+    `</table>` + frontHtml(group) + `</div>`;
 }
 
 function divisionHtml() {
@@ -966,7 +979,7 @@ function divisionHtml() {
   return `<div class="unit"><b><i class=i-military></i> ${u.name} ${d.id}</b> <small>${u.cat} · ataque ${u.atk} · defesa ${u.def}</small> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
     `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button>` +
     (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b>Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`
-      : d.country === active ? `<br><button data-act="hire-general">Contratar general (${CHAR.generalCost})</button>` : "") + `</div>`;
+      : d.country === active ? `<br><button data-act="hire-general">Contratar general (${CHAR.generalCost})</button>` : "") + frontHtml([d.id]) + `</div>`;
 }
 
 function pactsHtml() {

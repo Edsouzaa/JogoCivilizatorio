@@ -3,7 +3,7 @@
 import {
   build, foundCity, trainSettlers, transferSize, urbanize, buildRoad, buildHarbor, proposePact, cancelPact, type Economy,
 } from "./economy.ts";
-import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disband } from "./war.ts";
+import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disband, frontOrder } from "./war.ts";
 import { proposeLaw, cancelLaw } from "./politics.ts";
 import { validFlag, type Flag } from "./flags.ts";
 import { EVENT_LIST, resolve } from "./choices.ts";
@@ -31,6 +31,7 @@ export type Cmd =
   | { t: "cancelLaw" }
   | { t: "recruit"; hex: number; unit?: string }
   | { t: "general"; id: number } // contratar general para a divisão
+  | { t: "front"; ids: number[]; enemy: number; mode: "defend" | "attack" } // ordem de frente para um grupo
   | { t: "fleet"; hex: number; unit?: string }
   | { t: "air"; hex: number; unit?: string }
   | { t: "move"; id: number; target: number }
@@ -109,6 +110,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "law": return proposeLaw(co.politics, c.cat, c.name, co.research.era);
     case "cancelLaw": cancelLaw(co.politics); return null;
     case "recruit": return recruit(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
+    case "front": return Array.isArray(c.ids) && c.ids.length <= 500 && c.ids.every((x) => isInt(x)) && isInt(c.enemy, 1) && (c.mode === "defend" || c.mode === "attack") ? frontOrder(w, e, country, c.ids, c.enemy, c.mode) : "Ordem inválida";
     case "general": return own(c.id) ? hireGeneral(w, e, c.id) : "Unidade não é sua";
     case "fleet": return buildFleet(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
     case "air": return buildAir(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);

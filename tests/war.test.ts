@@ -172,3 +172,26 @@ console.log("war stats ok");
   assert.match(applyCommand(w7, e7, 1, { t: "general", id: cav.id })!, /já tem/);
 }
 console.log("units ok");
+
+// frente: defender espalha pela fronteira; atacar manda às cidades inimigas
+{
+  const { frontOrder } = await import("../src/war.ts");
+  const { refresh } = await import("../src/economy.ts");
+  const w8 = generateWorld(200, 100, 6, 2), e8 = createEconomy(w8);
+  const a = e8.cities.find((k) => k.country === 1)!, b = e8.cities.find((k) => k.country === 2)!;
+  e8.countries[0].manpower = 1e4; e8.countries[0].treasury = 1e4;
+  for (let k = 0; k < 3; k++) recruit(w8, e8, 1, a.hex);
+  const ids = e8.divisions.filter((d) => d.country === 1 && d.kind === "army").map((d) => d.id);
+  assert.match(frontOrder(w8, e8, 1, ids, 2, "defend")!, /fronteira/, "sem fronteira ainda");
+  // cria a fronteira: um hex nosso colado no território deles
+  let border = -1;
+  for (const i of e8.owned) if (w8.owner[i] === 2) forNeighbors(i % 200, (i / 200) | 0, 200, 100, (j) => { if (border < 0 && !w8.owner[j] && isLand(w8.terrain[j])) border = j; });
+  w8.owner[border] = 1; refresh(w8, e8);
+  assert.equal(frontOrder(w8, e8, 1, ids, 2, "defend"), null);
+  assert.ok(e8.divisions.filter((d) => ids.includes(d.id)).every((d) => d.target === border || d.hex === border), "todos para o único hex de fronteira");
+  declareWar(e8, 1, 2);
+  assert.equal(frontOrder(w8, e8, 1, ids, 2, "attack"), null);
+  assert.ok(e8.divisions.filter((d) => ids.includes(d.id)).every((d) => d.target === b.hex || e8.cities.some((k) => k.country === 2 && k.hex === d.target)));
+  assert.match(frontOrder(w8, e8, 1, [999], 2, "attack")!, /exércitos seus/);
+}
+console.log("front ok");
