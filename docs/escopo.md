@@ -143,7 +143,9 @@ Todo país que não é o do jogador decide uma vez por mês:
 - **Pausa:** a sala começa pausada. Qualquer jogador pausa; quem pausou despausa, ou os outros despausam por maioria (votos no topo). Velocidade: qualquer jogador muda.
 - **Segurança:** tudo que vem do jogador é validado no servidor (formato, tamanho das mensagens, só comanda o próprio país, nome sem HTML).
 - **Salas salvas no servidor:** cada sala é gravada em server/saves/CODIGO.save a cada 5 minutos de jogo rodando, quando o último jogador sai e quando o servidor é fechado (Ctrl+C). Entrar com o código de uma sala salva reabre ela: volta pausada e com os países na IA até cada jogador assumir o seu de novo. Pasta e intervalo mudam com as variáveis SAVE_DIR e SAVE_EVERY_MS.
-- A fazer: senha de sala, chat, escolher quem pode mudar a velocidade.
+- **Senha da sala (opcional):** quem cria pode pôr uma senha no painel 🌐; quem entra precisa dela. O servidor guarda só sal + hash scrypt (também no arquivo da sala salva, CODIGO.json) e compara em tempo constante; 5 senhas erradas derrubam a conexão.
+- **Chat:** caixa no canto de baixo quando se está numa sala; Enter envia. Mensagens sem HTML, até 200 caracteres e no máximo uma a cada meio segundo por jogador; aparecem como texto puro. Enquanto se digita em qualquer campo, os atalhos do jogo ficam desligados.
+- A fazer: escolher quem pode mudar a velocidade, expulsar jogador.
 
 ## O que fica fora da primeira versão jogável
 

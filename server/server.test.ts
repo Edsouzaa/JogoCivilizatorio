@@ -101,6 +101,32 @@ d.ws.send(JSON.stringify({ t: "join", code: "../../package" }));
 await waitFor(() => last(d, "err"));
 assert.match(last(d, "err").msg, /não encontrada/);
 d.ws.close();
+// sala com senha: sem senha e com senha errada não entra; com a certa entra
+const e1 = client(), e2 = client();
+await Promise.all([open(e1), open(e2)]);
+e1.ws.send(JSON.stringify({ t: "create", name: "Eva", w: 60, h: 40, password: "segredo" }));
+await waitFor(() => last(e1, "welcome") && e1.game);
+const code2 = last(e1, "welcome").code;
+e2.ws.send(JSON.stringify({ t: "join", code: code2, name: "Fábio" }));
+await waitFor(() => last(e2, "err"));
+assert.match(last(e2, "err").msg, /tem senha/);
+e2.msgs.length = 0;
+e2.ws.send(JSON.stringify({ t: "join", code: code2, name: "Fábio", password: "errada" }));
+await waitFor(() => last(e2, "err"));
+assert.match(last(e2, "err").msg, /Senha errada/);
+e2.ws.send(JSON.stringify({ t: "join", code: code2, name: "Fábio", password: "segredo" }));
+await waitFor(() => last(e2, "welcome"));
+
+// chat: chega para todos, sem HTML, cortado em 200 caracteres; mensagem colada na anterior é ignorada
+e1.ws.send(JSON.stringify({ t: "chat", text: "<script>oi</script>" + "x".repeat(300) }));
+e1.ws.send(JSON.stringify({ t: "chat", text: "spam" }));
+await waitFor(() => last(e2, "chat"));
+const msg = last(e2, "chat");
+assert.equal(msg.from, "Eva");
+assert.ok(!/[<>]/.test(msg.text) && msg.text.length === 200 && msg.text.startsWith("scriptoi/script"));
+await new Promise((r) => setTimeout(r, 300));
+assert.equal(e2.msgs.filter((m) => m.t === "chat").length, 1, "spam deveria ser ignorado");
+e1.ws.close(); e2.ws.close();
 wss.close();
 rmSync(saveDir, { recursive: true, force: true });
 console.log(`server ok (sala ${code}, semana ${b.game.e.week})`);

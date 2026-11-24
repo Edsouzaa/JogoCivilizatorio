@@ -222,14 +222,37 @@ mpBox.id = "mpbox";
 mpBox.style.cssText = "display:none;position:fixed;top:120px;left:8px;background:#000c;padding:10px;border-radius:6px;width:300px;line-height:1.8";
 mpBox.innerHTML = `<b>🌐 Multiplayer</b> <small>(servidor: npm run server)</small><br>
   Servidor <input id="mp-url" style="width:200px"><br>Seu nome <input id="mp-name" maxlength="24" style="width:120px"><br>
+  Senha <input id="mp-pass" type="password" maxlength="64" style="width:120px" placeholder="opcional"><br>
   <button id="mp-create">Criar sala (mapa deste tamanho)</button><br>
   Código <input id="mp-code" maxlength="4" style="width:60px;text-transform:uppercase"> <button id="mp-join">Entrar</button>`;
 document.body.appendChild(mpBox);
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
 $("mp-url").value = params.get("server") ?? `ws://${location.hostname || "localhost"}:8787`;
 $("mp-name").value = params.get("name") ?? "";
-$("mp-create").onclick = () => connect({ t: "create", name: $("mp-name").value, w: W, h: H });
-$("mp-join").onclick = () => connect({ t: "join", code: $("mp-code").value.toUpperCase(), name: $("mp-name").value });
+$("mp-create").onclick = () => connect({ t: "create", name: $("mp-name").value, w: W, h: H, password: $("mp-pass").value });
+$("mp-join").onclick = () => connect({ t: "join", code: $("mp-code").value.toUpperCase(), name: $("mp-name").value, password: $("mp-pass").value });
+
+// chat da sala: mensagens viram texto (textContent), nunca HTML
+const chatBox = document.createElement("div");
+chatBox.style.cssText = "display:none;position:fixed;bottom:8px;left:8px;width:320px;background:#000b;border-radius:6px;padding:6px;font-size:12px";
+chatBox.innerHTML = `<div id="chat-log" style="max-height:140px;overflow-y:auto;margin-bottom:4px"></div><input id="chat-in" maxlength="200" placeholder="Mensagem para a sala (Enter)" style="width:100%;box-sizing:border-box">`;
+document.body.appendChild(chatBox);
+const chatLog = document.getElementById("chat-log")!;
+$("chat-in").addEventListener("keydown", (ev) => {
+  if (ev.key !== "Enter" || !net || !$("chat-in").value.trim()) return;
+  net.send(JSON.stringify({ t: "chat", text: $("chat-in").value }));
+  $("chat-in").value = "";
+});
+function addChat(m: { from: string; country: number; week: number; text: string }) {
+  const line = document.createElement("div");
+  const who = document.createElement("b");
+  who.textContent = m.from + (m.country ? ` (${world.countries[m.country - 1]?.name ?? "?"})` : "") + ": ";
+  if (m.country) who.style.color = `rgb(${world.countries[m.country - 1]?.color ?? "255,255,255"})`;
+  line.append(who, document.createTextNode(m.text));
+  chatLog.appendChild(line);
+  while (chatLog.childElementCount > 50) chatLog.firstChild!.remove();
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
 
 function applyStep(m: { week: number; cmds: [number, Cmd][] }) {
   for (const [country, c] of m.cmds) applyCommand(world, eco, country, c);
@@ -262,16 +285,17 @@ function connect(hello: object) {
         location.search = new URLSearchParams({ w: m.w, h: m.h, server: $("mp-url").value, room: m.code, name: $("mp-name").value }).toString();
         return;
       }
-      myId = m.id; mpBox.style.display = "none"; notify(`Na sala ${m.code}`);
+      myId = m.id; mpBox.style.display = "none"; chatBox.style.display = "block"; notify(`Na sala ${m.code}`);
     } else if (m.t === "step") { if (synced) applyStep(m); else pendingSteps.push(m); }
     else if (m.t === "check" && synced && checksum(eco) !== m.sum) { synced = false; notify("Fora de sincronia: recebendo a partida de novo..."); ws.send(JSON.stringify({ t: "resync" })); }
     else if (m.t === "status") {
       mp = m; speed = m.paused ? 0 : m.speed; lastSpeed = m.speed;
       active = m.players.find((p: { id: number }) => p.id === myId)?.country ?? 0;
     } else if (m.t === "err") notify(`⚠ ${m.msg}`);
+    else if (m.t === "chat") addChat(m);
     updateUI();
   };
-  ws.onclose = () => { if (net === ws) { net = null; mp = null; notify("Desconectado do servidor (a partida continua só aqui)"); } };
+  ws.onclose = () => { if (net === ws) { net = null; mp = null; chatBox.style.display = "none"; notify("Desconectado do servidor (a partida continua só aqui)"); } };
 }
 if (params.get("server") && params.get("room")) setTimeout(() => connect({ t: "join", code: params.get("room"), name: params.get("name") ?? "" }), 0);
 
@@ -280,6 +304,7 @@ function doBuild(b = buildingsFor(world.resource[selected], !!eco.urban[selected
   if (selected >= 0 && b !== undefined) cmd({ t: "build", i: selected, b });
 }
 window.addEventListener("keydown", (e) => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); doSave(); return; }
   const n = Number(e.key);
   if (n >= 1 && n <= MAP_MODES.length) setMode(n - 1);

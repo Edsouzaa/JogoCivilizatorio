@@ -13,6 +13,7 @@ import { mkdir, writeFile, rename, readFile } from "node:fs/promises";
 import { join as joinPath, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync as fs_exists } from "node:fs";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { ERA_WEEKS_PER_SECOND } from "../src/tech.ts";
 
 export const MP = {
@@ -21,16 +22,26 @@ export const MP = {
   saveEveryMs: Number(process.env.SAVE_EVERY_MS) || 5 * 60 * 1000, // de jogo rodando
 };
 const CODE = /^[A-Z]{4}$/; // o código vira nome de arquivo: só 4 letras, nada de caminho
+export const CHAT = { maxLen: 200, minGapMs: 500 };
+const MAX_PASS_TRIES = 5;
 
-type Player = { ws: WebSocket; id: number; name: string; country: number; syncing: boolean; buffer: string[] };
+/** Senha nunca fica em texto: só sal + hash scrypt, comparado em tempo constante. */
+type Pass = { salt: string; hash: string };
+const hashPass = (pw: string): Pass => { const salt = randomBytes(16); return { salt: salt.toString("hex"), hash: scryptSync(pw, salt, 32).toString("hex") }; };
+const checkPass = (pw: string, p: Pass) => timingSafeEqual(scryptSync(pw, Buffer.from(p.salt, "hex"), 32), Buffer.from(p.hash, "hex"));
+const cleanText = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[<>&"'\u0000-\u001f]/g, "").trim().slice(0, max) : "");
+
+type Player = { ws: WebSocket; id: number; name: string; country: number; syncing: boolean; buffer: string[]; lastChat: number };
 export type Room = {
   code: string; world: World; eco: Economy; players: Player[];
   speed: number; paused: { by: number } | null; votes: Set<number>;
   pending: [number, Cmd, Player][]; acc: number;
   runningMs: number; // tempo rodando desde o último save em disco
+  pass: Pass | null; // senha da sala (opcional)
 };
 
 const roomFile = (code: string) => joinPath(MP.saveDir, `${code}.save`);
+const metaFile = (code: string) => joinPath(MP.saveDir, `${code}.json`); // senha (hash) da sala salva
 
 /** Grava a sala em disco (arquivo temporário e depois renomeia: um desligamento no meio não corrompe o save). */
 export async function saveRoom(r: Room) {
@@ -40,6 +51,7 @@ export async function saveRoom(r: Room) {
   const file = roomFile(r.code), tmp = file + ".tmp";
   await writeFile(tmp, new Uint8Array(await blob.arrayBuffer()));
   await rename(tmp, file);
+  await writeFile(metaFile(r.code), JSON.stringify({ pass: r.pass }));
 }
 
 /** Reabre uma sala salva: volta pausada e com todos os países na IA até os jogadores assumirem de novo. */
@@ -49,7 +61,9 @@ async function openSavedRoom(code: string): Promise<Room | null> {
   try { data = await readFile(roomFile(code)); } catch { return null; }
   const d = await loadGame(new Blob([new Uint8Array(data)]));
   d.eco.humans = [];
-  const r: Room = { code, world: d.world, eco: d.eco, players: [], speed: d.ui.speed || 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0 };
+  let pass: Pass | null = null;
+  try { const meta = JSON.parse(await readFile(metaFile(code), "utf8")); if (meta?.pass?.salt && meta?.pass?.hash) pass = meta.pass; } catch { /* sala sem senha */ }
+  const r: Room = { code, world: d.world, eco: d.eco, players: [], speed: d.ui.speed || 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0, pass };
   rooms.set(code, r);
   return r;
 }
@@ -88,7 +102,7 @@ async function sync(r: Room, p: Player) {
 }
 
 function join(r: Room, ws: WebSocket, name: string) {
-  const p: Player = { ws, id: nextId++, name, country: 0, syncing: false, buffer: [] };
+  const p: Player = { ws, id: nextId++, name, country: 0, syncing: false, buffer: [], lastChat: 0 };
   r.players.push(p);
   send(p, { t: "welcome", code: r.code, id: p.id, w: r.world.W, h: r.world.H });
   sync(r, p);
@@ -107,10 +121,10 @@ function leave(r: Room, p: Player) {
   } else status(r);
 }
 
-const cleanName = (v: unknown) => (typeof v === "string" ? v.replace(/[<>&"']/g, "").trim().slice(0, 24) : "") || "Jogador";
+const cleanName = (v: unknown) => cleanText(v, 24) || "Jogador";
 const intIn = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
 
-export async function handle(ws: WebSocket, raw: string, state: { room?: Room; player?: Player }) {
+export async function handle(ws: WebSocket, raw: string, state: { room?: Room; player?: Player; tries?: number }) {
   let m: any;
   try { m = JSON.parse(raw); } catch { return; }
   if (!m || typeof m !== "object") return;
@@ -119,7 +133,8 @@ export async function handle(ws: WebSocket, raw: string, state: { room?: Room; p
     const W = intIn(m.w, 50, 1600) ? m.w : 1600, H = intIn(m.h, 30, 640) ? m.h : 640;
     const seed = intIn(m.seed, 0, 2 ** 31) ? m.seed : (Math.random() * 2 ** 31) | 0;
     const world = generateWorld(W, H, seed);
-    const room: Room = { code: code(), world, eco: createEconomy(world), players: [], speed: 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0 };
+    const pw = typeof m.password === "string" ? m.password.slice(0, 64) : "";
+    const room: Room = { code: code(), world, eco: createEconomy(world), players: [], speed: 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0, pass: pw ? hashPass(pw) : null };
     rooms.set(room.code, room);
     state.room = room; state.player = join(room, ws, cleanName(m.name));
     room.paused = { by: state.player.id }; // começa pausado por quem criou
@@ -136,6 +151,13 @@ export async function handle(ws: WebSocket, raw: string, state: { room?: Room; p
     }
     if (!room) return ws.send(JSON.stringify({ t: "err", msg: "Sala não encontrada" }));
     if (room.players.length >= MP.maxPlayers) return ws.send(JSON.stringify({ t: "err", msg: `Sala cheia (${MP.maxPlayers} jogadores)` }));
+    if (room.pass && !checkPass(typeof m.password === "string" ? m.password.slice(0, 64) : "", room.pass)) {
+      state.tries = (state.tries ?? 0) + 1;
+      ws.send(JSON.stringify({ t: "err", msg: room.pass && typeof m.password === "string" && m.password ? "Senha errada" : "Essa sala tem senha" }));
+      if (state.tries >= MAX_PASS_TRIES) ws.close(); // muitas tentativas: derruba a conexão
+      if (!room.players.length) rooms.delete(room.code); // reaberta só para conferir: libera
+      return;
+    }
     state.room = room; state.player = join(room, ws, cleanName(m.name));
   } else if (r && p) {
     if (m.t === "claim") {
@@ -160,6 +182,12 @@ export async function handle(ws: WebSocket, raw: string, state: { room?: Room; p
     } else if (m.t === "speed" && intIn(m.i, 1, MP.speeds.length - 1)) {
       r.speed = m.i; status(r);
     } else if (m.t === "resync") sync(r, p);
+    else if (m.t === "chat") {
+      const text = cleanText(m.text, CHAT.maxLen), now = Date.now();
+      if (!text || now - p.lastChat < CHAT.minGapMs) return; // vazio ou rápido demais: ignora
+      p.lastChat = now;
+      broadcast(r, { t: "chat", from: p.name, country: p.country, week: r.eco.week, text });
+    }
   }
 }
 
