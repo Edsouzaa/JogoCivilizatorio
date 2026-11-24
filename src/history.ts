@@ -18,10 +18,13 @@ export const SERIES: Record<string, (c: Country, k: number, e?: Economy) => numb
   "Prestígio": (_c, k, e) => (e ? prestige(e, k) : 0),
 };
 const KEEP = 600; // 50 anos de meses (o save leva tudo isto)
+/** A cada tantos anos, apaga a história dos países menos importantes (metade de baixo do prestígio, sem jogador). */
+export const PRUNE = { years: 30, keepShare: 0.5 };
 
 /** Uma vez por mês: guarda um ponto de cada série. */
 export function recordHistory(e: Economy) {
   if (e.week % 4 !== 0) return;
+  if (e.week > 0 && e.week % (52 * PRUNE.years) === 0) pruneHistory(e);
   e.countries.forEach((c, i) => {
     const h = (c.history ??= {});
     for (const [name, f] of Object.entries(SERIES)) {
@@ -29,4 +32,10 @@ export function recordHistory(e: Economy) {
       if (h[name].length > KEEP) h[name].shift();
     }
   });
+}
+
+/** Libera espaço no save: países de baixo no ranking de prestígio e sem jogador perdem o histórico (recomeça do zero). */
+export function pruneHistory(e: Economy) {
+  const ranked = e.countries.map((_, i) => i + 1).sort((a, b) => prestige(e, b) - prestige(e, a));
+  for (const k of ranked.slice(Math.ceil(ranked.length * PRUNE.keepShare))) if (!e.humans.includes(k)) delete e.countries[k - 1].history;
 }

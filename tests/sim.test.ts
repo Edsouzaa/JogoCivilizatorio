@@ -65,3 +65,18 @@ console.log("sim ok");
   assert.equal(h["PIB"].length, 3);
 }
 console.log("history ok");
+
+// a cada 30 anos o histórico dos países de baixo no prestígio (sem jogador) é apagado
+{
+  const { pruneHistory } = await import("../src/history.ts");
+  const { prestige } = await import("../src/diplomacy.ts");
+  const m = make();
+  for (let k = 0; k < 8; k++) advanceWeek(m.w, m.e);
+  const worst = m.e.countries.map((_, i) => i + 1).sort((a, b) => prestige(m.e, a) - prestige(m.e, b))[0];
+  m.e.humans = [worst];
+  pruneHistory(m.e);
+  assert.ok(m.e.countries[worst - 1].history, "país de jogador nunca perde o histórico");
+  const kept = m.e.countries.filter((c) => c.history).length;
+  assert.ok(kept < m.e.countries.length && kept >= Math.ceil(m.e.countries.length / 2));
+}
+console.log("prune ok");
