@@ -91,6 +91,13 @@ Todo país que não é o do jogador decide uma vez por mês:
 - **Exército:** uma divisão por cidade. Declara guerra raramente (1% ao mês) a vizinho a até 15 hexes com menos da metade do exército; em guerra manda as divisões paradas para a cidade inimiga mais perto; faz a paz quando a pontuação passa de 30 pontos para qualquer lado ou depois de 2 anos.
 - Hoje só o país ativo é humano; com multiplayer, todos os países com jogador ficam fora da IA.
 
+## Salvar partida (src/save.ts)
+
+- **💾** (ou **Ctrl+S**) baixa um arquivo  com a partida inteira: mundo, economia, cidades, unidades, guerras, pesquisa, política, o país controlado, a câmera e o que cada país já explorou. **📂** carrega um arquivo salvo.
+- O arquivo é JSON compactado com gzip (cerca de 1,3 MB no mapa de 1 milhão de hexes; salvar leva ~1,5 s e carregar ~0,3 s).
+- Ao carregar, o jogo confere se o arquivo é um save, a versão do formato e os tamanhos; se o save for de outro tamanho de mapa, avisa qual endereço abrir ().
+- A fazer: salvamento automático e lista de saves dentro do jogo.
+
 ## O que fica fora da primeira versão jogável
 
 A primeira versão jogável é: economia + cidades + política básica, em uma ou duas eras, single-player. O resto entra depois que isso estiver divertido.

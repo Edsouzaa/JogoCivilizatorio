@@ -11,6 +11,38 @@ import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, st
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo } from "./fog.ts";
 import { runAI } from "./ai.ts";
+import { saveGame, loadGame } from "./save.ts";
+
+let hudMsg = "", hudMsgUntil = 0; // aviso rápido no topo (salvou, erro ao carregar...)
+const notify = (m: string) => { hudMsg = m; hudMsgUntil = performance.now() + 5000; };
+
+async function doSave() {
+  notify("Salvando...");
+  const blob = await saveGame({ world, eco, ui: { active, cam: { ...cam }, mode, speed, explored: [...explored] } });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `jogo-civilizatorio-${dateLabel(eco.week).replace(/[^0-9a-zA-Z]+/g, "-")}.save`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  notify(`Partida salva (${(blob.size / 1024 / 1024).toFixed(1)} MB)`);
+}
+
+async function doLoad(file: File) {
+  try {
+    const d = await loadGame(file);
+    if (d.world.W !== W || d.world.H !== H) throw new Error(`Save de mapa ${d.world.W}×${d.world.H}: abra o jogo com ?w=${d.world.W}&h=${d.world.H}`);
+    world = d.world; eco = d.eco; active = d.ui.active; mode = d.ui.mode; speed = d.ui.speed;
+    Object.assign(cam, d.ui.cam);
+    explored.clear(); for (const [k, v] of d.ui.explored) explored.set(k, v);
+    selected = -1; selectedDiv = null; message = "";
+    recolor();
+    notify(`Partida carregada: ${dateLabel(eco.week)}`);
+  } catch (err) {
+    notify(`⚠ ${(err as Error).message}`);
+  }
+}
+const fileInput = Object.assign(document.createElement("input"), { type: "file", accept: ".save" });
+fileInput.addEventListener("change", () => { if (fileInput.files?.[0]) doLoad(fileInput.files[0]); fileInput.value = ""; });
 import { snowAt } from "./world.ts";
 
 // 1600 × 640 = 1.024.000 hexágonos ≈ Terra com 500 km² por hex. Mude por ?w=&h= na URL para testar.
@@ -150,6 +182,7 @@ function doBuild(b = buildingsFor(world.resource[selected], !!eco.urban[selected
   if (selected >= 0 && b !== undefined) act(build(world, eco, selected, b));
 }
 window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); doSave(); return; }
   const n = Number(e.key);
   if (n >= 1 && n <= MAP_MODES.length) setMode(n - 1);
   if (e.key === "r" || e.key === "R") newWorld((Math.random() * 2 ** 31) | 0);
@@ -180,6 +213,8 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "disband" && selectedDiv) { disband(world, eco, selectedDiv); selectedDiv = null; return updateUI(); }
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
+  if (d.act === "save") doSave();
+  if (d.act === "load") fileInput.click();
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
   if (d.speed) speed = Number(d.speed);
@@ -205,10 +240,10 @@ function updateUI() {
   const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";
   hud.innerHTML =
     MAP_MODES.map((n, k) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}">${k + 1} ${n}</button>`).join(" ") +
-    ` <button data-act="new" title="Gera um mapa novo">R Novo</button> <span title="${help}" style="cursor:help">❓</span>` +
+    ` <button data-act="new" title="Gera um mapa novo">R Novo</button> <button data-act="save" title="Salvar partida em arquivo (Ctrl+S)">💾</button> <button data-act="load" title="Carregar partida de arquivo">📂</button> <span title="${help}" style="cursor:help">❓</span>` +
     `<br><b>${timeLabel()}</b> · ${ERAS[worldEra()]} <button data-act="pause">${speed ? "⏸" : "▶"}</button> ` +
     SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${SPEED_NAMES[k + 1]}: ${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${s}×</button>`).join(" ") +
-    `<br><small>${info}</small>` +
+    `<br><small>${info}</small>` + (performance.now() < hudMsgUntil ? `<br><b>${hudMsg}</b>` : "") +
     `<br><small style="opacity:.6">${fps.toFixed(0)} FPS · semana ${tickMs.toFixed(1)} ms · ${eco.cities.length} cidades · seed ${world.seed}</small>`;
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = null; // destruída
   const show = selected >= 0 || selectedDiv;
