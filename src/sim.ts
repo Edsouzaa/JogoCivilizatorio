@@ -1,14 +1,16 @@
 // Uma semana de jogo, igual em todo lugar: single-player, servidor e cada navegador do multiplayer.
 // Tem que ser determinística: nada de Math.random, relógio ou estado fora de `w`/`e`.
-import { tick, type Economy } from "./economy.ts";
+import { tick, refresh, type Economy } from "./economy.ts";
 import { stepWar } from "./war.ts";
-import { runAI } from "./ai.ts";
+import { runAI, clearFounded } from "./ai.ts";
 import type { World } from "./world.ts";
 
 export function advanceWeek(w: World, e: Economy) {
   tick(w, e);
   stepWar(w, e);
-  if (e.week % 4 === 0) for (let k = 1; k <= e.countries.length; k++) if (!e.humans.includes(k)) runAI(w, e, k);
+  // cada país pensa uma vez por mês, em semanas alternadas: com centenas de tribos o custo não cai todo numa semana só
+  for (let k = 1; k <= e.countries.length; k++) if ((k + e.week) % 4 === 0 && !e.humans.includes(k)) runAI(w, e, k);
+  if (clearFounded()) refresh(w, e);
 }
 
 /** Resumo numérico da partida para conferir se dois computadores estão iguais. */

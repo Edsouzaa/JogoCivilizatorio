@@ -49,7 +49,7 @@ export const START_RADIUS = 1; // território inicial em volta da capital; cresc
 
 export type World = {
   W: number; H: number; seed: number;
-  terrain: Uint8Array; resource: Uint8Array; owner: Uint8Array; pop: Float32Array; climate: Uint8Array;
+  terrain: Uint8Array; resource: Uint8Array; owner: Uint16Array; pop: Float32Array; climate: Uint8Array;
   river: Uint8Array;     // bits 0–5: rio na borda k do hex (ver `across`)
   navigable: Uint8Array; // bits 0–5: trecho navegável (futuro: navios)
   seaZone: Uint16Array;  // zona marítima do hex de oceano (1..n); 0 = terra/gelo
@@ -100,7 +100,7 @@ function percentile(v: Float32Array, frac: number) {
   return 0;
 }
 
-export function generateWorld(W: number, H: number, seed: number, nCountries = 20, landFrac = 0.29): World {
+export function generateWorld(W: number, H: number, seed: number, nCountries?: number, landFrac = 0.29): World {
   const N = W * H, rand = mulberry32(seed);
   const elev = new Float32Array(N), moist = new Float32Array(N), hot = new Float32Array(N);
   const deposit = new Float32Array(N), kind = new Float32Array(N);
@@ -153,12 +153,13 @@ export function generateWorld(W: number, H: number, seed: number, nCountries = 2
   }
 
   // Países: uma capital em terra fértil, com território de raio START_RADIUS. O resto do mundo começa livre.
-  const owner = new Uint8Array(N), countries: World["countries"] = [];
+  const owner = new Uint16Array(N), countries: World["countries"] = [];
   const w: World = { W, H, seed, terrain, resource, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
   generateSeaZones(w);
   generateRivers(w, elev, hills, rand);
   for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água
-  for (let tries = 0; countries.length < nCountries && tries < 200000; tries++) {
+  const target = Math.min(nCountries ?? Math.max(4, Math.round(landCount / 1000)), 65535); // 1 tribo a cada 1000 hexes de terra
+  for (let tries = 0; countries.length < target && tries < 2000000; tries++) {
     const i = (rand() * N) | 0;
     if (!isLand(terrain[i]) || TERRAINS[terrain[i]].fertility < 0.5 || owner[i]) continue;
     const area = hexesInRadius(i, START_RADIUS + 4, W, H);
@@ -190,7 +191,7 @@ export const URBAN_COLOR = [190, 180, 170];
  * Cor RGBA de cada hex para o modo de mapa escolhido; `urban[i]` = 1 marca hex de cidade; `occupier[i]` = país que ocupa.
  * Trocar de modo = recalcular isto e subir a textura.
  */
-export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint8Array, out = new Uint8Array(w.W * w.H * 4)) {
+export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4)) {
   const resColors = RESOURCES.map((_, k) => [((k * 97) % 200) + 55, ((k * 57) % 200) + 55, ((k * 151) % 200) + 55]);
   for (let i = 0; i < w.W * w.H; i++) {
     const t = w.terrain[i];

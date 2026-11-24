@@ -41,18 +41,23 @@ export function bestSite(w: World, e: Economy, country: number) {
   for (const c of e.cities) {
     if (c.country !== country) continue;
     for (const i of hexesInRadius(c.hex, RULES.settlerSupplyRange, w.W, w.H)) {
+      const s = siteScore(w, i);
+      if (s <= bestS) continue; // nota primeiro: as checagens abaixo percorrem todas as cidades
       if (e.cities.some((k) => dist(w, k.hex, i) < RULES.minCityDistance)) continue;
       if (e.divisions.some((d) => d.kind === "settler" && d.target === i)) continue; // outro grupo já vai pra lá
-      const s = siteScore(w, i);
-      if (s > bestS) { bestS = s; best = i; }
+      bestS = s; best = i;
     }
   }
   return best;
 }
 
+/** Alguma IA fundou cidade nesta rodada: sim.ts recalcula os mercados uma vez no fim. */
+export let founded = false;
+export const clearFounded = () => { const f = founded; founded = false; return f; };
+
 function expand(w: World, e: Economy, country: number, era: number) {
   for (const d of e.divisions.filter((x): x is Division => x.kind === "settler" && x.country === country)) {
-    if (d.target === null && foundCity(w, e, d.id) === null) continue; // chegou (ou já estava num bom lugar)
+    if (d.target === null && foundCity(w, e, d.id, true) === null) { founded = true; continue; } // chegou (ou já estava num bom lugar)
     if (d.target !== null || settlerDistance(w, e, d) > RULES.settlerSupplyRange) continue;
     const site = bestSite(w, e, country);
     if (site >= 0) orderMove(w, e, d.id, site);
