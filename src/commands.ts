@@ -6,6 +6,7 @@ import {
 import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disband } from "./war.ts";
 import { proposeLaw, cancelLaw } from "./politics.ts";
 import { validFlag, type Flag } from "./flags.ts";
+import { EVENT_LIST, resolve } from "./choices.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
 import { available } from "./tech.ts";
@@ -20,6 +21,7 @@ export type Cmd =
   | { t: "road"; city: number }
   | { t: "harbor"; city: number }
   | { t: "acceptCulture"; culture: number; off?: boolean }
+  | { t: "choose"; option: number } // resposta ao evento pendente
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
@@ -72,6 +74,13 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       return err;
     }
     case "settlers": return trainSettlers(w, e, country);
+    case "choose": {
+      const ev = e.choices?.[country];
+      if (!ev) return "Nenhum evento esperando";
+      if (!isInt(c.option) || c.option >= EVENT_LIST[ev.id].options.length) return "Opção inválida";
+      resolve(w, e, country, ev.id, c.option);
+      return null;
+    }
     case "acceptCulture": {
       if (!isInt(c.culture, 1) || c.culture === co.primaryCulture) return "Cultura inválida";
       if (c.off) { co.acceptedCultures = (co.acceptedCultures ?? []).filter((x) => x !== c.culture); return null; }

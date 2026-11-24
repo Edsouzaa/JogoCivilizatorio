@@ -9,6 +9,7 @@ import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerCl
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
 import { countryMix, cultureName, languageName, RELIGIONS, acceptedShare } from "./culture.ts";
+import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
@@ -311,10 +312,41 @@ idBox.addEventListener("keydown", (ev) => { if (ev.key === "Enter") idIn("ok").c
 idIn("ok").onclick = () => { idOk(); idBox.style.display = "none"; };
 idIn("cancel").onclick = () => (idBox.style.display = "none");
 
+// ---------------- evento com escolha: janela no meio da tela, pausa o jogo, 2 minutos ----------------
+const evBox = document.createElement("div");
+evBox.style.cssText = "display:none;position:fixed;top:30%;left:50%;transform:translateX(-50%);width:360px;background:#1b1b26f2;border:1px solid #c9a86a;border-radius:8px;padding:14px;z-index:10;line-height:1.5";
+document.body.appendChild(evBox);
+let evShown = "", evSince = 0;
+function watchChoice() {
+  const ev = active ? eco.choices?.[active] : undefined;
+  const key = ev ? `${active}:${ev.week}` : "";
+  if (!ev) { evBox.style.display = "none"; evShown = ""; return; }
+  if (key !== evShown) { // evento novo: pausa (no multiplayer quem pausa é o servidor) e mostra
+    evShown = key; evSince = performance.now();
+    if (!net && speed) togglePause();
+    const def = EVENT_LIST[ev.id];
+    evBox.innerHTML = `<b style="font-size:16px">📜 ${def.title}</b><p>${def.text}</p>` +
+      def.options.map((o, k) => `<button data-choose="${k}" style="display:block;width:100%;margin:4px 0;padding:6px">${o.label}<br><small style="opacity:.7">${fxText(o.fx)}</small></button>`).join("") +
+      `<small id="ev-timer" style="opacity:.6"></small>`;
+    evBox.style.display = "block";
+    notify(`📜 ${def.title}`);
+  }
+  const left = Math.max(0, CHOICES.timeoutMs - (performance.now() - evSince));
+  const t = document.getElementById("ev-timer");
+  if (t) t.textContent = `Escolha em ${Math.ceil(left / 1000)} s (depois vale a primeira opção)`;
+  if (!net && left <= 0) cmd({ t: "choose", option: 0 }); // no multiplayer o servidor faz isso
+}
+const fxText = (fx: Effects) => [
+  fx.treasury ? `${fx.treasury > 0 ? "+" : ""}${Math.round(fx.treasury * 100)}% do tesouro` : "",
+  fx.legitimacy ? `legitimidade ${fx.legitimacy > 0 ? "+" : ""}${Math.round(fx.legitimacy * 100)}` : "",
+  fx.research ? "pesquisa adiantada" : "", fx.admin ? `${fx.admin > 0 ? "+" : ""}${fx.admin} pontos adm.` : "",
+  fx.pop ? `${Math.round(fx.pop * 100)}% da população` : "", fx.infamy ? `+${fx.infamy} infâmia` : "",
+].filter(Boolean).join(" · ") || "nada muda";
+
 // ---------------- multiplayer (lockstep; ver server/server.ts) ----------------
 type RoomStatus = { code: string; speed: number; paused: string | null; votes: number; needed: number; players: { id: number; name: string; country: number }[] };
 let net: WebSocket | null = null, mp: RoomStatus | null = null, myId = 0, synced = false;
-const pendingSteps: { week: number; cmds: [number, Cmd][] }[] = [];
+const pendingSteps: { t?: string; week: number; cmds: [number, Cmd][] }[] = [];
 const mpBox = document.createElement("div");
 mpBox.id = "mpbox";
 mpBox.style.cssText = "display:none;position:fixed;top:120px;left:8px;background:#000c;padding:10px;border-radius:6px;width:300px;line-height:1.8";
@@ -352,8 +384,9 @@ function addChat(m: { from: string; country: number; week: number; text: string 
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-function applyStep(m: { week: number; cmds: [number, Cmd][] }) {
+function applyStep(m: { t?: string; week: number; cmds: [number, Cmd][] }) {
   for (const [country, c] of m.cmds) applyCommand(world, eco, country, c);
+  if (m.t === "cmds") return updateUI(); // resposta a evento com a sala pausada: não avança a semana
   advanceWeek(world, eco); afterWeek();
   if (eco.week !== m.week) { synced = false; net?.send(JSON.stringify({ t: "resync" })); } // fora de passo: pede a foto
 }
@@ -371,7 +404,7 @@ function connect(hello: object) {
         const d = await loadGame(new Blob([ev.data]));
         world = d.world; eco = d.eco; synced = true;
         explored.clear(); selected = -1; selectedDiv = null;
-        for (const st of pendingSteps.splice(0)) if (st.week > eco.week) applyStep(st);
+        for (const st of pendingSteps.splice(0)) if (st.week > eco.week || (st.t === "cmds" && st.week === eco.week)) applyStep(st); // "cmds" repetido é inofensivo: o evento já resolvido só dá erro
         recolor();
         updateUI();
       } catch (err) { notify(`⚠ ${(err as Error).message}`); }
@@ -384,7 +417,7 @@ function connect(hello: object) {
         return;
       }
       myId = m.id; mpBox.style.display = "none"; chatBox.style.display = "block"; notify(`Na sala ${m.code}`);
-    } else if (m.t === "step") { if (synced) applyStep(m); else pendingSteps.push(m); }
+    } else if (m.t === "step" || m.t === "cmds") { if (synced) applyStep(m); else pendingSteps.push(m); }
     else if (m.t === "check" && synced && checksum(eco) !== m.sum) { synced = false; notify("Fora de sincronia: recebendo a partida de novo..."); ws.send(JSON.stringify({ t: "resync" })); }
     else if (m.t === "status") {
       mp = m; speed = m.paused ? 0 : m.speed; lastSpeed = m.speed;
@@ -426,6 +459,7 @@ document.addEventListener("pointerdown", (e) => {
     if (name) cmd({ t: "continent", id: +d.continent, name });
     return;
   }
+  if (d.choose) return cmd({ t: "choose", option: Number(d.choose) });
   if (d.accept) { const [id, mode] = d.accept.split("|"); return cmd({ t: "acceptCulture", culture: +id, off: mode === "off" }); }
   if (d.incentive) {
     const [kind, ks, mode] = d.incentive.split("|");
@@ -987,6 +1021,7 @@ function frame(now: number) {
   renderer.draw(cam.x, cam.y, cam.zoom, hover[0], hover[1], Math.cos((2 * Math.PI * (eco.week % 52)) / 52), active > 0);
   drawUnits();
   watchEvents();
+  watchChoice();
   frames++;
   if (now - last >= 500) {
     fps = (frames * 1000) / (now - last);

@@ -5,10 +5,12 @@ import { stepWar } from "./war.ts";
 import { runAI, clearFounded } from "./ai.ts";
 import type { World } from "./world.ts";
 import { stepEvents } from "./events.ts";
+import { stepChoices } from "./choices.ts";
 
 export function advanceWeek(w: World, e: Economy) {
   tick(w, e);
   e.news = stepEvents(w, e);
+  stepChoices(w, e);
   stepWar(w, e);
   // cada país pensa uma vez por mês, em semanas alternadas: com centenas de tribos o custo não cai todo numa semana só
   for (let k = 1; k <= e.countries.length; k++) if ((k + e.week) % 4 === 0 && !e.humans.includes(k)) runAI(w, e, k);

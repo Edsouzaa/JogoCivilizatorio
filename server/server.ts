@@ -7,6 +7,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { generateWorld, type World } from "../src/world.ts";
 import { createEconomy, type Economy } from "../src/economy.ts";
 import { advanceWeek, checksum } from "../src/sim.ts";
+import { CHOICES } from "../src/choices.ts";
 import { applyCommand, type Cmd } from "../src/commands.ts";
 import { saveGame, loadGame } from "../src/save.ts";
 import { mkdir, writeFile, rename, readFile } from "node:fs/promises";
@@ -20,6 +21,7 @@ export const MP = {
   port: Number(process.env.PORT) || 8787, maxPlayers: 20, speeds: [0, 0.5, 1, 3, 10, 30], tickMs: 50, maxMsgBytes: 4096,
   saveDir: process.env.SAVE_DIR || joinPath(dirname(fileURLToPath(import.meta.url)), "saves"),
   saveEveryMs: Number(process.env.SAVE_EVERY_MS) || 5 * 60 * 1000, // de jogo rodando
+  choiceTimeoutMs: Number(process.env.CHOICE_TIMEOUT_MS) || CHOICES.timeoutMs, // sem resposta ao evento: escolhe a 1ª opção
 };
 const CODE = /^[A-Z]{4}$/; // o código vira nome de arquivo: só 4 letras, nada de caminho
 export const CHAT = { maxLen: 200, minGapMs: 500 };
@@ -37,6 +39,7 @@ export type Room = {
   speed: number; paused: { by: number } | null; votes: Set<number>;
   pending: [number, Cmd, Player][]; acc: number;
   runningMs: number; // tempo rodando desde o último save em disco
+  eventSeen: Map<string, number>; // "país:semana" do evento pendente → quando apareceu (prazo de 2 min)
   pass: Pass | null; // senha da sala (opcional)
 };
 
@@ -63,7 +66,7 @@ async function openSavedRoom(code: string): Promise<Room | null> {
   d.eco.humans = [];
   let pass: Pass | null = null;
   try { const meta = JSON.parse(await readFile(metaFile(code), "utf8")); if (meta?.pass?.salt && meta?.pass?.hash) pass = meta.pass; } catch { /* sala sem senha */ }
-  const r: Room = { code, world: d.world, eco: d.eco, players: [], speed: d.ui.speed || 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0, pass };
+  const r: Room = { code, world: d.world, eco: d.eco, players: [], speed: d.ui.speed || 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0, eventSeen: new Map(), pass };
   rooms.set(code, r);
   return r;
 }
@@ -83,7 +86,7 @@ const worldEra = (e: Economy) => Math.max(...e.countries.map((c) => c.research.e
 
 function status(r: Room) {
   broadcast(r, {
-    t: "status", code: r.code, speed: r.speed, paused: r.paused ? r.players.find((p) => p.id === r.paused!.by)?.name ?? "?" : null,
+    t: "status", code: r.code, speed: r.speed, paused: r.paused ? (r.paused.by === -1 ? "evento" : r.players.find((p) => p.id === r.paused!.by)?.name ?? "?") : null,
     votes: r.votes.size, needed: Math.floor((r.players.length - 1) / 2) + 1,
     players: r.players.map((p) => ({ id: p.id, name: p.name, country: p.country })),
   });
@@ -134,7 +137,7 @@ export async function handle(ws: WebSocket, raw: string, state: { room?: Room; p
     const seed = intIn(m.seed, 0, 2 ** 31) ? m.seed : (Math.random() * 2 ** 31) | 0;
     const world = generateWorld(W, H, seed);
     const pw = typeof m.password === "string" ? m.password.slice(0, 64) : "";
-    const room: Room = { code: code(), world, eco: createEconomy(world), players: [], speed: 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0, pass: pw ? hashPass(pw) : null };
+    const room: Room = { code: code(), world, eco: createEconomy(world), players: [], speed: 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0, eventSeen: new Map(), pass: pw ? hashPass(pw) : null };
     rooms.set(room.code, room);
     state.room = room; state.player = join(room, ws, cleanName(m.name));
     room.paused = { by: state.player.id }; // começa pausado por quem criou
@@ -168,7 +171,8 @@ export async function handle(ws: WebSocket, raw: string, state: { room?: Room; p
       r.pending.push([p.country, { t: "claim" }, p]);
       status(r);
     } else if (m.t === "cmd" && p.country && m.cmd && typeof m.cmd.t === "string" && m.cmd.t !== "claim" && m.cmd.t !== "release") {
-      r.pending.push([p.country, m.cmd as Cmd, p]);
+      if (m.cmd.t === "choose" && r.paused) applyNow(r, p.country, m.cmd as Cmd); // com a sala pausada também
+      else r.pending.push([p.country, m.cmd as Cmd, p]);
     } else if (m.t === "pause" && !r.paused) {
       r.paused = { by: p.id }; r.votes.clear(); status(r);
     } else if (m.t === "unpause" && r.paused) {
@@ -202,6 +206,13 @@ export function step(r: Room) {
   }
   advanceWeek(r.world, r.eco);
   broadcast(r, { t: "step", week: r.eco.week, cmds: sent });
+  // evento novo para um jogador: pausa a sala (despausa por votação, como qualquer pausa) e marca a hora
+  for (const [k, ev] of Object.entries(r.eco.choices ?? {})) {
+    const key = `${k}:${ev.week}`;
+    if (r.eventSeen.has(key) || !r.players.some((p) => p.country === +k)) continue;
+    r.eventSeen.set(key, Date.now());
+    if (!r.paused) { r.paused = { by: -1 }; r.votes.clear(); status(r); } // -1 = pausa do evento (ninguém é dono)
+  }
   if (r.eco.week % 52 === 0) broadcast(r, { t: "check", week: r.eco.week, sum: checksum(r.eco) });
 }
 
@@ -214,6 +225,11 @@ export function startServer(port = MP.port) {
   });
   const loop = setInterval(() => {
     for (const r of rooms.values()) {
+      for (const [key, t] of r.eventSeen) { // 2 minutos sem resposta: o servidor escolhe a 1ª opção
+        const [k, wk] = key.split(":").map(Number);
+        if (r.eco.choices?.[k]?.week !== wk) { r.eventSeen.delete(key); continue; }
+        if (Date.now() - t >= MP.choiceTimeoutMs) { r.eventSeen.delete(key); applyNow(r, k, { t: "choose", option: 0 }); }
+      }
       if (r.paused) continue;
       r.runningMs += MP.tickMs;
       if (r.runningMs >= MP.saveEveryMs) { r.runningMs = 0; saveRoom(r).catch((err) => console.error(`falha ao salvar a sala ${r.code}:`, err)); }
@@ -223,6 +239,12 @@ export function startServer(port = MP.port) {
   }, MP.tickMs);
   wss.on("close", () => clearInterval(loop));
   return wss;
+}
+
+/** Comando que vale mesmo com a sala pausada (resposta a evento): aplica e manda já, sem avançar a semana. */
+function applyNow(r: Room, country: number, cmd: Cmd) {
+  applyCommand(r.world, r.eco, country, cmd);
+  broadcast(r, { t: "cmds", week: r.eco.week, cmds: [[country, cmd]] });
 }
 
 /** Salva todas as salas abertas (ao fechar o servidor). */

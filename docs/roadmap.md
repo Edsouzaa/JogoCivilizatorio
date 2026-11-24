@@ -49,6 +49,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Cultura, língua e religião, separadas, como mistura por cidade. Cada tribo nasce com cultura própria (nome na língua dela), a língua da região e uma de 5 religiões por faixa do mundo. Por ano: assimilação 1%, língua 2%, conversão 0,8% rumo à do dono (× controle, mais rápido com letrados). Cultura principal, aceita (custa 40 pontos adm.) ou discriminada; gente não aceita tira até 25 de lealdade. Aba Sociedade e painel da cidade mostram tudo.
 
+- Eventos aleatórios com escolha (7 eventos: colheita, profeta, sábio estrangeiro, incêndio, bandidos, escrivães, ouro), ~1 a cada 2 anos por país. A IA escolhe na hora; para o jogador o jogo pausa e abre uma janela com 2 minutos (depois vale a 1ª opção). No multiplayer o servidor pausa a sala ("evento"), aceita a resposta mesmo pausado e escolhe sozinho no fim do prazo; a sala continua pausada, despausa pela regra normal.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -68,27 +70,25 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 6. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
 7. **População**
     - Cultura/língua/religião por POP (hoje é por cidade), grupos culturais, famílias de línguas e religiões, surgimento e divisão de culturas.
-8. **Eventos**
-    - Eventos aleatórios com escolha (pausa todos, 2 min).
-9. **Leis**
-10. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
-11. **Diplomacia**
+8. **Leis**
+9. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
+10. **Diplomacia**
     - Relação, confiança e influência.
     - Tratados com manutenção em pontos administrativos.
     - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
     - Esferas de influência e prestígio.
-12. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
-13. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
-14. **Personagens**
+11. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
+12. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
+13. **Personagens**
     - Ficha, atributos e retrato gerado.
     - Comandantes e generais.
     - Livro de história exportável em PDF.
-15. **Militar completo**
+14. **Militar completo**
     - Categorias de unidade por era e comandantes por domínio.
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
-16. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
-17. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
+15. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
+16. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
 
 ## Fora por enquanto
 

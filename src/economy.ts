@@ -215,6 +215,7 @@ export type Economy = {
   warStats?: Record<string, WarStats>; // por guerra ("a-b"): baixas, custo, desde quando
   control: Float32Array; // 0..1: quanto o governo administra o hex (control.ts)
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
+  choices?: Record<number, { id: number; week: number }>; // evento esperando a escolha do jogador (choices.ts)
   incentives?: Incentive[]; // incentivos ativos (admin.ts)
   famine?: boolean[];    // por cidade: passando fome (events.ts)
   plague?: number[];     // por cidade: semanas de peste que restam
