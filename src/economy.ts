@@ -1,6 +1,6 @@
 import { RESOURCES, TERRAINS, isLand, claim, snowAt, exhaust, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
-import { newResearch, research, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
+import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
@@ -120,6 +120,8 @@ export const RULES = {
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
   researchBase: 1,          // pontos de pesquisa por semana de qualquer país
   researchPerPop: 1000,     // +1 ponto por semana a cada tantas pessoas
+  diffusion: 0.15,          // +pesquisa por vizinho/parceiro que já conhece a tecnologia...
+  diffusionMax: 0.6,        // ...até isto
 };
 
 export type Market = {
@@ -186,6 +188,7 @@ export type Economy = {
   humans: number[];     // países com jogador (fora da IA)
   aiWarStart: Record<string, number>; // semana em que cada guerra da IA começou (para a paz)
   control: Float32Array; // 0..1: quanto o governo administra o hex (control.ts)
+  contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
   famine?: boolean[];    // por cidade: passando fome (events.ts)
   plague?: number[];     // por cidade: semanas de peste que restam
   news?: { kind: "fome" | "peste"; city: number }[]; // começaram nesta semana (para avisar)
@@ -503,10 +506,21 @@ export function migrate(w: World, e: Economy) {
   });
 }
 
+/** Países que se encostam (fronteira) ou têm acordo comercial, por país (índice 0 = país 1). */
+export function contactsOf(w: World, e: Economy) {
+  const sets = e.countries.map(() => new Set<number>());
+  for (const i of e.owned) {
+    const a = w.owner[i];
+    forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { const b = w.owner[j]; if (b && b !== a) sets[a - 1].add(b); });
+  }
+  for (const k of e.pacts) { const [a, b] = k.split("-").map(Number); sets[a - 1].add(b); sets[b - 1].add(a); }
+  return sets.map((s) => [...s].sort((x, y) => x - y));
+}
+
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
   e.exhausted = [];
-  if (e.week % 4 === 0) updateControl(w, e);
+  if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); }
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
   for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); }
@@ -642,6 +656,10 @@ export function tick(w: World, e: Economy) {
       for (const key of e.pacts) if (key.split("-").includes(String(ci + 1))) partners++;
       c.researchWeek *= Math.min(1, c.drive + 0.15 * partners);
     }
+    // difusão: cada vizinho/parceiro que já sabe o que estamos pesquisando dá +DIFFUSION (até o teto)
+    if (!c.research.researching) c.research.researching = available(c.research).sort((a, b) => a.cost - b.cost)[0]?.name ?? null;
+    const knowers = (e.contacts?.[ci] ?? []).filter((o) => c.research.researching && e.countries[o - 1].research.known.has(c.research.researching)).length;
+    c.researchWeek *= 1 + Math.min(RULES.diffusionMax, RULES.diffusion * knowers);
     const learned = research(c.research, c.researchWeek);
     if (learned) { updateBonus(c); c.infamy += learned.infamy ?? 0; }
     c.infamy = Math.max(0, c.infamy - INFAMY.decayWeek);

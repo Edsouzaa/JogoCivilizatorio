@@ -15,6 +15,10 @@ export function updateFog(w: World, e: Economy, country: number, explored: Uint8
   for (const c of e.cities) if (c.country === country) see(c.hex, FOG.city);
   for (const d of e.divisions) if (d.country === country) see(d.hex, FOG.unit);
   for (let i = 0; i < visible.length; i++) if (visible[i]) explored[i] = 1;
+  // comércio abre o mapa: o território dos parceiros fica explorado (sem mostrar as tropas deles)
+  const partners = new Set<number>();
+  for (const k of e.pacts) { const [a, b] = k.split("-").map(Number); if (a === country) partners.add(b); if (b === country) partners.add(a); }
+  if (partners.size) for (const i of e.owned) if (partners.has(w.owner[i])) explored[i] = 1;
 }
 
 /**

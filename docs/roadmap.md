@@ -24,6 +24,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Fome (comida < 25% do necessário numa cidade com 100+ pessoas; acaba acima de 50%) e peste (por acaso em cidades grandes, pula para cidades do mesmo país, dura 26 semanas). Matam aos poucos, avisam e aparecem no painel. Medicina moderna e Biotecnologia cortam pela metade.
 
+- Propagação de tecnologia: cada vizinho de fronteira ou parceiro comercial que já conhece a tecnologia em pesquisa dá +15% (até +60%). Acordo comercial revela o território do parceiro na névoa.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -63,19 +65,18 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
     - Esferas de influência e prestígio.
 13. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
-14. **Propagação de tecnologia** por fronteira e comércio; o comércio também revela a névoa.
-15. **Oceano profundo**: bloqueia navios de tecnologia baixa.
-16. **Continentes com nome**: no solo o jogador altera; no multiplayer há votação.
-17. **Personagens**
+14. **Oceano profundo**: bloqueia navios de tecnologia baixa.
+15. **Continentes com nome**: no solo o jogador altera; no multiplayer há votação.
+16. **Personagens**
     - Ficha, atributos e retrato gerado.
     - Comandantes e generais.
     - Livro de história exportável em PDF.
-18. **Militar completo**
+17. **Militar completo**
     - Categorias de unidade por era e comandantes por domínio.
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
-19. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
-20. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
+18. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
+19. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
 
 ## Fora por enquanto
 

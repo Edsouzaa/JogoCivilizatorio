@@ -55,3 +55,24 @@ console.log("fog ok");
   assert.equal(b[cap * 4], 0, "capital no meio do território não deveria ter fronteira");
 }
 console.log("borders ok");
+
+// comércio abre o mapa do parceiro; vizinhos e parceiros viram contatos (difusão de tecnologia)
+{
+  const { proposePact, contactsOf, tick, RULES } = await import("../src/economy.ts");
+  const w2 = generateWorld(200, 100, 4, 3), e2 = createEconomy(w2);
+  const ex = new Uint8Array(200 * 100), vis = new Uint8Array(200 * 100);
+  const theirs = [...e2.owned].filter((i) => w2.owner[i] === 2);
+  updateFog(w2, e2, 1, ex, vis);
+  assert.ok(theirs.some((i) => !ex[i]), "já via tudo do país 2 sem acordo");
+  assert.equal(proposePact(e2, 1, 2), null);
+  updateFog(w2, e2, 1, ex, vis);
+  assert.ok(theirs.every((i) => ex[i]), "parceiro deveria ficar explorado");
+  assert.ok(contactsOf(w2, e2)[0].includes(2));
+  // quem já conhece a tecnologia acelera a pesquisa do contato
+  tick(w2, e2); const alone = e2.countries[0].researchWeek;
+  e2.contacts = contactsOf(w2, e2);
+  e2.countries[1].research.known.add(e2.countries[0].research.researching!);
+  e2.week = 1; tick(w2, e2);
+  assert.ok(Math.abs(e2.countries[0].researchWeek / alone - (1 + RULES.diffusion)) < 0.05, "difusão deveria dar +15%");
+}
+console.log("diffusion ok");
