@@ -99,6 +99,14 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Rios espalhados: as nascentes saem de uma grade (uma chance a cada 26 × 16 hexes, no ponto mais alto de algumas amostras), em qualquer terra um pouco acima do mar, em vez de sorteadas no mapa todo (o que juntava tudo nas serras). Metade dos rios de antes, espalhados por todos os continentes.
 
+- Expansão por etapas (interesse → claim → expedição → posto avançado ou cidade → consolidação → integração):
+  - Custo de fundar = 60 × multiplicador da distância de caminho (terreno pesa; rio navegável e costa encurtam) até a cidade ou posto mais perto: 1–3 ×1; 4–6 ×1,25; 7–10 ×1,75; 11–15 ×2,5; 16+ ×3,5.
+  - Tipo de claim de expansão mostrado nos colonos: Proximidade, Continuidade (entre duas áreas suas, −20%), Recursos e Estratégico (−15%), Assentamento distante.
+  - Capacidade de expansão: 1 + era + cidades/4 fundações a cada 2 anos.
+  - Posto avançado (30): colonos viram acampamento que reivindica o hex, espalha influência, abastece tropas e serve de base para fundar mais longe.
+  - Área de influência: hexes livres perto das cidades e postos, em tom claro da cor do país no mapa Político.
+  - Continuidade territorial: cidade sem ligação por terra com a capital (nem porto/rio navegável) fica isolada, com controle máximo ×0,6.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.

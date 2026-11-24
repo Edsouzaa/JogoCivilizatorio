@@ -472,8 +472,9 @@ export const supplyRange = (e: Economy, country: number) => WAR.supplyBase + WAR
 /** Distância até o depósito mais perto: cidade do país ou cidade inimiga que ele ocupa (vira base de suprimento). */
 export function depotDistance(w: World, e: Economy, d: Division) {
   let best = Infinity;
-  for (const k of e.cities) if (k.country === d.country || e.occupier[k.hex] === d.country)
-    best = Math.min(best, hexDistance(d.hex % w.W, (d.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W));
+  const hexes = [...e.cities.filter((k) => k.country === d.country || e.occupier[k.hex] === d.country).map((k) => k.hex),
+    ...(e.outposts ?? []).filter((o) => o.country === d.country).map((o) => o.hex)]; // posto avançado também abastece
+  for (const h of hexes) best = Math.min(best, hexDistance(d.hex % w.W, (d.hex / w.W) | 0, h % w.W, (h / w.W) | 0, w.W));
   return best;
 }
 

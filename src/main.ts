@@ -17,6 +17,7 @@ import { proposalsTo, PROPOSAL_WEEKS } from "./proposals.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
+import { foundingCost, distanceLabel, expansionCapacity, recentFoundings, EXPAND } from "./expansion.ts";
 import { rulerOf, ageOf, lifeText, CHAR } from "./characters.ts";
 import { unitOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
@@ -232,7 +233,7 @@ function hexLayer(): ((i: number) => readonly number[] | null) | undefined {
 }
 function recolor() {
   const t = performance.now();
-  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba, eco.control, mode === 6 ? eco.countries.map((c) => c.research.known.size / TECHS.length) : mode === 7 ? eco.countries.map((c) => averageLoyalty(c.pops) / 100) : undefined, hexLayer()));
+  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba, eco.control, mode === 6 ? eco.countries.map((c) => c.research.known.size / TECHS.length) : mode === 7 ? eco.countries.map((c) => averageLoyalty(c.pops) / 100) : undefined, hexLayer(), eco.influence));
   colorMs = performance.now() - t;
   drawnVersion = eco.version;
   renderer.uploadBorders(buildBorders(world, eco, borders)); // fronteiras mudam junto com o mapa político
@@ -517,6 +518,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.build) return doBuild(Number(d.build));
   if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
   if (d.act === "found" && selectedDiv) return askFound(selectedDiv);
+  if (d.act === "outpost" && selectedDiv) return cmd({ t: "outpost", unit: selectedDiv });
   if (d.river) {
     const name = prompt("Nome do rio", world.rivers![+d.river - 1].name);
     if (name) cmd({ t: "river", id: +d.river, name });
@@ -1053,7 +1055,8 @@ function divisionHtml() {
     const dist = settlerDistance(world, eco, d), out = dist > RULES.settlerSupplyRange;
     return `<div class="unit"><b><i class=i-tent></i> Colonos</b> · ${t} · ${Math.round(d.strength)} pessoas · ${dist} hex da cidade` +
       (out ? ` <span class="bad">sem suprimentos (máx. ${RULES.settlerSupplyRange}): morrendo</span>` : "") +
-      `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="disband">Voltar para casa</button>${message ? ` <span class="bad">${message}</span>` : ""}</div>`;
+      (() => { const fc = foundingCost(world, eco, d.country, d.hex, RESOURCES); return `<br><small>Aqui: claim de <b>${fc.claim}</b> · ${distanceLabel(fc.distance)} (${Math.round(fc.distance)}) · fundar custa <b>${fc.cost}</b> · capacidade ${recentFoundings(eco, d.country)}/${expansionCapacity(eco, d.country)} cidades a cada 2 anos</small>`; })() +
+      `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="outpost" title="Acampamento: reivindica o hex, espalha influência, abastece tropas e serve de base para fundar mais longe">Posto avançado (${EXPAND.outpostCost})</button> <button data-act="disband">Voltar para casa</button>${message ? ` <span class="bad">${message}</span>` : ""}</div>`;
   }
   if (d.kind === "air") {
     const region = airRegion(eco, d.target ?? d.hex);
@@ -1282,6 +1285,9 @@ function hexHtml() {
         (!on && stateCities.length > 1 ? ` <button data-incentive="${kind}|${stateCities.join(",")}|on" title="Em todas as cidades do estado">no estado (${def.cost * stateCities.length})</button>` : "");
     }).join("");
   }
+  if (city?.isolated) h += `<br><span class="warn">${city.name} está isolada: sem ligação por terra com a capital (nem porto). Controle máximo × ${EXPAND.isolation}. Ocupe o caminho entre elas ou faça um porto.</span>`;
+  if ((eco.outposts ?? []).some((o) => o.hex === i)) h += `<br><i class=i-tent></i> Posto avançado`;
+  if (!world.owner[i] && eco.influence?.[i]) h += `<br><small>Área de influência de ${world.countries[eco.influence[i] - 1].name}</small>`;
   if (city?.blockaded) h += `<br><span class="bad"><i class=i-anchor></i> ${city.name} bloqueada por frota inimiga: sem comércio exterior</span>`;
   if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {
@@ -1468,6 +1474,12 @@ function drawUnits() {
     drawFlag(units, sx + r * 0.6, sy - r * 1.6, r * 1.1, r * 0.75, cityFlag(k));
     if (r >= 12) { units.fillStyle = "#fff"; units.font = `bold ${Math.round(r * 0.55)}px sans-serif`; units.textAlign = "center"; units.textBaseline = "top"; units.strokeStyle = "#000"; units.lineWidth = 3; units.strokeText(city.name, sx, sy + r * 0.7); units.fillText(city.name, sx, sy + r * 0.7); }
   });
+  if (r >= 5) for (const o of eco.outposts ?? []) { // posto avançado: triângulo pequeno na cor do país
+    if (o.country !== active && !canSee(o.hex)) continue;
+    const [x, y] = toScreen(o.hex);
+    units.fillStyle = `rgb(${world.countries[o.country - 1].color})`; units.strokeStyle = "#000"; units.lineWidth = 1.2;
+    units.beginPath(); units.moveTo(x, y - r * 0.7); units.lineTo(x + r * 0.6, y + r * 0.45); units.lineTo(x - r * 0.6, y + r * 0.45); units.closePath(); units.fill(); units.stroke();
+  }
   const stack = new Map<number, number>();
   for (const d of eco.divisions) {
     if (d.country !== active && !canSee(d.hex)) continue;

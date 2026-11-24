@@ -10,6 +10,7 @@ import { updateControl, CONTROL } from "./control.ts";
 import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
 import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
 import { stepClaims, type Claim } from "./claims.ts";
+import { foundingCost, expansionCapacity, recentFoundings, updateExpansion } from "./expansion.ts";
 import { expireProposals, type Proposal, type Vote } from "./proposals.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
@@ -156,6 +157,8 @@ export type City = {
   state?: number;       // id do estado da cidade (states.ts)
   flag?: Flag;          // bandeira própria (sem ela, a do país)
   identity?: Identity;  // cultura, língua e religião da população (culture.ts)
+  founded?: number;     // semana em que foi fundada (capacidade de expansão)
+  isolated?: boolean;   // sem ligação por terra (nem porto) com a capital: controle menor
   harbor?: number;      // nível do porto (0 = sem porto): mais comércio, até o máximo da era
   coast?: boolean;      // algum centro urbano encosta no mar (pode ter porto)
   road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
@@ -232,6 +235,8 @@ export type Economy = {
   characters?: Character[]; nextCharacter?: number; // personagens (characters.ts)
   obituaries?: { name: string; country: number; age: number }[]; // governantes que morreram nesta semana (aviso)
   proposals?: Proposal[]; nextProposal?: number; votes?: Vote[]; // propostas esperando jogador (proposals.ts)
+  influence?: Uint16Array;            // área de influência: país que influencia cada hex livre (expansion.ts)
+  outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
   claims?: Claim[];                   // reivindicações sobre cidades (claims.ts)
   subjects?: Record<number, Subject>; // súdito → ligação com o soberano (subjects.ts)
   freed?: number[];                   // súditos que se soltaram neste mês (aviso)
@@ -417,10 +422,14 @@ export function foundCity(w: World, e: Economy, unit: number, later = false): st
   const col = i % w.W, row = (i / w.W) | 0;
   const dist = (h: number) => hexDistance(col, row, h % w.W, (h / w.W) | 0, w.W);
   if (e.cities.some((k) => dist(k.hex) < RULES.minCityDistance)) return `Muito perto de outra cidade (mínimo ${RULES.minCityDistance})`;
+  if (recentFoundings(e, country) >= expansionCapacity(e, country)) return `Capacidade de expansão esgotada (${expansionCapacity(e, country)} cidades a cada 2 anos)`;
+  const fc = foundingCost(w, e, country, i, RESOURCES), c = e.countries[country - 1];
+  if (c.treasury < fc.cost) return `Fundar aqui custa ${fc.cost} (${fc.claim}, distância ${Math.round(fc.distance)})`;
+  c.treasury -= fc.cost;
   e.divisions = e.divisions.filter((d) => d !== s);
   if (!w.owner[i]) w.owner[i] = country;
   claim(w, country, i, RULES.settleClaimRadius);
-  e.cities.push({ name: cityName(w, e, country), country, hex: i, size: 1, urban: [], market: newMarket(), port: false, identity: homeIdentity(w, e, country) });
+  e.cities.push({ name: cityName(w, e, country), country, hex: i, size: 1, urban: [], market: newMarket(), port: false, identity: homeIdentity(w, e, country), founded: e.week });
   if (!later) refresh(w, e);
   return null;
 }
@@ -623,7 +632,7 @@ export function dropHomeless(e: Economy) {
 export function tick(w: World, e: Economy) {
   e.exhausted = []; e.freed = [];
   dropHomeless(e);
-  if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); expireProposals(e); }
+  if (e.week % 4 === 0) { updateExpansion(w, e, borderRadius); updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); expireProposals(e); }
   if (e.week % 52 === 26) stepClaims(w, e);
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle

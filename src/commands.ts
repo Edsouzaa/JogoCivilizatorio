@@ -11,6 +11,7 @@ import { improveRelations } from "./diplomacy.ts";
 import { proposeSubject, releaseSubject, SUBJECT_KINDS, type SubjectKind } from "./subjects.ts";
 import { addProposal, respond, startVote, castVote } from "./proposals.ts";
 import { hireGeneral } from "./characters.ts";
+import { buildOutpost } from "./expansion.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
 import { available } from "./tech.ts";
@@ -19,6 +20,7 @@ import type { World } from "./world.ts";
 export type Cmd =
   | { t: "build"; i: number; b: number }
   | { t: "found"; unit: number; name?: string; flag?: Flag }
+  | { t: "outpost"; unit: number } // colonos viram posto avançado
   | { t: "settlers" }
   | { t: "transfer"; from: number; to: number }
   | { t: "urbanize"; city: number; hex: number }
@@ -81,6 +83,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
   const ownCity = (k: number) => isInt(k) && e.cities[k]?.country === country;
   switch (c?.t) {
     case "build": return isInt(c.i) && w.owner[c.i] === country ? build(w, e, c.i, c.b) : "Hex não é seu";
+    case "outpost": return own(c.unit) ? buildOutpost(w, e, c.unit) : "Unidade não é sua";
     case "found": {
       if (!own(c.unit)) return "Unidade não é sua";
       const err = foundCity(w, e, c.unit);

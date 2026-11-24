@@ -305,14 +305,14 @@ export const URBAN_COLOR = [190, 180, 170];
  * Trocar de modo = recalcular isto e subir a textura.
  */
 /** `byCountry[país − 1]` em 0..1 para os mapas por país (Tecnologia, Satisfação). */
-export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4), control?: Float32Array, byCountry?: number[], byHex?: (i: number) => readonly number[] | null) {
+export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4), control?: Float32Array, byCountry?: number[], byHex?: (i: number) => readonly number[] | null, influence?: Uint16Array) {
   for (let i = 0; i < w.W * w.H; i++) {
     const t = w.terrain[i];
     let c: readonly number[] = TERRAINS[t].color;
     if (mode === 0 && w.owner[i]) c = w.countries[w.owner[i] - 1].color;
     if (t === T.OCEAN && mode === 1 && w.owner[i]) c = w.countries[w.owner[i] - 1].color.map((v, k) => (v + TERRAINS[0].color[k] * 2) / 3);
     if (t !== T.OCEAN) {
-      if (mode === 1) c = w.owner[i] ? w.countries[w.owner[i] - 1].color : [90, 90, 90];
+      if (mode === 1) c = w.owner[i] ? w.countries[w.owner[i] - 1].color : influence?.[i] ? w.countries[influence[i] - 1].color.map((v) => (v + 90 * 3) / 4) : [90, 90, 90]; // área de influência: tom claro da cor do país
       if (mode === 1 && occupier[i] && (2 * (i % w.W) + ((i / w.W) | 0)) % 4 < 2) c = w.countries[occupier[i] - 1].color; // ocupado: listras diagonais na cor de quem ocupa
       else if (mode === 2) { const v = Math.min(1, Math.sqrt(w.pop[i] / 400)); c = [40 + 215 * v, 40 + 80 * v, 40]; }
       else if (mode === 3) c = w.resource[i] ? RES_COLORS[w.resource[i]] : [70, 70, 70];
