@@ -80,9 +80,11 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Frentes (estilo HOI4, simplificado): com exércitos selecionados (um ou a caixa), "Defender fronteira" espalha as tropas por igual na fronteira com o vizinho escolhido, e "Atacar cidades" (em guerra) manda as tropas em duplas para as cidades inimigas mais perto, para cercá-las.
 
+- Economia, abas novas: Produção e Consumo (barras: produção por cidade, empregos por setor, o que falta, o que sobra, o que depende de importação) e Finanças (tesouro, dívida, imposto médio, juros; receitas e despesas em barras, incluindo forças armadas; gráficos de tesouro e dívida). Clicar num cartão de mercadoria abre a página dela: preço dos últimos 24 meses, produção, consumo, importação, exportação, cidades que produzem e que consomem, construções que fazem e que usam.
+
 ## Próximos (nesta ordem)
 
-1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
+1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
 2. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
 3. **Mercados**
    - Mercado nacional como soma dos metropolitanos.

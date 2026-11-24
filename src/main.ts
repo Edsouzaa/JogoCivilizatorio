@@ -561,7 +561,8 @@ document.addEventListener("pointerdown", (e) => {
   if (d.peace) return cmd({ t: "peace", target: Number(d.peace) });
   if (d.act === "disband" && selectedDiv) { cmd({ t: "disband", id: selectedDiv }); selectedDiv = null; return updateUI(); }
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
-  if (d.econ) { econTab = Number(d.econ); return updateUI(); }
+  if (d.econ) { econTab = Number(d.econ); goodDetail = null; return updateUI(); }
+  if (d.good !== undefined) { goodDetail = d.good || null; return updateUI(); }
   if (d.goto) { selected = Number(d.goto); const [x, y] = hexCenter(selected % W, (selected / W) | 0); cam.x = x; cam.y = y; cam.zoom = Math.max(cam.zoom, 8); return updateUI(); }
   if (d.menu) { menuCat = menuCat === d.menu ? null : d.menu; return updateUI(); }
   if (d.notes) return showNotes(d.notes);
@@ -660,7 +661,7 @@ function leftmenuHtml() {
 }
 
 // ---- Economia em abas (docs/interface.md §4): o único lugar onde mercadorias aparecem como estoque e fluxo
-const ECON_TABS = ["Visão Geral", "Mercados", "Mercadorias"] as const;
+const ECON_TABS = ["Visão Geral", "Mercados", "Mercadorias", "Produção e Consumo", "Finanças"] as const;
 let econTab = 0;
 const GOOD_CATS: [string, string[]][] = [
   ["Alimentos", ["Grãos", "Frutas e vegetais", "Carne e caça"]],
@@ -684,9 +685,66 @@ function nationalGood(g: number) {
   return { prod, cons, imp, exp, price: pop ? price / pop : 1 };
 }
 
+let goodDetail: string | null = null; // mercadoria aberta na aba Mercadorias
+
+/** Barras horizontais: [rótulo, valor] em ordem, a maior ocupa a largura toda. */
+const hbars = (rows: [string, number][], color = "var(--gold)", fmtv = fmt) => {
+  const max = Math.max(1e-9, ...rows.map(([, v]) => Math.abs(v)));
+  return rows.map(([k, v]) => `<div style="display:grid;grid-template-columns:150px 1fr 70px;gap:6px;align-items:center;font-size:12px"><span>${k}</span>` +
+    `<div class="bar" style="margin:0"><div style="background:${color};width:${(Math.abs(v) / max) * 100}%"></div></div><span class="num" style="text-align:right">${fmtv(v)}</span></div>`).join("");
+};
+
+/** Produção e consumo: quem produz, o que falta, o que sobra e de onde vem a renda. */
+function prodConsHtml() {
+  if (!active) return "";
+  const cs = eco.cities.filter((k) => k.country === active);
+  const value = (k: (typeof cs)[number]) => { let v = 0; for (let g = 1; g < GOODS.length; g++) v += (k.market.supply[g] - Math.max(0, k.market.trade[g])) * BASE_PRICE[g] * k.market.price[g]; return v; };
+  const byCity = cs.map((k) => [k.name, value(k)] as [string, number]).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const sectors = BUILDINGS.map((b, k) => { let n = 0; for (const i of eco.owned) if (world.owner[i] === active) n += eco.levels[k][i] * b.workers; return [b.name, n] as [string, number]; }).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const goods = GOODS.map((n, g) => [n, g ? nationalGood(g) : null] as const).filter(([, d]) => d && (d.prod > 0.5 || d.cons > 0.5)) as [string, ReturnType<typeof nationalGood>][];
+  const lack = goods.map(([n, d]) => [n, d.cons - d.prod - d.imp] as [string, number]).filter(([, v]) => v > 0.5).sort((a, b) => b[1] - a[1]);
+  const spare = goods.map(([n, d]) => [n, d.prod - d.cons] as [string, number]).filter(([, v]) => v > 0.5).sort((a, b) => b[1] - a[1]);
+  const imports = goods.map(([n, d]) => [n, d.imp] as [string, number]).filter(([, v]) => v > 0.5).sort((a, b) => b[1] - a[1]);
+  return `<h3>Produção por cidade (valor/sem)</h3>${hbars(byCity)}` +
+    `<h3>Empregos por setor</h3>${hbars(sectors, "var(--blue)")}` +
+    `<h3>Faltando (consumo acima de produção + importação)</h3>${lack.length ? hbars(lack, "var(--red)") : "<small>Nada falta.</small>"}` +
+    `<h3>Sobrando</h3>${spare.length ? hbars(spare, "var(--green)") : "<small>Nada sobra.</small>"}` +
+    `<h3>Depende de importação</h3>${imports.length ? hbars(imports, "var(--orange)") : "<small>Não importa nada.</small>"}`;
+}
+
+/** Finanças: de onde vem e para onde vai o dinheiro do Estado, e a dívida. */
+function financesHtml() {
+  if (!active) return "";
+  const c = eco.countries[active - 1], army = eco.divisions.filter((d) => d.country === active && d.kind !== "settler").length * WAR.upkeep;
+  const card = (k: string, v: string, cls = "") => `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
+  return `<div class="cards">${card("Tesouro", fmt(c.treasury))}${card("Dívida", fmt(c.debt), c.debt > 0 ? "up" : "")}${card("Imposto médio", pct(c.tax))}${card("Juros / sem", fmt(c.interest), c.interest > 0 ? "up" : "")}</div>` +
+    `<h3>Receitas por semana</h3>${hbars([["Impostos", c.income], ["Tarifas", c.tariffs]], "var(--green)")}` +
+    `<h3>Despesas por semana</h3>${hbars([["Manutenção das construções", c.upkeep], ["Forças armadas", army], ["Juros da dívida", c.interest]], "var(--red)")}` +
+    (c.bankruptWeeks ? `<p class="bad">Falido: produção reduzida por mais ${c.bankruptWeeks} semanas.</p>` : "") +
+    `<h3>Tesouro (meses)</h3><canvas id="ch-treasury" width="600" height="100" style="width:100%;height:100px;background:#111"></canvas>` +
+    `<h3>Dívida (meses)</h3><canvas id="ch-debt" width="600" height="100" style="width:100%;height:100px;background:#111"></canvas>`;
+}
+
+/** Página de uma mercadoria: preço no tempo, quem produz, quem consome, comércio. */
+function goodDetailHtml(name: string) {
+  const g = GOODS.indexOf(name), d = nationalGood(g);
+  const cs = eco.cities.filter((k) => k.country === active);
+  const prod = cs.map((k) => [k.name, k.market.supply[g] - Math.max(0, k.market.trade[g])] as [string, number]).filter(([, v]) => v > 0.05).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const cons = cs.map((k) => [k.name, k.market.demand[g]] as [string, number]).filter(([, v]) => v > 0.05).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const users = BUILDINGS.filter((b) => b.industry?.inputs.some(([x]) => x === g)).map((b) => b.name);
+  const makers = BUILDINGS.filter((b) => b.industry ? b.industry.outputs.some(([x]) => x === g) : b.for.includes(g)).map((b) => b.name);
+  return `<button data-good="" title="Voltar">‹ Mercadorias</button><h3>${name} · ${(BASE_PRICE[g] * d.price).toFixed(1)} <small>(${Math.round((d.price - 1) * 100)}% do preço base)</small></h3>` +
+    `<canvas id="ch-good" width="600" height="110" style="width:100%;height:110px;background:#111"></canvas><small>Preço médio no país, últimos 24 meses.</small>` +
+    `<div class="cards"><div class="card"><div class="k">Produção/sem</div><div class="v">${fmt(d.prod)}</div></div><div class="card"><div class="k">Consumo/sem</div><div class="v">${fmt(d.cons)}</div></div>` +
+    `<div class="card"><div class="k">Importa</div><div class="v">${fmt(d.imp)}</div></div><div class="card"><div class="k">Exporta</div><div class="v">${fmt(d.exp)}</div></div></div>` +
+    `<h3>Quem produz</h3>${prod.length ? hbars(prod, "var(--green)") : "<small>Ninguém no país.</small>"}<small>Feito por: ${makers.join(", ") || "—"}</small>` +
+    `<h3>Quem consome</h3>${cons.length ? hbars(cons, "var(--red)") : "<small>Ninguém no país.</small>"}<small>População${users.length ? " e " + users.join(", ") : ""}.</small>`;
+}
+
 function economyView() {
   const tabs = `<div class="tabs">${ECON_TABS.map((t, k) => `<button data-econ="${k}" class="${k === econTab ? "on" : ""}">${t}</button>`).join("")}</div>`;
-  return tabs + [econOverview, marketsHtml, goodsCardsHtml][econTab]();
+  if (econTab === 2 && goodDetail) return tabs + goodDetailHtml(goodDetail);
+  return tabs + [econOverview, marketsHtml, goodsCardsHtml, prodConsHtml, financesHtml][econTab]();
 }
 
 function econOverview() {
@@ -722,7 +780,7 @@ function goodsCardsHtml() {
       if (d.prod < 0.5 && d.cons < 0.5) return "";
       const ph = hist["$" + n] ?? [], old = ph.length > 6 ? ph[ph.length - 7] : d.price, trend = old ? d.price / old - 1 : 0;
       const bal = d.prod + d.imp - d.exp - d.cons;
-      return `<div class="card"><div class="k">${n}</div><div class="v">${(BASE_PRICE[g] * d.price).toFixed(1)} <small class="${trend > 0.02 ? "up" : trend < -0.02 ? "down" : ""}">${trend >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(trend * 100))}%</small></div>` +
+      return `<div class="card" data-good="${n}" style="cursor:pointer" title="Abrir ${n}"><div class="k">${n}</div><div class="v">${(BASE_PRICE[g] * d.price).toFixed(1)} <small class="${trend > 0.02 ? "up" : trend < -0.02 ? "down" : ""}">${trend >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(trend * 100))}%</small></div>` +
         `<small>Produção ${fmt(d.prod)} · Consumo ${fmt(d.cons)}<br>Importa ${fmt(d.imp)} · Exporta ${fmt(d.exp)}<br>Saldo <span class="${bal >= 0 ? "down" : "up"}">${signed(bal)}</span>/sem</small></div>`;
     }).join("");
     return cards ? `<h3>${cat}</h3><div class="cards">${cards}</div>` : "";
@@ -859,6 +917,11 @@ function updateUI() {
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
   drawTechLines();
+  const hist = active ? eco.countries[active - 1].history ?? {} : {};
+  for (const [id, key] of [["ch-treasury", "Tesouro"], ["ch-debt", "Dívida"], ["ch-good", "$" + goodDetail]] as const) {
+    const cv = document.getElementById(id) as HTMLCanvasElement | null;
+    if (cv) drawChart(cv, hist[key] ?? []);
+  }
   const series = document.getElementById("series") as HTMLCanvasElement | null;
   if (series && active) drawChart(series, eco.countries[active - 1].history?.[chartKey] ?? []);
 }
