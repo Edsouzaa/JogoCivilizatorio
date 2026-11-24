@@ -52,7 +52,10 @@ Ver docs/politica.md.
 - **Renda:** 30% do PIB de mercado vai para os donos (classe alta); o resto vira salário, dividido pelo peso de salário de cada tipo. A comida de subsistência é a renda de quem vive da terra.
 - **Qualidade de vida (1 a 50):** 25 = renda igual ao custo das necessidades básicas (comida, peles e madeira).
 - **Efeitos hoje:** acadêmicos aumentam a pesquisa. O peso político por classe já é calculado, para os grupos políticos.
-- A fazer: lealdade, migração por qualidade de vida, escravidão/servidão por lei, soldados vindos do exército, dependentes.
+- **Lealdade (0 a 100), por tipo de POP:** anda 5% por semana em direção a um alvo: 50 + 2 × (QV − 25) + 40 × (legitimidade − 0,5). Abaixo de 30, o POP é **radical**.
+- **Radicais:** cada 10% de radicais tira 3% da produção e 3 pontos de legitimidade.
+- **Migração entre países (mensal):** a população rural vai para as cidades do país onde a classe baixa tem a melhor QV, se a diferença passar de 5 pontos (até 0,3% por mês). A população total se conserva. Por enquanto vale qualquer distância.
+- A fazer: escravidão/servidão por lei, soldados vindos do exército, dependentes, migração só para vizinhos.
 
 ## O que fica fora da primeira versão jogável
 

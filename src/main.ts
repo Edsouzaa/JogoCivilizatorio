@@ -4,7 +4,7 @@ import {
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
-import { POP_TYPES, CLASSES, politicalWeight, type Pops } from "./pops.ts";
+import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, type Politics } from "./politics.ts";
 import { pixelToHex, wrapCol, SQRT3 } from "./hex.ts";
 import { createRenderer } from "./render.ts";
@@ -170,6 +170,8 @@ function countryHtml() {
     `População ${fmt(c.pop)} · ${eco.cities.filter((k) => k.country === active).length} cidade(s)<br>PIB anual <b>${fmt(c.gdpWeek * 52)}</b>` +
     `<canvas id="gdp" width="300" height="80" style="width:100%;background:#111;margin:4px 0"></canvas>` +
     `Tesouro ${fmt(c.treasury)} · Dívida <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span>` +
+    `<br>Lealdade média ${Math.round(averageLoyalty(c.pops))} · radicais <span class="${c.radicals > 0.1 ? "bad" : ""}">${Math.round(c.radicals * 100)}%</span>` +
+    ` · migração no mês <span class="${c.migration < 0 ? "up" : c.migration > 0 ? "down" : ""}">${c.migration > 0 ? "+" : c.migration < 0 ? "−" : ""}${fmt(Math.abs(c.migration))}</span>` +
     `<br>Manpower livre <b class="${c.manpower < 20 ? "bad" : ""}">${fmt(c.manpower)}</b>` +
     `<br>Semana: +${fmt(c.income)} impostos (${Math.round(c.tax * 100)}%) − ${fmt(c.upkeep)} manutenção − ${fmt(c.interest)} juros` +
     (c.bankruptWeeks ? `<br><span class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</span>` : "") +
@@ -211,10 +213,11 @@ function popsHtml(p: Pops) {
   const rows = POP_TYPES.map((t, k) => [t, k] as const).filter(([, k]) => p.count[k] >= 0.5)
     .sort(([a], [b]) => a.cls - b.cls)
     .map(([t, k]) => `<tr><td>${t.name}</td><td>${CLASSES[t.cls]}</td><td>${fmt(p.count[k])}</td>` +
-      `<td>${(p.income[k] / p.count[k]).toFixed(2)}</td><td class="${qolColor(p.qol[k])}">${Math.round(p.qol[k])}</td></tr>`);
+      `<td>${(p.income[k] / p.count[k]).toFixed(2)}</td><td class="${qolColor(p.qol[k])}">${Math.round(p.qol[k])}</td>` +
+      `<td class="${p.loyalty[k] < POP_RULES.radicalBelow ? "bad" : ""}">${Math.round(p.loyalty[k])}</td></tr>`);
   const weight = politicalWeight(p), total = weight.reduce((s, v) => s + v, 0) || 1;
   return `<details id="pops" ${popsOpen ? "open" : ""}><summary><b>População por classe</b></summary>` +
-    `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td></tr>${rows.join("")}</table>` +
+    `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td><td><b title="Lealdade, 0 a 100 (abaixo de 30 = radical)">Leal</b></td></tr>${rows.join("")}</table>` +
     `<small>Peso político: ${CLASSES.map((c, k) => `${c} ${Math.round((weight[k] / total) * 100)}%`).join(" · ")}</small></details>`;
 }
 

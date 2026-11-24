@@ -1,7 +1,7 @@
 import { RESOURCES, TERRAINS, isLand, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { newResearch, research, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
-import { jobsFor, idleType, newPops, distributeIncome, P, POP_RULES, type Pops } from "./pops.ts";
+import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
@@ -91,6 +91,10 @@ export const RULES = {
   minCityDistance: 4,       // hexágonos entre cidades
   maxSettleDistance: 12,    // colonos só fundam até esta distância de uma cidade do país
   settleClaimRadius: 2,     // território que uma cidade nova reivindica
+  radicalPenalty: 0.3,      // produção × (1 − isto × fração de radicais)
+  radicalLegitimacy: 0.3,   // legitimidade − isto × fração de radicais
+  migrationMinQol: 5,       // diferença mínima de QV da classe baixa para alguém emigrar
+  migrationMonth: 0.003,    // fração máxima da população rural que emigra por mês (com 50 pontos de diferença)
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
   cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer
@@ -116,6 +120,8 @@ export type Country = {
   research: Research;
   pops: Pops;           // população por tipo de POP, renda e qualidade de vida
   politics: Politics;   // grupos, governo, legitimidade e leis
+  radicals: number;     // fração da população com lealdade baixa
+  migration: number;    // saldo migratório do último mês (+ chegou, − saiu)
   subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
@@ -176,7 +182,7 @@ export function createEconomy(w: World): Economy {
     countries: w.countries.map(() => ({
       treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
       manpower: 0, settlers: RULES.startSettlers, gdpHistory: [],
-      research: newResearch(), pops: newPops(), politics: newPolitics(), subsistence: 0, bonus: new Float64Array(NB), researchWeek: 0,
+      research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, bonus: new Float64Array(NB), researchWeek: 0,
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket() })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
@@ -301,6 +307,37 @@ function updatePops(e: Economy, c: Country, country: number) {
   distributeIncome(c.pops, c.gdpWeek, c.subsistence, needCost);
 }
 
+/**
+ * Migração entre países (mensal): a população rural de cada país vai para as cidades do país onde a classe
+ * baixa tem a melhor qualidade de vida, se a diferença passar de migrationMinQol. A população total se conserva.
+ */
+// shortcut: qualquer distância e para um único destino; trocar por vizinhos/rotas quando houver fronteiras e comércio exterior.
+export function migrate(w: World, e: Economy) {
+  const qol = e.countries.map((c) => lowerClassQol(c.pops));
+  const dest = e.countries.map((_, a) => {
+    let best = -1;
+    e.countries.forEach((_, b) => { if (b !== a && (best < 0 || qol[b] > qol[best])) best = b; });
+    return best;
+  });
+  const rate = e.countries.map((_, a) => {
+    const diff = dest[a] < 0 ? 0 : qol[dest[a]] - qol[a];
+    return diff < RULES.migrationMinQol ? 0 : RULES.migrationMonth * Math.min(1, diff / 50);
+  });
+  const inflow = new Float64Array(e.countries.length), outflow = new Float64Array(e.countries.length);
+  for (const i of e.owned) {
+    const a = w.owner[i] - 1;
+    if (!rate[a] || e.urban[i]) continue;
+    const moved = w.pop[i] * rate[a];
+    w.pop[i] -= moved; outflow[a] += moved; inflow[dest[a]] += moved;
+  }
+  e.countries.forEach((c, b) => {
+    c.migration = inflow[b] - outflow[b];
+    if (!inflow[b]) return;
+    const urban = e.cities.filter((k) => k.country === b + 1).flatMap((k) => k.urban);
+    for (const j of urban) w.pop[j] += inflow[b] / urban.length;
+  });
+}
+
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
@@ -339,7 +376,7 @@ export function tick(w: World, e: Economy) {
       if (def.boosts === undefined) base += lv * RULES.outputPerLevel * (1 + c.bonus[b]); else mult += lv * def.mult!;
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
-    const penalty = c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1;
+    const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals);
     if (base) m.supply[w.resource[i]] += base * mult * staffing * penalty;
     for (let b = 0; b < NB; b++) { // quem trabalha aqui, por tipo de POP
       const lv = e.levels[b][i];
@@ -400,10 +437,14 @@ export function tick(w: World, e: Economy) {
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
     updatePops(e, c, ci + 1);
     updatePolitics(c.politics, c.pops, c.research.era);
+    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy);
+    c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     advanceLaw(c.politics);
     c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic;
     if (research(c.research, c.researchWeek)) updateBonus(c);
   });
+
+  if (e.week % 4 === 0) migrate(w, e);
 
   if (e.week % 4 === 0) { // cidades crescem quando a população urbana passa do limite do tamanho atual
     let grew = false;
