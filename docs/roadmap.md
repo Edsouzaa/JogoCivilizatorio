@@ -76,6 +76,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Mar aberto: zonas marítimas sem costa de verdade (menos de 10 hexes encostados em terra; ilhota não conta) se juntam às vizinhas também de mar aberto, em grupos de até 10 zonas. O oceano fica com poucos nós grandes; o litoral mantém os nós menores (no mapa padrão: 614 → 444 zonas).
 
+- Navios por era (Galés, Caravelas, Navios de linha, Couraçados, Submarinos, Porta-aviões) e aviões (Caças, Caças a jato, Drones), liberados por tecnologia, com força e custo próprios; a IA constrói o melhor. Botões por tipo no hex da cidade.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -107,7 +109,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Outros personagens (generais, ministros, líderes de grupo, empresários), família, mortes por eventos.
     - Comandantes e generais.
 15. **Militar completo**
-    - Unidades navais e aéreas por era, reconhecimento, engenharia; comandantes terrestre/naval/aéreo e exércitos com vários generais.
+    - Papéis especiais (submarino caçando comércio, porta-aviões levando aviões, bombardeiro destruindo indústria), reconhecimento, engenharia; comandantes terrestre/naval/aéreo e exércitos com vários generais.
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
 16. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.

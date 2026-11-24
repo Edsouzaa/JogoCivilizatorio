@@ -9,7 +9,7 @@ import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDist
 import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { relation, DIPLO } from "./diplomacy.ts";
-import { bestUnit } from "./units.ts";
+import { bestUnit, bestCraft, SHIPS, PLANES } from "./units.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 
 export const AI = {
@@ -144,11 +144,11 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   // marinha: uma frota se tiver litoral e a tecnologia
   const port = mine.flatMap((k) => k.urban).find((j) => coastOf(w, j) >= 0);
   if (port !== undefined && c.research.known.has(NAVY.tech) && !e.divisions.some((d) => d.kind === "fleet" && d.country === country) &&
-      c.treasury > NAVY.cost * AI.reserve && c.manpower >= NAVY.sailors) buildFleet(w, e, country, port);
+      c.treasury > NAVY.cost * AI.reserve && c.manpower >= NAVY.sailors) buildFleet(w, e, country, port, bestCraft(SHIPS, c.research.known).name);
 
   // força aérea: um esquadrão a cada 3 cidades
   const wings = e.divisions.filter((d) => d.kind === "air" && d.country === country);
-  if (c.research.known.has(AIR.tech) && wings.length < Math.ceil(mine.length / 3) && c.treasury > AIR.cost * AI.reserve && c.manpower >= AIR.pilots) buildAir(w, e, country, mine[0].hex);
+  if (c.research.known.has(AIR.tech) && wings.length < Math.ceil(mine.length / 3) && c.treasury > AIR.cost * AI.reserve && c.manpower >= AIR.pilots) buildAir(w, e, country, mine[0].hex, bestCraft(PLANES, c.research.known).name);
 
   const enemies = e.countries.map((_, k) => k + 1).filter((b) => atWar(e, country, b));
   for (const b of enemies) { // paz quando decidiu ou se arrastou

@@ -79,3 +79,18 @@ armyB.hex = seaB;
 stepWar(w, e);
 assert.ok(!e.divisions.includes(armyB), "exército sem escolta deveria afundar");
 console.log("navy ok");
+
+// tipos de navio: exigem tecnologia; navio melhor ganha a batalha naval
+{
+  const { SHIPS, craftOf } = await import("../src/units.ts");
+  assert.ok(SHIPS.every((s) => s.power > 0 && s.cost > 0));
+  assert.equal(craftOf(SHIPS, undefined).name, "Galés", "frota sem tipo (save antigo) = galés");
+  const { buildFleet } = await import("../src/war.ts");
+  const c = e.countries[A - 1]; c.treasury = 1e4; c.manpower = 1e4;
+  const city = e.cities.find((k) => k.country === A && k.urban.some((j) => coastOf(w, j) >= 0))!, coast = city.urban.find((j) => coastOf(w, j) >= 0)!;
+  assert.match(buildFleet(w, e, A, coast, "Couraçados")!, /Eletricidade/);
+  c.research.known.add("Eletricidade");
+  assert.equal(buildFleet(w, e, A, coast, "Couraçados"), null);
+  assert.ok(e.divisions.some((d) => d.unit === "Couraçados"));
+}
+console.log("ships ok");

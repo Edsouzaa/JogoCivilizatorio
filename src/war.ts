@@ -4,7 +4,7 @@
 import { refresh, GOODS, RULES, INFAMY, type Economy, type Division, type WarStats } from "./economy.ts";
 import { DIPLO } from "./diplomacy.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, note } from "./characters.ts";
-import { UNITS, unitOf } from "./units.ts";
+import { UNITS, unitOf, SHIPS, PLANES, craftOf } from "./units.ts";
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
@@ -61,18 +61,20 @@ export const airRegion = (e: Economy, i: number) => {
 };
 const missionOf = (e: Economy, d: Division) => airRegion(e, d.target ?? d.hex);
 
-export function buildAir(w: World, e: Economy, country: number, hex: number): string | null {
+export function buildAir(w: World, e: Economy, country: number, hex: number, plane = "Caças"): string | null {
   if (w.owner[hex] !== country || !e.urban[hex] || e.occupier[hex]) return "Forme o esquadrão numa cidade sua";
-  const c = e.countries[country - 1];
-  if (!c.research.known.has(AIR.tech)) return `Precisa pesquisar ${AIR.tech}`;
+  const c = e.countries[country - 1], p = PLANES.find((x) => x.name === plane);
+  if (!p) return "Tipo de avião desconhecido";
+  if (!c.research.known.has(p.tech)) return `Precisa pesquisar ${p.tech}`;
+  const cost = Math.round(AIR.cost * p.cost);
   if (c.manpower < AIR.pilots) return `Manpower insuficiente (precisa ${AIR.pilots})`;
-  if (c.treasury < AIR.cost) return `Precisa de ${AIR.cost} no tesouro`;
-  c.manpower -= AIR.pilots; c.treasury -= AIR.cost;
-  e.divisions.push({ id: e.nextDivision++, kind: "air", country, hex, strength: AIR.pilots, org: 1, target: null, progress: 0, equip: 1 });
+  if (c.treasury < cost) return `Precisa de ${cost} no tesouro`;
+  c.manpower -= AIR.pilots; c.treasury -= cost;
+  e.divisions.push({ id: e.nextDivision++, kind: "air", country, hex, strength: AIR.pilots, org: 1, target: null, progress: 0, equip: 1, unit: p.name });
   return null;
 }
 
-const airPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "air")), 0);
+const airPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "air")) * craftOf(PLANES, d.unit).power, 0);
 
 /** Superioridade aérea de `a` sobre `b` numa região (0..1; 0,5 se ninguém voa lá). */
 export function airSuperiority(e: Economy, region: number, a: number, b: number) {
@@ -105,16 +107,18 @@ function passable(w: World, e: Economy, d: Division, i: number) {
   return d.kind !== "fleet" && MOVE_WEEKS[w.terrain[i]] !== Infinity;
 }
 
-export function buildFleet(w: World, e: Economy, country: number, hex: number): string | null {
+export function buildFleet(w: World, e: Economy, country: number, hex: number, ship = "Galés"): string | null {
   if (w.owner[hex] !== country || !e.urban[hex] || e.occupier[hex]) return "Construa a frota numa cidade sua";
-  const c = e.countries[country - 1];
-  if (!c.research.known.has(NAVY.tech)) return `Precisa pesquisar ${NAVY.tech}`;
+  const c = e.countries[country - 1], sh = SHIPS.find((x) => x.name === ship);
+  if (!sh) return "Tipo de navio desconhecido";
+  if (!c.research.known.has(sh.tech)) return `Precisa pesquisar ${sh.tech}`;
+  const cost = Math.round(NAVY.cost * sh.cost);
   const sea = coastOf(w, hex);
   if (sea < 0) return "Essa parte da cidade não fica no litoral";
   if (c.manpower < NAVY.sailors) return `Manpower insuficiente (precisa ${NAVY.sailors})`;
-  if (c.treasury < NAVY.cost) return `Precisa de ${NAVY.cost} no tesouro`;
-  c.manpower -= NAVY.sailors; c.treasury -= NAVY.cost;
-  e.divisions.push({ id: e.nextDivision++, kind: "fleet", country, hex: sea, strength: NAVY.sailors, org: 1, target: null, progress: 0, equip: 1 });
+  if (c.treasury < cost) return `Precisa de ${cost} no tesouro`;
+  c.manpower -= NAVY.sailors; c.treasury -= cost;
+  e.divisions.push({ id: e.nextDivision++, kind: "fleet", country, hex: sea, strength: NAVY.sailors, org: 1, target: null, progress: 0, equip: 1, unit: sh.name });
   return null;
 }
 
@@ -227,7 +231,7 @@ export function crossesRiver(w: World, a: number, b: number) {
 }
 
 /** Força de combate: soldados × organização × armas × tecnologia militar do país. */
-const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "fleet")), 0);
+const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "fleet")) * craftOf(SHIPS, d.unit).power, 0);
 /** Força de combate: soldados × organização × armas × tecnologia × tipo (ataque ou defesa) × governante × general. */
 const power = (e: Economy, ds: Division[], role: "atk" | "def") => ds.reduce((s, d) => {
   const r = rulerOf(e, d.country), g = d.general ? e.characters?.find((c) => c.id === d.general) : undefined, u = unitOf(d.unit);

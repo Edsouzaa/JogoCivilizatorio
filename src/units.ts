@@ -19,3 +19,22 @@ export const unitOf = (name?: string) => UNITS.find((u) => u.name === name) ?? U
 export const unitsFor = (known: Set<string>) => UNITS.filter((u) => !u.tech || known.has(u.tech));
 /** Melhor tipo disponível (a IA recruta este): maior ataque + defesa por custo. */
 export const bestUnit = (known: Set<string>) => unitsFor(known).reduce((a, u) => ((u.atk + u.def) / u.cost > (a.atk + a.def) / a.cost ? u : a));
+
+/** Navios e aviões: tipo por era (força multiplica a frota/esquadrão; as tecnologias fleet/air continuam valendo). */
+export type CraftType = { name: string; tech: string; power: number; cost: number };
+export const SHIPS: CraftType[] = [
+  { name: "Galés", tech: "Galés", power: 1, cost: 1 },
+  { name: "Caravelas", tech: "Navegação", power: 1.5, cost: 1.3 },
+  { name: "Navios de linha", tech: "Pólvora", power: 2.5, cost: 1.8 },
+  { name: "Couraçados", tech: "Eletricidade", power: 5, cost: 3 },
+  { name: "Submarinos", tech: "Motor a combustão", power: 4, cost: 2.5 },
+  { name: "Porta-aviões", tech: "Aviação", power: 6, cost: 4 },
+];
+export const PLANES: CraftType[] = [
+  { name: "Caças", tech: "Aviação", power: 1, cost: 1 },
+  { name: "Caças a jato", tech: "Computadores", power: 3, cost: 2 },
+  { name: "Drones", tech: "Drones", power: 4, cost: 2.2 },
+];
+export const craftOf = (list: CraftType[], name?: string) => list.find((u) => u.name === name) ?? list[0];
+export const craftsFor = (list: CraftType[], known: Set<string>) => list.filter((u) => known.has(u.tech));
+export const bestCraft = (list: CraftType[], known: Set<string>) => craftsFor(list, known).reduce((a, u) => (u.power / u.cost > a.power / a.cost ? u : a), list[0]);

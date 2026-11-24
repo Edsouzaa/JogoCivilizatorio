@@ -15,7 +15,7 @@ import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
 import { rulerOf, ageOf, lifeText, CHAR } from "./characters.ts";
-import { unitOf, unitsFor } from "./units.ts";
+import { unitOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
@@ -547,7 +547,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "cancel-law" && active) return cmd({ t: "cancelLaw" });
   if (d.recruit) return cmd({ t: "recruit", hex: selected, unit: d.recruit });
   if (d.act === "hire-general" && selectedDiv) return cmd({ t: "general", id: selectedDiv });
-  if (d.act === "fleet") return cmd({ t: "fleet", hex: selected });
+  if (d.fleet) return cmd({ t: "fleet", hex: selected, unit: d.fleet });
   if (d.stateNew) {
     const k = Number(d.stateNew);
     return openNamer("<i class=i-map></i> Novo estado", `Estado de ${eco.cities[k].name}`, cityFlag(k), () => cmd({ t: "stateNew", city: k, name: idIn("name").value, flag: idFlag() }));
@@ -555,7 +555,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.stateJoin) { const [city, st] = d.stateJoin.split("|").map(Number); return cmd({ t: "stateJoin", city, state: st }); }
   if (d.stateLeave) return cmd({ t: "stateLeave", city: Number(d.stateLeave) });
   if (d.stateTax) { const [st, law] = d.stateTax.split("|"); return cmd({ t: "stateTax", state: Number(st), law: law || null }); }
-  if (d.act === "air") return cmd({ t: "air", hex: selected });
+  if (d.air) return cmd({ t: "air", hex: selected, unit: d.air });
   if (d.act === "war") return cmd({ t: "war", target: world.owner[selected] });
   if (d.peace) return cmd({ t: "peace", target: Number(d.peace) });
   if (d.act === "disband" && selectedDiv) { cmd({ t: "disband", id: selectedDiv }); selectedDiv = null; return updateUI(); }
@@ -956,10 +956,10 @@ function divisionHtml() {
   if (d.kind === "air") {
     const region = airRegion(eco, d.target ?? d.hex);
     const name = region >= STATES.regionBase ? eco.states.find((x) => x.id === region - STATES.regionBase)?.name ?? "—" : region >= 0 ? eco.cities[region].name : "—";
-    return `<div class="unit"><b><i class=i-plane></i> Esquadrão ${d.id}</b> · ${d.target === null ? "defendendo a base" : "missão"}: região de ${name}` +
+    return `<div class="unit"><b><i class=i-plane></i> ${craftOf(PLANES, d.unit).name} ${d.id}</b> · ${d.target === null ? "defendendo a base" : "missão"}: região de ${name}` +
       `<br>Pilotos ${Math.round(d.strength)}/${AIR.pilots} · org. ${pct(d.org)} · alcance ${AIR.range} hexes <small>(botão direito = região de missão)</small> <button data-act="disband">Desfazer</button></div>`;
   }
-  if (d.kind === "fleet") return `<div class="unit"><b><i class=i-ship></i> Frota ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
+  if (d.kind === "fleet") return `<div class="unit"><b><i class=i-ship></i> ${craftOf(SHIPS, d.unit).name} ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
     `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · <small>leva exércitos nessa zona</small> <button data-act="disband">Desfazer</button></div>`;
   const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
   const u = unitOf(d.unit), gen = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined;
@@ -1158,9 +1158,9 @@ function hexHtml() {
   if (eco.urban[i] && !eco.occupier[i]) h += `<br><small>Recrutar (${WAR.divisionSize} manpower):</small> ` + unitsFor(eco.countries[active - 1].research.known)
     .map((u) => `<button data-recruit="${u.name}" title="${u.cat} · ataque ${u.atk} · defesa ${u.def} · velocidade ${u.speed} · cerco ${u.siege}">${u.name} (${Math.round(WAR.recruitCost * u.cost)})</button>`).join(" ");
   if (eco.urban[i] && !eco.occupier[i] && coastOf(world, i) >= 0) h += eco.countries[active - 1].research.known.has(NAVY.tech)
-    ? ` <button data-act="fleet">Construir frota (${NAVY.cost} + ${NAVY.sailors} manpower)</button>` : ` <small><i class=i-lock></i> frota: ${NAVY.tech}</small>`;
+    ? ` <small>Frota (${NAVY.sailors} manpower):</small> ` + craftsFor(SHIPS, eco.countries[active - 1].research.known).map((u) => `<button data-fleet="${u.name}" title="força ${u.power}">${u.name} (${Math.round(NAVY.cost * u.cost)})</button>`).join(" ") : ` <small><i class=i-lock></i> frota: ${NAVY.tech}</small>`;
   if (eco.urban[i] && !eco.occupier[i]) h += eco.countries[active - 1].research.known.has(AIR.tech)
-    ? ` <button data-act="air">Formar esquadrão (${AIR.cost} + ${AIR.pilots} manpower)</button>` : "";
+    ? ` <small>Esquadrão (${AIR.pilots} manpower):</small> ` + craftsFor(PLANES, eco.countries[active - 1].research.known).map((u) => `<button data-air="${u.name}" title="força ${u.power}">${u.name} (${Math.round(AIR.cost * u.cost)})</button>`).join(" ") : "";
   if (city && eco.urban[i]) {
     const ci = eco.market[i] - 1, st = stateOfCity(eco, ci), lock = statesLocked(eco, active);
     if (st) h += `<br><i class=i-map></i> Estado: <b>${st.name}</b>${st.country === active ? ` <button data-rename="state:${st.id}" title="Renomear"><i class=i-edit></i></button>` : ""} · ${st.interest} ${st.happy ? "<i class=i-smile></i>" : "<span class='bad'><i class=i-frown></i> insatisfeito</span>"}` + (lock ? "" : ` <button data-state-leave="${ci}">Sair do estado</button>`);
