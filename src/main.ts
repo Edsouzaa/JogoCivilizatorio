@@ -14,7 +14,7 @@ import { relation, prestige, DIPLO } from "./diplomacy.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
-import { rulerOf, ageOf } from "./characters.ts";
+import { rulerOf, ageOf, lifeText } from "./characters.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
@@ -515,6 +515,7 @@ document.addEventListener("pointerdown", (e) => {
     if (name) cmd({ t: "continent", id: +d.continent, name });
     return;
   }
+  if (d.book) return openBook(Number(d.book));
   if (d.saveChar) return cmd({ t: "saveCharacter", id: Number(d.saveChar) });
   if (d.improve) return cmd({ t: "improve", target: Number(d.improve) });
   if (d.chart) { chartKey = d.chart; return updateUI(); }
@@ -1000,6 +1001,36 @@ function lawEffect(l: Law, cat: string, p: Politics) {
   return `${l.desc ?? ""}${parts.length ? "<br>" + parts.join(" · ") : ""}`;
 }
 
+/** Livro da história: a vida do personagem num documento por cima do jogo; "Salvar como PDF" imprime só o livro. */
+function openBook(id: number) {
+  const c = eco.characters?.find((x) => x.id === id);
+  if (!c) return;
+  // iframe em vez de janela nova: não depende de pop-up e a impressão (PDF) pega só o livro
+  document.getElementById("book")?.remove();
+  const box = document.createElement("div"); box.id = "book";
+  box.style.cssText = "position:fixed;inset:70px 15% 70px 15%;z-index:12;border:1px solid var(--gold);background:#f4ecd8;display:flex;flex-direction:column";
+  const close = document.createElement("button"); close.textContent = "Fechar"; close.style.cssText = "align-self:flex-end;margin:6px"; close.onclick = () => box.remove();
+  const frame = document.createElement("iframe"); frame.style.cssText = "flex:1;border:0"; frame.title = "Livro da história";
+  box.append(close, frame); document.body.appendChild(box);
+  const win = frame.contentWindow!;
+  const esc = (t: string) => t.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[ch]!);
+  const era = eco.countries[c.country - 1].research.era;
+  win.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(c.name)}</title>
+    <style>body{font:16px/1.6 Georgia,serif;color:#2b2418;background:#f4ecd8;max-width:640px;margin:40px auto;padding:0 24px}
+    h1{font-size:30px;margin:0}small{color:#6b5d44}.head{display:flex;gap:18px;align-items:center;border-bottom:1px solid #b9a77f;padding-bottom:12px}
+    ul{list-style:none;padding:0}li{padding:4px 0;border-bottom:1px dotted #c9b88f}@media print{button{display:none}}</style></head><body>
+    <div class="head">${portraitSVG(c, era, 110)}<div><h1>${esc(c.name)}</h1><small>${esc(world.countries[c.country - 1].name)} · ${c.dead ? "falecido" : `${ageOf(c, eco.week)} anos`}</small>
+    <p><small>Administração ${c.adm} · Diplomacia ${c.dip} · Militar ${c.mil} · ${esc(c.traits.join(", "))}</small></p></div></div>
+    <h2>Vida</h2><ul>${c.life.map((l) => `<li>${esc(lifeText(world, l))}</li>`).join("")}</ul>
+    <button onclick="print()">Salvar como PDF / imprimir</button></body></html>`);
+  win.document.close();
+}
+
+/** Personagens guardados na história do país (vivos e mortos), com o livro de cada um. */
+const bookList = () => {
+  const saved = (eco.characters ?? []).filter((c) => c.saved && c.country === active);
+  return saved.length ? `<h3>Livro da história</h3>${saved.map((c) => `<div>${c.name} <small>${c.dead ? "(falecido)" : ""}</small> <button data-book="${c.id}">Abrir livro</button></div>`).join("")}` : "";
+};
 /** Cartão do governante: retrato, idade, atributos, traços e a vida dele (aba Política). */
 function rulerHtml() {
   const r = active ? rulerOf(eco, active) : undefined;
@@ -1009,7 +1040,7 @@ function rulerHtml() {
     `<div style="flex:1"><div class="serif" style="font-size:17px;font-weight:600">${r.name}</div><small style="display:block">${ageOf(r, eco.week)} anos · ${r.traits.join(", ")}</small>` +
     attr("Administração (impostos)", r.adm) + attr("Diplomacia (relações)", r.dip) + attr("Militar (exército)", r.mil) +
     (r.saved ? "<small>Guardado na história</small>" : `<button data-save-char="${r.id}" title="O livro dele continua depois que ele morrer">Guardar na história</button>`) + `</div></div>` +
-    `<details><summary><small>Vida</small></summary><small>${r.life.join("<br>")}</small></details>`;
+    `<details><summary><small>Vida</small></summary><small>${r.life.map((l) => lifeText(world, l)).join("<br>")}</small></details>` + bookList();
 }
 
 function politicsHtml(p: Politics, era: number) {

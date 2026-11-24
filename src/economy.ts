@@ -8,7 +8,7 @@ import type { Flag } from "./flags.ts";
 import { makeName } from "./names.ts";
 import { updateControl, CONTROL } from "./control.ts";
 import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
-import { rulerOf, attrMod, CHAR, type Character } from "./characters.ts";
+import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
 
@@ -737,7 +737,8 @@ export function tick(w: World, e: Economy) {
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     const ideas = Math.min(0.3, 0.1 * (e.incentives ?? []).filter((x) => x.kind === "Impor ideias" && e.cities[x.city]?.country === ci + 1).length);
-    advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci), ideas);
+    const law = advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci), ideas);
+    if (law) noteRuler(e, ci + 1, `aprovou a lei ${law}`);
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
     const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01);
     c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);

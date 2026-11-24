@@ -70,6 +70,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Personagens, primeira parte: cada país tem um governante (nome na língua do país, idade, administração/diplomacia/militar de 0 a 100, 2 traços, aparência). Administração mexe no imposto (±10%), militar na força do exército (±10%), diplomacia nas relações com vizinhos. Morre de velhice e o sucessor vem pela forma de governo (herdeiro, eleito, clero, partido), com aviso. Retrato gerado pela aparência (rosto, pele, cabelo, barba, cicatriz, corpo e roupa da era) na barra superior e na aba Política, com a vida dele e o botão "Guardar na história".
 
+- Livro da história: personagem guardado continua depois de morto; a vida dele anota nascimento, posse, guerras declaradas/sofridas, paz (vitória ou derrota), leis aprovadas e morte. "Abrir livro" mostra um documento com retrato e a vida, com botão "Salvar como PDF / imprimir".
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -100,7 +102,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 14. **Personagens**
     - Outros personagens (generais, ministros, líderes de grupo, empresários), família, mortes por eventos.
     - Comandantes e generais.
-    - Livro de história exportável em PDF.
 15. **Militar completo**
     - Categorias de unidade por era e comandantes por domínio.
     - Operações conjuntas.

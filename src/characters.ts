@@ -44,8 +44,13 @@ export function newCharacter(w: World, e: Economy, country: number, seed: number
 }
 
 const year = (week: number) => { const y = START_YEAR + Math.floor(week / 52); return y < 0 ? `${-y} a.C.` : `${y + 1} d.C.`; };
-/** Anota um acontecimento na vida do personagem. */
+/** Anota um acontecimento na vida do personagem. "§k§" no texto = nome do país k (resolvido ao mostrar). */
 export const note = (c: Character, week: number, text: string) => c.life.push(`${year(week)}: ${text}`);
+
+/** Anota na vida do governante do país, se houver. */
+export const noteRuler = (e: Economy, country: number, text: string) => { const r = rulerOf(e, country); if (r) note(r, e.week, text); };
+/** Troca §k§ pelo nome do país. */
+export const lifeText = (w: World, line: string) => line.replace(/§(\d+)§/g, (_, k) => w.countries[+k - 1]?.name ?? "?");
 
 export const rulerOf = (e: Economy, country: number) => e.characters?.find((c) => c.id === e.countries[country - 1].ruler);
 
