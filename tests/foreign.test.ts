@@ -33,3 +33,21 @@ assert.ok(!hasPact(e, 1, 2));
 assert.match(proposePact(e, 1, 2)!, /guerra/);
 cancelPact(e, 1, 2);
 console.log("foreign ok");
+
+// porto: só em cidade no mar/rio, limitado pela era, e aumenta o que a cidade exporta
+{
+  const { buildHarbor, maxHarbor, createEconomy: ce } = await import("../src/economy.ts");
+  const { generateWorld: gw } = await import("../src/world.ts");
+  const w2 = gw(200, 100, 4, 6), e2 = ce(w2);
+  const k = e2.cities.findIndex((c) => c.coast), inland = e2.cities.findIndex((c) => !c.coast && !c.port);
+  if (inland >= 0) assert.match(buildHarbor(e2, inland)!, /não encosta/);
+  if (k >= 0) {
+    const c = e2.countries[e2.cities[k].country - 1];
+    c.treasury = 1e4;
+    assert.equal(buildHarbor(e2, k), null);
+    assert.equal(e2.cities[k].harbor, 1);
+    assert.equal(maxHarbor(e2, e2.cities[k].country), 1);
+    assert.match(buildHarbor(e2, k)!, /máximo/);
+  }
+}
+console.log("harbor ok");

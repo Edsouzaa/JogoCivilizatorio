@@ -1,4 +1,4 @@
-import { RESOURCES, TERRAINS, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
+import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
@@ -115,6 +115,8 @@ export const RULES = {
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
   cityGrowthPop: 300,       // a IA compra centro urbano quando a população urbana passa disto × tamanho
+  harborCost: 120,          // porto nível n custa isto × n
+  harborTrade: 0.25,        // cada nível: +25% do que a cidade troca
   roadCost: 80,             // estrada nível n custa isto × n
   roadTrade: 0.1,           // cada nível: +10% do que a cidade manda/recebe no comércio terrestre (mais barato levar)
   roadControl: 0.05,        // cada nível: +5% de controle máximo na região da cidade
@@ -147,6 +149,8 @@ export type City = {
   blockaded?: boolean; // frota inimiga na zona marítima colada: sem comércio exterior, metade do interno, sem porto
   state?: number;       // id do estado da cidade (states.ts)
   flag?: Flag;          // bandeira própria (sem ela, a do país)
+  harbor?: number;      // nível do porto (0 = sem porto): mais comércio, até o máximo da era
+  coast?: boolean;      // algum centro urbano encosta no mar (pode ter porto)
   road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
   picked?: number[];    // centros urbanos comprados, na ordem (o resto do tamanho vem dos hexes mais perto)
 };
@@ -244,6 +248,7 @@ export function refresh(w: World, e: Economy) {
     c.urban = [...new Set([c.hex, ...(c.picked ?? []).filter(ok), ...hexesInRadius(c.hex, 3, w.W, w.H).filter(ok)])].slice(0, c.size);
     for (const j of c.urban) e.urban[j] = 1;
     c.port = c.urban.some((j) => w.navigable[j] > 0);
+    c.coast = c.urban.some((j) => { let s = false; forNeighbors(j % w.W, (j / w.W) | 0, w.W, w.H, (n) => { if (w.terrain[n] === T.OCEAN) s = true; }); return s; });
     e.market[c.hex] = k + 1; queue.push(c.hex);
   });
   // cada hex do país compra/vende no mercado da cidade mais próxima (por caminho dentro do país)
@@ -289,6 +294,25 @@ export const popCap = (w: World, e: Economy, i: number) => {
   const era = w.owner[i] ? e.countries[w.owner[i] - 1].research.era : 0;
   return e.urban[i] ? RULES.popCapUrban * (1 + RULES.popCapPerEra * era) : RULES.popCapRural * Math.max(0.1, TERRAINS[w.terrain[i]].fertility);
 };
+
+/** Cidade com saída para água (rio navegável ou mar com porto): troca mais e mais longe. */
+const onWater = (c: City) => c.port || (c.harbor ?? 0) > 0;
+const portMult = (c: City) => (c.port ? RULES.portTradeBonus : 1) * (1 + RULES.harborTrade * (c.harbor ?? 0));
+/** Porto máximo pela era: 1 até a Clássica, +1 a cada duas eras (até 5). */
+export const maxHarbor = (e: Economy, country: number) => Math.min(5, 1 + Math.floor(e.countries[country - 1].research.era / 2));
+
+/** Melhora o porto da cidade k em 1 nível (precisa encostar no mar ou num rio navegável). */
+export function buildHarbor(e: Economy, k: number): string | null {
+  const city = e.cities[k];
+  if (!city) return "Cidade inválida";
+  if (!city.coast && !city.port) return "A cidade não encosta no mar nem num rio navegável";
+  const lv = (city.harbor ?? 0) + 1, c = e.countries[city.country - 1];
+  if (lv > maxHarbor(e, city.country)) return `Porto no máximo da era (${maxHarbor(e, city.country)})`;
+  const cost = RULES.harborCost * lv;
+  if (c.treasury < cost) return `Faltam ${Math.ceil(cost - c.treasury)} de dinheiro`;
+  c.treasury -= cost; city.harbor = lv;
+  return null;
+}
 
 /** Estrada máxima pela era: 1 na Tribal, até 5. */
 export const maxRoad = (e: Economy, country: number) => Math.min(5, e.countries[country - 1].research.era + 1);
@@ -435,7 +459,7 @@ function foreignTrade(w: World, e: Economy) {
   for (const key of e.pacts) {
     const [a, b] = key.split("-").map(Number);
     const near = (city: City, other: number) => e.cities.some((k) => k.country === other &&
-      hexDistance(city.hex % w.W, (city.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W) <= RULES.foreignRange * (city.port || k.port ? 2 : 1));
+      hexDistance(city.hex % w.W, (city.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W) <= RULES.foreignRange * (onWater(city) || onWater(k) ? 2 : 1));
     const pool = e.cities.filter((k) => !k.blockaded && ((k.country === a && near(k, b)) || (k.country === b && near(k, a))));
     if (!pool.some((k) => k.country === a) || !pool.some((k) => k.country === b)) continue;
     for (let gi = 1; gi < NG; gi++) {
@@ -444,13 +468,13 @@ function foreignTrade(w: World, e: Economy) {
       for (const [from, to] of [[a, b], [b, a]]) {
         let offer = 0, lack = 0;
         const fs = Math.min(1, RULES.foreignShare * (1 + techSum(e.countries[from - 1].research, "trade")));
-        pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * (k.port ? RULES.portTradeBonus : 1)); if (k.country === to && net[i] < 0) lack -= net[i]; });
+        pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * portMult(k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
         const moved = Math.min(offer, lack);
         if (moved <= 0) continue;
         const value = moved * BASE_PRICE[gi];
         pool.forEach((k, i) => {
           let d = 0;
-          if (k.country === from && net[i] > 0) d = -net[i] * Math.min(1, fs * (k.port ? RULES.portTradeBonus : 1)) * (moved / offer);
+          if (k.country === from && net[i] > 0) d = -net[i] * Math.min(1, fs * portMult(k)) * (moved / offer);
           if (k.country === to && net[i] < 0) d = -net[i] * (moved / lack);
           k.market.supply[gi] += d; k.market.trade[gi] += d; net[i] += d;
         });
@@ -470,7 +494,7 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
   }
   for (const [country, cs] of byCountry) {
     if (cs.length < 2) continue;
-    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : c.port ? RULES.portTradeBonus : 1) * (1 + RULES.roadTrade * (c.road ?? 0)));
+    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : portMult(c)) * (1 + RULES.roadTrade * (c.road ?? 0)));
     const c0 = e.countries[country - 1];
     const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")); // lei de Economia + tecnologia
     for (let gi = 1; gi < NG; gi++) {

@@ -1,7 +1,7 @@
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
-  proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad,
+  proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available } from "./tech.ts";
@@ -429,6 +429,7 @@ document.addEventListener("pointerdown", (e) => {
     const [kind, ks, mode] = d.incentive.split("|");
     return cmd({ t: "incentive", kind: kind as IncentiveKind, cities: ks.split(",").map(Number), off: mode === "off" });
   }
+  if (d.harbor) return cmd({ t: "harbor", city: Number(d.harbor) });
   if (d.road) return cmd({ t: "road", city: Number(d.road) });
   if (d.urbanize) return cmd({ t: "urbanize", city: Number(d.urbanize), hex: selected });
   if (d.groupKind) { group = eco.divisions.filter((x) => group.includes(x.id) && x.kind === d.groupKind).map((x) => x.id); selectedDiv = group[0] ?? null; return updateUI(); }
@@ -759,6 +760,8 @@ function hexHtml() {
   if (city && eco.urban[i]) {
     const others = eco.cities.map((k, idx) => [k, idx] as const).filter(([k]) => k.country === city.country && k !== city);
     { const k = eco.cities.indexOf(city), lv = city.road ?? 0;
+      const hb = city.harbor ?? 0;
+      if (city.coast || city.port) h += `<br>⚓ Porto nível ${hb}/${maxHarbor(eco, city.country)} <small>(+${Math.round(RULES.harborTrade * hb * 100)}% comércio${hb ? ", alcance do comércio exterior ×2" : ""})</small>` + (city.country === active && hb < maxHarbor(eco, city.country) ? ` <button data-harbor="${k}">Melhorar (${RULES.harborCost * (hb + 1)})</button>` : "");
       h += `<br>🛣 Estrada nível ${lv}/${maxRoad(eco, city.country)} <small>(+${Math.round(RULES.roadTrade * lv * 100)}% comércio terrestre, +${Math.round(RULES.roadControl * lv * 100)}% controle)</small>` + (city.country === active && lv < maxRoad(eco, city.country) ? ` <button data-road="${k}">Melhorar (${RULES.roadCost * (lv + 1)})</button>` : ""); }
     h += `<br><b>${city.name}</b>${city.country === active ? ` <button data-rename="city:${eco.cities.indexOf(city)}" title="Renomear">✏</button>` : ""} · tamanho ${city.size} · pop urbana ${fmt(city.urban.reduce((s, j) => s + world.pop[j], 0))}` +
       ` (cresce com ${fmt(city.size * RULES.cityGrowthPop)})` +

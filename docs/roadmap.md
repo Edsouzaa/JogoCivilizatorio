@@ -43,6 +43,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Estradas por cidade em níveis (máximo = era + 1, até 5; custo 80 × nível): cada nível dá +10% no que a cidade troca por terra e +5% de controle máximo na região. A IA melhora quando sobra dinheiro.
 
+- Portos por cidade (no mar ou rio navegável), nível máximo 1 + era/2 (até 5), custo 120 × nível: +25% de comércio por nível e alcance do comércio exterior dobrado.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -52,7 +54,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
    - Centros comerciais e mercado mundial (Vic3 1.9) no lugar do comércio por pactos.
 3. **Infraestrutura**
    - Ferrovias (gastam carvão e locomotivas).
-   - Portos com nível limitado pela era.
 4. **Rios**
    - Sem espirais e com mais lagos.
    - Rios navegáveis largos, ligados a um nó de mar, com nome (votação no multiplayer).

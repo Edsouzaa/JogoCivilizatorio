@@ -1,7 +1,7 @@
 // Comandos do jogador. Toda ação que muda a partida passa por aqui, para valer igual no single-player,
 // no servidor e em todos os navegadores do multiplayer (lockstep). Cada comando só age sobre o país de quem mandou.
 import {
-  build, foundCity, trainSettlers, transferSize, urbanize, buildRoad, proposePact, cancelPact, type Economy,
+  build, foundCity, trainSettlers, transferSize, urbanize, buildRoad, buildHarbor, proposePact, cancelPact, type Economy,
 } from "./economy.ts";
 import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disband } from "./war.ts";
 import { proposeLaw, cancelLaw } from "./politics.ts";
@@ -18,6 +18,7 @@ export type Cmd =
   | { t: "transfer"; from: number; to: number }
   | { t: "urbanize"; city: number; hex: number }
   | { t: "road"; city: number }
+  | { t: "harbor"; city: number }
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
@@ -67,6 +68,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       return err;
     }
     case "settlers": return trainSettlers(w, e, country);
+    case "harbor": return ownCity(c.city) ? buildHarbor(e, c.city) : "Cidade não é sua";
     case "road": return ownCity(c.city) ? buildRoad(e, c.city) : "Cidade não é sua";
     case "urbanize": return ownCity(c.city) && isInt(c.hex) && c.hex < w.W * w.H ? urbanize(w, e, c.city, c.hex) : "Cidade não é sua";
     case "transfer": return ownCity(c.from) && ownCity(c.to) ? transferSize(w, e, c.from, c.to) : "Cidade não é sua";
