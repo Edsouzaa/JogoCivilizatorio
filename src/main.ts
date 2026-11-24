@@ -1,4 +1,4 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, CLIMATES, T, type World } from "./world.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   proposePact, cancelPact, hasPact, INFAMY,
@@ -394,7 +394,7 @@ function connect(hello: object) {
 if (params.get("server") && params.get("room")) setTimeout(() => connect({ t: "join", code: params.get("room"), name: params.get("name") ?? "" }), 0);
 
 function act(result: string | null) { message = result ?? ""; if (eco.version !== drawnVersion) recolor(); updateUI(); }
-function doBuild(b = buildingsFor(world.resource[selected], !!eco.urban[selected])[0]) { // B sem escolha = 1ª construção do hex
+function doBuild(b = buildingsFor(world.resource[selected], !!eco.urban[selected], world.resource2[selected])[0]) { // B sem escolha = 1ª construção do hex
   if (selected >= 0 && b !== undefined) cmd({ t: "build", i: selected, b });
 }
 window.addEventListener("keydown", (e) => {
@@ -473,7 +473,7 @@ function updateUI() {
   const hcity = inMap(hc, hr) ? cityOf(hi) : undefined;
   const hidden = inMap(hc, hr) && active > 0 && !explored.get(active)?.[hi];
   const info = hidden ? "Inexplorado" : inMap(hc, hr)
-    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.seaZone[hi] ? ` · zona marítima ${world.seaZone[hi]}` : ""}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]} · pop ${Math.round(world.pop[hi])}` +
+    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.seaZone[hi] ? ` · zona marítima ${world.seaZone[hi]}` : ""}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]}${world.resource2[hi] ? ` + ${RESOURCES[world.resource2[hi]]}` : ""}${world.reserve[hi] !== Infinity ? ` (jazida ~${Math.round(world.reserve[hi] / 52)} anos)` : ""} · pop ${Math.round(world.pop[hi])}` +
       (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
     : "—";
   const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";
@@ -665,7 +665,7 @@ function researchHtml(r: Economy["countries"][number]["research"], perWeek: numb
 function hexHtml() {
   if (selected < 0) return "<i>Clique num hexágono.</i>";
   const i = selected, res = world.resource[i], city = cityOf(i);
-  let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]} · pop ${fmt(world.pop[i])}`;
+  let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]}${world.resource2[i] ? ` + ${RESOURCES[world.resource2[i]]}` : ""} · pop ${fmt(world.pop[i])}`;
   if (world.reserve[i] !== Infinity) h += ` · jazida para ~${Math.round(world.reserve[i] / 52)} anos (com 1 nível)`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
   const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
@@ -685,7 +685,7 @@ function hexHtml() {
     if (eco.occupier[i]) h += `<br>Ocupado por ${world.countries[eco.occupier[i] - 1].name}`;
     return h + (message ? `<br><span class="bad">${message}</span>` : "");
   }
-  const rows = buildingsFor(res, !!eco.urban[i]).map((b) => {
+  const rows = buildingsFor(res, !!eco.urban[i], world.resource2[i]).map((b) => {
     const def = BUILDINGS[b], lv = eco.levels[b][i];
     const tip = def.boosts !== undefined ? ` <small>(+${Math.round(def.mult! * 100)}% ${BUILDINGS[def.boosts].name}/nível)</small>`
       : def.industry ? ` <small>(${def.industry.inputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")} → ${def.industry.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")})</small>` : "";
@@ -789,7 +789,25 @@ const worldToScreen = (x: number, y: number): [number, number] => {
   x += Math.round((cam.x - x) / WORLD_W) * WORLD_W;
   return [(x - cam.x) * cam.zoom + unitsCanvas.width / 2, (y - cam.y) * cam.zoom + unitsCanvas.height / 2];
 };
+/** Mapa de recursos: hex com 2 produtos ganha a metade esquerda na cor do segundo (o shader pinta só 1 cor). */
+function drawSecondResources() {
+  if (mode !== 3 || cam.zoom < 4) return;
+  const [x0, y0] = toWorld(0, 0), [x1, y1] = toWorld(window.innerWidth, window.innerHeight);
+  const r0 = Math.max(0, Math.floor(y0 / 1.5) - 1), r1 = Math.min(H - 1, Math.ceil(y1 / 1.5) + 1);
+  const c0 = Math.floor(x0 / SQRT3) - 1, c1 = Math.ceil(x1 / SQRT3) + 1;
+  const k = SQRT3 / 2;
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const i = r * W + wrapCol(c, W), g = world.resource2[i];
+    if (!g || (active && !canSee(i))) continue;
+    const [cx, cy] = hexCenter(c, r), [sx, sy] = worldToScreen(cx, cy), z = cam.zoom;
+    units.fillStyle = `rgb(${RES_COLORS[g]})`;
+    units.beginPath(); // metade esquerda: topo → cima-esquerda → baixo-esquerda → base
+    units.moveTo(sx, sy - z); units.lineTo(sx - k * z, sy - 0.5 * z); units.lineTo(sx - k * z, sy + 0.5 * z); units.lineTo(sx, sy + z); units.closePath();
+    units.fill();
+  }
+}
 function drawRegions() {
+  drawSecondResources();
   const n = nodesOf(), h = highlight();
   if (h) { // borda brilhando: traço largo translúcido + traço fino
     for (const [width, color] of [[7, "#ffd76a55"], [2, "#ffe9a0"]] as const) {

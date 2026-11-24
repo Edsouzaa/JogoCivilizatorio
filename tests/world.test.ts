@@ -46,4 +46,8 @@ if (po >= 0) assert.ok(snowAt(w, po, 26));
 // sem número de países: 1 tribo a cada 10.000 hexes de terra (mínimo 4)
 const big = generateWorld(600, 300, 3);
 assert.ok(big.owner instanceof Uint16Array && Math.abs(big.countries.length - Math.max(4, Math.round(big.landCount / 10000))) <= 2, `${big.countries.length} tribos`);
+// jazida em cima de lavoura/floresta: dois produtos, nunca repetidos; a jazida é a que tem reserva
+let two = 0;
+for (let i = 0; i < big.W * big.H; i++) if (big.resource2[i]) { two++; assert.notEqual(big.resource2[i], big.resource[i]); }
+assert.ok(two > 0, "nenhum hex com 2 produtos");
 console.log("world ok");

@@ -10,17 +10,15 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Painel de notificações (tecnologia, guerra, paz e avisos) e linha do equador.
 - Testes movidos para `tests/`.
 - Seleção por caixa (botão esquerdo arrastando), painel das tropas por tipo e ordem para o grupo todo. Arrastar o mapa agora é com o botão direito ou o do meio.
-- Bandeira do país (faixas, cruz ou canto + símbolo), desenhada nas unidades. Nome, cor e bandeira editáveis no botão 🏳. Cidades e estados podem ser renomeados (✏).
+- Bandeira do país (faixas, cruz ou canto + símbolo), desenhada nas unidades. Nome, cor e bandeira editáveis no botão 🏳.
+- Nome e bandeira ao fundar cidade e criar estado, e depois no ✏. Bandeira e nome das cidades no mapa.
+- Clique numa zona marítima ou num estado: a borda brilha e aparece o nome; o nó da zona fica dourado. Estado mostra pop, PIB, QV (do país) e lealdade.
+- Nós marítimos: bolinha no centro de cada zona e ligações pontilhadas (aparecem com zoom). O bloqueio de comércio por frota inimiga já existia.
+- Recursos: todo hex de terra tem recurso. Jazidas minerais têm reserva (150–600 anos com 1 nível; pedra e sal 5× mais); ao acabar a mina fecha, o povo perde o emprego e chega aviso. Jazida em cima de lavoura/floresta = 2 produtos, desenhados como meia-fatia no mapa de recursos.
 
 ## Próximos (nesta ordem)
 
-1. **Bandeiras de cidade e estado**, e escolher nome e bandeira já na criação (hoje se renomeia depois).
-2. **Clique em estado e zona marítima**: a borda brilha e aparece o nome. O nó fica dourado. O estado mostra QV, PIB e população.
-3. **Nós marítimos**: bolinha no centro e linhas pontilhadas entre nós vizinhos. O bloqueio fecha a entrada de recursos no mercado.
-4. **Recursos**
-   - Todo hex de terra com recurso, e mais tipos de recurso.
-   - Reservas que acabam, e a construção desativa quando esgota (gera desemprego).
-   - Até 2–3 produtos por hex, desenhados como fatias.
+1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
 5. **Cidades**
    - Crescimento comprando centro urbano vizinho.
    - Teto de população por hex.

@@ -2,7 +2,7 @@
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
 import {
-  build, buildCost, buildingsFor, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
+  build, buildCost, buildingsFor, outputOf, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
@@ -74,11 +74,11 @@ function invest(w: World, e: Economy, country: number) {
     if (w.owner[i] !== country || e.occupier[i]) continue;
     const city = e.cities[e.market[i] - 1];
     if (!city) continue;
-    for (const b of buildingsFor(w.resource[i], !!e.urban[i])) {
+    for (const b of buildingsFor(w.resource[i], !!e.urban[i], w.resource2[i])) {
       const def = BUILDINGS[b], tech = techFor(b);
       if (tech && !c.research.known.has(tech)) continue;
       if (def.boosts !== undefined && !e.levels[def.boosts][i]) continue;
-      const out = def.industry ? def.industry.outputs[0][0] : w.resource[i];
+      const out = def.industry ? def.industry.outputs[0][0] : outputOf(w, b, i);
       const workersOk = w.pop[i] * RULES.hexLaborShare >= def.workers * (e.levels[b][i] + 1) * 0.5;
       const v = (city.market.price[out] * (workersOk ? 1 : 0.2)) / buildCost(e, b, i);
       if (v > bestV) { bestV = v; best = [i, b]; }

@@ -188,8 +188,10 @@ const newMarket = (): Market => ({
 });
 
 /** Construções possíveis num hex com este recurso; indústrias só se o hex for urbano. */
-export const buildingsFor = (resource: number, urban: boolean) =>
-  BUILDINGS.map((_, b) => b).filter((b) => (BUILDINGS[b].industry ? urban : BUILDINGS[b].for.includes(resource)));
+export const buildingsFor = (resource: number, urban: boolean, resource2 = 0) =>
+  BUILDINGS.map((_, b) => b).filter((b) => (BUILDINGS[b].industry ? urban : BUILDINGS[b].for.includes(resource) || (!!resource2 && BUILDINGS[b].for.includes(resource2))));
+/** Produto que a construção b tira do hex i (o primeiro recurso, ou o segundo se ela for dele). */
+export const outputOf = (w: World, b: number, i: number) => (BUILDINGS[b].for.includes(w.resource[i]) ? w.resource[i] : w.resource2[i]);
 const extractorFor = (resource: number) => BUILDINGS.findIndex((b) => !b.industry && b.boosts === undefined && b.for.includes(resource));
 
 /** Recalcula hexes urbanos, a que mercado cada hex pertence e a lista de hexes com dono. */
@@ -253,7 +255,7 @@ export function build(w: World, e: Economy, i: number, b: number): string | null
   const def = BUILDINGS[b];
   if (!w.owner[i]) return "Hex sem dono";
   if (!def) return "Construção inválida";
-  if (def.industry ? !e.urban[i] : !def.for.includes(w.resource[i])) return def.industry ? "Indústria só em hex de cidade" : "Construção não serve para este recurso";
+  if (def.industry ? !e.urban[i] : !def.for.includes(w.resource[i]) && !(w.resource2[i] && def.for.includes(w.resource2[i]))) return def.industry ? "Indústria só em hex de cidade" : "Construção não serve para este recurso";
   if (def.boosts !== undefined && !e.levels[def.boosts][i]) return `Precisa de ${BUILDINGS[def.boosts].name} antes`;
   if (e.levels[b][i] >= 255) return "Nível máximo";
   const c = e.countries[w.owner[i] - 1], tech = techFor(b);
@@ -486,7 +488,8 @@ export function tick(w: World, e: Economy) {
     const k = e.market[i];
     if (!k || e.occupier[i]) continue;
     const m = e.cities[k - 1].market, c = e.countries[w.owner[i] - 1];
-    let base = 0, mult = 1, required = 0;
+    let base = 0, mult = 1, required = 0, mined = 0; // mined: produção do 1º recurso (gasta a jazida)
+    const out = new Map<number, number>(); // produto → produção base
     for (let b = 0; b < NB; b++) {
       const lv = e.levels[b][i];
       if (!lv) continue;
@@ -494,15 +497,19 @@ export function tick(w: World, e: Economy) {
       required += lv * def.workers;
       c.upkeep += lv * RULES.upkeepPerLevel;
       if (def.industry) continue;
-      if (def.boosts === undefined) base += lv * RULES.outputPerLevel * (1 + c.bonus[b]); else mult += lv * def.mult!;
+      if (def.boosts === undefined) {
+        const q = lv * RULES.outputPerLevel * (1 + c.bonus[b]), g = outputOf(w, b, i);
+        base += q; out.set(g, (out.get(g) ?? 0) + q);
+        if (g === w.resource[i]) mined += q;
+      } else mult += lv * def.mult!;
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals);
-    if (base) m.supply[w.resource[i]] += base * mult * staffing * penalty;
-    if (base && w.reserve[i] !== Infinity) { // jazida: cada semana de extração gasta a reserva
-      w.reserve[i] -= (base / RULES.outputPerLevel) * staffing;
+    for (const [g, q] of out) m.supply[g] += q * mult * staffing * penalty;
+    if (mined && w.reserve[i] !== Infinity) { // jazida: cada semana de extração gasta a reserva
+      w.reserve[i] -= (mined / RULES.outputPerLevel) * staffing;
       if (w.reserve[i] <= 0) {
-        for (let b = 0; b < NB; b++) if (!BUILDINGS[b].industry) e.levels[b][i] = 0; // mina e melhorias fecham
+        for (let b = 0; b < NB; b++) if (!BUILDINGS[b].industry && outputOf(w, b, i) === w.resource[i]) e.levels[b][i] = 0; // a mina fecha (a lavoura de cima continua)
         exhaust(w, i); e.exhausted.push(i);
       }
     }

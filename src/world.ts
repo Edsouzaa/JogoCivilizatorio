@@ -26,6 +26,8 @@ export const isLand = (t: number) => t !== T.OCEAN && t !== T.ICE;
 export const RESOURCES = ["—", "Grãos", "Frutas e vegetais", "Carne e caça", "Peles", "Madeira", "Pedra", "Fibras",
   "Argila", "Sal", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Especiarias", "Cavalos",
   "Gado", "Carvão mineral", "Enxofre", "Petróleo"];
+/** Cor de cada recurso no mapa de recursos. */
+export const RES_COLORS = RESOURCES.map((_, k) => [((k * 97) % 200) + 55, ((k * 57) % 200) + 55, ((k * 151) % 200) + 55]);
 const R = Object.fromEntries(RESOURCES.map((n, i) => [n, i]));
 const RESOURCES_BY_TERRAIN: number[][] = [
   [],
@@ -56,6 +58,7 @@ export type World = {
   W: number; H: number; seed: number;
   terrain: Uint8Array; resource: Uint8Array; owner: Uint16Array;
   pop: Float32Array; climate: Uint8Array;
+  resource2: Uint8Array; // segundo produto do hex (0 = nenhum); a reserva é sempre do primeiro
   reserve: Float32Array; // semanas de extração que restam na jazida (Infinity = renovável)
   river: Uint8Array;     // bits 0–5: rio na borda k do hex (ver `across`)
   navigable: Uint8Array; // bits 0–5: trecho navegável (futuro: navios)
@@ -108,7 +111,7 @@ function percentile(v: Float32Array, frac: number) {
 }
 
 /** A jazida do hex acabou: vira o recurso comum do terreno. */
-export function exhaust(w: World, i: number) { w.resource[i] = commonOf(w.terrain[i]); w.reserve[i] = Infinity; }
+export function exhaust(w: World, i: number) { w.resource[i] = commonOf(w.terrain[i]); w.resource2[i] = 0; w.reserve[i] = Infinity; }
 
 export function generateWorld(W: number, H: number, seed: number, nCountries?: number, landFrac = 0.29): World {
   const N = W * H, rand = mulberry32(seed);
@@ -130,6 +133,7 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
   const sea = percentile(elev, landFrac), mountain = percentile(elev, landFrac * 0.06), hills = percentile(elev, landFrac * 0.2);
 
   const terrain = new Uint8Array(N), resource = new Uint8Array(N), pop = new Float32Array(N), climate = new Uint8Array(N);
+  const resource2 = new Uint8Array(N); // segundo produto do hex (0 = nenhum)
   const reserve = new Float32Array(N).fill(Infinity); // Infinity = renovável (lavoura, floresta, pasto)
   let landCount = 0;
   for (let row = 0; row < H; row++) {
@@ -157,7 +161,9 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
         const r = opts[Math.min(opts.length - 1, Math.max(0, Math.floor(((kind[i] - 0.25) / 0.5) * opts.length)))];
         if (deposit[i] > (MINERAL.has(r) ? 0.64 : 0.56)) resource[i] = r;
       }
-      if (!resource[i]) resource[i] = commonOf(t); // todo hex de terra produz alguma coisa
+      const common = commonOf(t);
+      if (!resource[i]) resource[i] = common; // todo hex de terra produz alguma coisa
+      else if (common !== resource[i]) resource2[i] = common; // jazida em cima de lavoura/floresta: 2 produtos
       if (MINERAL.has(resource[i])) { // jazida: acaba um dia
         const years = RESERVE.minYears + (RESERVE.maxYears - RESERVE.minYears) * Math.min(1, Math.max(0, deposit[i]));
         reserve[i] = years * 52 * (resource[i] === R["Pedra"] || resource[i] === R["Sal"] ? RESERVE.abundant : 1);
@@ -170,7 +176,7 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
 
   // Países: uma capital em terra fértil, com território de raio START_RADIUS. O resto do mundo começa livre.
   const owner = new Uint16Array(N), countries: World["countries"] = [];
-  const w: World = { W, H, seed, terrain, resource, reserve, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
+  const w: World = { W, H, seed, terrain, resource, resource2, reserve, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
   generateSeaZones(w);
   generateRivers(w, elev, hills, rand);
   for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água
@@ -208,7 +214,6 @@ export const URBAN_COLOR = [190, 180, 170];
  * Trocar de modo = recalcular isto e subir a textura.
  */
 export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4)) {
-  const resColors = RESOURCES.map((_, k) => [((k * 97) % 200) + 55, ((k * 57) % 200) + 55, ((k * 151) % 200) + 55]);
   for (let i = 0; i < w.W * w.H; i++) {
     const t = w.terrain[i];
     let c: readonly number[] = TERRAINS[t].color;
@@ -218,7 +223,7 @@ export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Ui
       if (mode === 1) c = w.owner[i] ? w.countries[w.owner[i] - 1].color : [90, 90, 90];
       if (mode === 1 && occupier[i] && ((i % w.W) + ((i / w.W) | 0)) % 2) c = w.countries[occupier[i] - 1].color; // ocupado: listrado
       else if (mode === 2) { const v = Math.min(1, Math.sqrt(w.pop[i] / 400)); c = [40 + 215 * v, 40 + 80 * v, 40]; }
-      else if (mode === 3) c = w.resource[i] ? resColors[w.resource[i]] : [70, 70, 70];
+      else if (mode === 3) c = w.resource[i] ? RES_COLORS[w.resource[i]] : [70, 70, 70];
       if (urban[i] && mode !== 2) c = mode === 1 ? c.map((v) => v * 0.6) : URBAN_COLOR;
     }
     out[i * 4] = c[0]; out[i * 4 + 1] = c[1]; out[i * 4 + 2] = c[2];

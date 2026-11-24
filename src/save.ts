@@ -74,7 +74,8 @@ export async function loadGame(file: Blob): Promise<SaveData> {
   const arrays: unknown[] = [w.terrain, w.resource, w.owner, w.pop, w.climate, w.river, w.navigable, w.seaZone, e.market, e.urban, e.occupier, ...(e.levels ?? [])];
   if (!(N > 0) || arrays.some((a) => !ArrayBuffer.isView(a) || (a as Uint8Array).length !== N) || !Array.isArray(e.countries) || !Array.isArray(e.cities))
     throw new Error("Save corrompido: tamanhos não batem");
-  w.reserve ??= new Float32Array(N).fill(Infinity); // saves de antes das reservas
+  w.reserve ??= new Float32Array(N).fill(Infinity);
+  w.resource2 ??= new Uint8Array(N); // saves de antes das reservas
   e.exhausted ??= [];
   return raw as SaveData;
 }
