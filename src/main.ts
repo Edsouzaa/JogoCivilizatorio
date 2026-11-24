@@ -18,7 +18,38 @@ import { listAutosaves, writeAutosave, readAutosave, autosaveClock, AUTOSAVE, ty
 import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, statesLocked, STATES } from "./states.ts";
 
 let hudMsg = "", hudMsgUntil = 0; // aviso rápido no topo (salvou, erro ao carregar...)
-const notify = (m: string) => { hudMsg = m; hudMsgUntil = performance.now() + 5000; };
+// Painel de notificações (canto de baixo): guarda as últimas, cada uma com a data do jogo; × apaga.
+const notesBox = document.createElement("div");
+notesBox.style.cssText = "position:fixed;bottom:8px;left:340px;width:300px;max-height:30vh;overflow-y:auto;font-size:12px;display:flex;flex-direction:column-reverse;gap:3px";
+document.body.appendChild(notesBox);
+const notify = (m: string) => {
+  hudMsg = m; hudMsgUntil = performance.now() + 5000;
+  const n = document.createElement("div");
+  n.style.cssText = "background:#000c;border-radius:5px;padding:4px 22px 4px 8px;position:relative";
+  const close = document.createElement("button");
+  close.textContent = "×"; close.title = "Dispensar";
+  close.style.cssText = "position:absolute;right:3px;top:2px;background:none;border:0;color:#aaa;cursor:pointer";
+  close.onclick = () => n.remove();
+  const when = document.createElement("small");
+  when.style.opacity = ".6";
+  try { when.textContent = dateLabel(eco.week) + " — "; } catch { /* antes do mundo existir */ }
+  n.append(when, document.createTextNode(m), close);
+  notesBox.prepend(n);
+  while (notesBox.childElementCount > 30) notesBox.lastChild!.remove();
+};
+// eventos do país do jogador que viram notificação (comparando com o quadro anterior)
+let seenTechs = -1, seenWars = "", seenActive = -1;
+function watchEvents() {
+  if (!active) return;
+  const c = eco.countries[active - 1];
+  const wars = [...eco.wars].filter((k) => k.split("-").includes(String(active))).sort().join(",");
+  if (seenActive === active) {
+    if (c.research.known.size > seenTechs) notify(`🔬 Tecnologia descoberta: ${[...c.research.known].at(-1)}`);
+    for (const k of wars.split(",")) if (k && !seenWars.split(",").includes(k)) notify(`⚔ Guerra com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
+    for (const k of seenWars.split(",")) if (k && !wars.split(",").includes(k)) notify(`🕊 Paz com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
+  }
+  seenActive = active; seenTechs = c.research.known.size; seenWars = wars;
+}
 
 const snapshot = () => saveGame({ world, eco, ui: { active, cam: { ...cam }, mode, speed, explored: [...explored] } });
 
@@ -631,6 +662,14 @@ function drawChart(cv: HTMLCanvasElement, data: number[]) {
 /** Divisões desenhadas por cima do mapa (canvas 2D): círculo na cor do país, com soldados e organização. */
 function drawUnits() {
   units.clearRect(0, 0, unitsCanvas.width, unitsCanvas.height);
+  { // linha do equador: meio das linhas do mapa
+    const ey = (hexCenter(0, H / 2)[1] - cam.y) * cam.zoom + unitsCanvas.height / 2;
+    if (ey > 0 && ey < unitsCanvas.height) {
+      units.strokeStyle = "#ffd76a99"; units.lineWidth = 1.5; units.setLineDash([10, 6]);
+      units.beginPath(); units.moveTo(0, ey); units.lineTo(unitsCanvas.width, ey); units.stroke(); units.setLineDash([]);
+      units.fillStyle = "#ffd76acc"; units.font = "12px sans-serif"; units.textAlign = "left"; units.textBaseline = "bottom"; units.fillText("Equador", 8, ey - 2);
+    }
+  }
   const toScreen = (i: number): [number, number] => {
     let [x, y] = hexCenter(i % W, (i / W) | 0);
     x += Math.round((cam.x - x) / WORLD_W) * WORLD_W; // cópia mais perto da câmera (mundo dá a volta)
@@ -676,6 +715,7 @@ function frame(now: number) {
   refreshFog();
   renderer.draw(cam.x, cam.y, cam.zoom, hover[0], hover[1], Math.cos((2 * Math.PI * (eco.week % 52)) / 52), active > 0);
   drawUnits();
+  watchEvents();
   frames++;
   if (now - last >= 500) {
     fps = (frames * 1000) / (now - last);
