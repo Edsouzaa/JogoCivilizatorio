@@ -1,13 +1,13 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, type World } from "./world.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
-  proposePact, cancelPact, hasPact, INFAMY,
+  proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, type Law } from "./politics.ts";
-import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
+import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, WAR, NAVY, AIR } from "./war.ts";
@@ -417,6 +417,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.build) return doBuild(Number(d.build));
   if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
   if (d.act === "found" && selectedDiv) return askFound(selectedDiv);
+  if (d.urbanize) return cmd({ t: "urbanize", city: Number(d.urbanize), hex: selected });
   if (d.groupKind) { group = eco.divisions.filter((x) => group.includes(x.id) && x.kind === d.groupKind).map((x) => x.id); selectedDiv = group[0] ?? null; return updateUI(); }
   if (d.act === "identity" && active) return openIdentity();
   if (d.rename) { // "city:3" ou "state:2"
@@ -668,6 +669,11 @@ function hexHtml() {
   let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]}${world.resource2[i] ? ` + ${RESOURCES[world.resource2[i]]}` : ""} · pop ${fmt(world.pop[i])}`;
   if (world.reserve[i] !== Infinity) h += ` · jazida para ~${Math.round(world.reserve[i] / 52)} anos (com 1 nível)`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
+  h += ` · cabem ${fmt(popCap(world, eco, i))}`;
+  if (active && world.owner[i] === active && !eco.urban[i] && isLand(world.terrain[i])) { // comprar como centro urbano da cidade vizinha
+    const k = eco.cities.findIndex((cc) => cc.country === active && cc.urban.some((u) => hexDistance(u % W, (u / W) | 0, i % W, (i / W) | 0, W) === 1));
+    if (k >= 0) h += `<br><button data-urbanize="${k}">🏙 Virar centro urbano de ${eco.cities[k].name} (${fmt(urbanCost(eco.cities[k]))})</button> <small>cidade +1 tamanho; menos recurso natural, mais indústria</small>`;
+  }
   const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
   if (hst) { // estado: população, PIB (valor do que os mercados oferecem) e qualidade de vida
     const cs = eco.cities.filter((k) => k.state === hst.id);

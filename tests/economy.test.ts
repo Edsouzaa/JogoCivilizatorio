@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   priceFactor, createEconomy, tick, build, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
-  BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius, settlersOf,
+  BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius, settlersOf, urbanize, popCap,
 } from "../src/economy.ts";
 import { generateWorld, isLand, claim, T, RESOURCES } from "../src/world.ts";
 import { forNeighbors } from "../src/hex.ts";
@@ -144,3 +144,23 @@ console.log("territory ok");
   }
 }
 console.log("reserves ok");
+
+// cidade só cresce comprando centro urbano vizinho; centro urbano tem teto de gente
+{
+  const w4 = generateWorld(200, 100, 3, 2), e4 = createEconomy(w4), city = e4.cities[0], c = e4.countries[0];
+  for (let k = 0; k < 8; k++) tick(w4, e4);
+  assert.equal(city.size, 1, "cidade cresceu sozinha");
+  const touches = (j: number) => { let t = false; forNeighbors(j % 200, (j / 200) | 0, 200, 100, (n) => { if (e4.urban[n]) t = true; }); return t; };
+  const far = [...e4.owned].find((j) => w4.owner[j] === 1 && isLand(w4.terrain[j]) && !e4.urban[j] && !touches(j));
+  let next = -1;
+  forNeighbors(city.hex % 200, (city.hex / 200) | 0, 200, 100, (j) => { if (next < 0 && w4.owner[j] === 1 && isLand(w4.terrain[j])) next = j; });
+  c.treasury = 0;
+  assert.match(urbanize(w4, e4, 0, next)!, /Faltam/);
+  c.treasury = 1e4;
+  if (far !== undefined) assert.match(urbanize(w4, e4, 0, far)!, /encostar/);
+  assert.equal(urbanize(w4, e4, 0, next), null);
+  assert.equal(city.size, 2); assert.ok(city.urban.includes(next) && e4.urban[next]);
+  assert.equal(c.treasury, 1e4 - RULES.urbanCost);
+  assert.ok(popCap(w4, e4, next) > popCap(w4, e4, [...e4.owned].find((j) => !e4.urban[j] && isLand(w4.terrain[j]))!));
+}
+console.log("urban ok");

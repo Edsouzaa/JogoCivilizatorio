@@ -1,7 +1,7 @@
 // Comandos do jogador. Toda ação que muda a partida passa por aqui, para valer igual no single-player,
 // no servidor e em todos os navegadores do multiplayer (lockstep). Cada comando só age sobre o país de quem mandou.
 import {
-  build, foundCity, trainSettlers, transferSize, proposePact, cancelPact, type Economy,
+  build, foundCity, trainSettlers, transferSize, urbanize, proposePact, cancelPact, type Economy,
 } from "./economy.ts";
 import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disband } from "./war.ts";
 import { proposeLaw, cancelLaw } from "./politics.ts";
@@ -15,6 +15,7 @@ export type Cmd =
   | { t: "found"; unit: number; name?: string; flag?: Flag }
   | { t: "settlers" }
   | { t: "transfer"; from: number; to: number }
+  | { t: "urbanize"; city: number; hex: number }
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
@@ -62,6 +63,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       return err;
     }
     case "settlers": return trainSettlers(w, e, country);
+    case "urbanize": return ownCity(c.city) && isInt(c.hex) && c.hex < w.W * w.H ? urbanize(w, e, c.city, c.hex) : "Cidade não é sua";
     case "transfer": return ownCity(c.from) && ownCity(c.to) ? transferSize(w, e, c.from, c.to) : "Cidade não é sua";
     case "tech": {
       if (!available(co.research).some((t) => t.name === c.name)) return "Tecnologia indisponível";

@@ -109,7 +109,13 @@ export const RULES = {
   portTradeBonus: 1.5,      // cidade em rio navegável exporta esta vezes mais
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
-  cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer (no máximo 1 nível por mês)
+  cityGrowthPop: 300,       // a IA compra centro urbano quando a população urbana passa disto × tamanho
+  urbanCost: 150,           // centro urbano novo: isto × tamanho atual da cidade
+  popCapRural: 600,         // teto de população de um hex rural (× fertilidade do terreno)
+  popCapUrban: 2500,        // teto de um centro urbano...
+  popCapPerEra: 0.25,       // ...que sobe isto por era (saneamento, técnicas)
+  urbanExtract: 0.5,        // centro urbano tira só metade dos recursos naturais...
+  urbanIndustry: 1.25,      // ...mas a indústria rende mais
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
   researchBase: 1,          // pontos de pesquisa por semana de qualquer país
   researchPerPop: 1000,     // +1 ponto por semana a cada tantas pessoas
@@ -127,6 +133,7 @@ export type City = {
   blockaded?: boolean; // frota inimiga na zona marítima colada: sem comércio exterior, metade do interno, sem porto
   state?: number;       // id do estado da cidade (states.ts)
   flag?: Flag;          // bandeira própria (sem ela, a do país)
+  picked?: number[];    // centros urbanos comprados, na ordem (o resto do tamanho vem dos hexes mais perto)
 };
 export type Country = {
   treasury: number; debt: number; tax: number;
@@ -204,7 +211,8 @@ export function refresh(w: World, e: Economy) {
   e.owned = Int32Array.from(owned);
   let queue: number[] = [];
   e.cities.forEach((c, k) => {
-    c.urban = hexesInRadius(c.hex, 3, w.W, w.H).filter((j) => w.owner[j] === c.country && isLand(w.terrain[j])).slice(0, c.size);
+    const ok = (j: number) => w.owner[j] === c.country && isLand(w.terrain[j]);
+    c.urban = [...new Set([c.hex, ...(c.picked ?? []).filter(ok), ...hexesInRadius(c.hex, 3, w.W, w.H).filter(ok)])].slice(0, c.size);
     for (const j of c.urban) e.urban[j] = 1;
     c.port = c.urban.some((j) => w.navigable[j] > 0);
     e.market[c.hex] = k + 1; queue.push(c.hex);
@@ -246,6 +254,35 @@ export function createEconomy(w: World): Economy {
 }
 
 /** Raio de território de uma cidade pelo tamanho: 1, 2 a partir do tamanho 2, 3 a partir do 4. */
+/** Quanta gente cabe no hex: rural pela fertilidade; centro urbano bem mais, crescendo com a era. */
+export const popCap = (w: World, e: Economy, i: number) => {
+  const era = w.owner[i] ? e.countries[w.owner[i] - 1].research.era : 0;
+  return e.urban[i] ? RULES.popCapUrban * (1 + RULES.popCapPerEra * era) : RULES.popCapRural * Math.max(0.1, TERRAINS[w.terrain[i]].fertility);
+};
+
+/** Custo do próximo centro urbano da cidade. */
+export const urbanCost = (city: City) => RULES.urbanCost * city.size;
+
+/** Compra o hex `i` (vizinho de um centro urbano da cidade) como centro urbano novo: a cidade cresce 1. */
+export function urbanize(w: World, e: Economy, k: number, i: number): string | null {
+  const city = e.cities[k];
+  if (!city) return "Cidade inválida";
+  if (city.size >= RULES.maxCitySize) return "Cidade no tamanho máximo";
+  if (w.owner[i] !== city.country || !isLand(w.terrain[i])) return "O hex precisa ser terra do país";
+  if (e.urban[i]) return "Já é centro urbano";
+  let near = false;
+  forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { if (city.urban.includes(j)) near = true; });
+  if (!near) return "Precisa encostar num centro urbano da cidade";
+  const c = e.countries[city.country - 1], cost = urbanCost(city);
+  if (c.treasury < cost) return `Faltam ${Math.ceil(cost - c.treasury)} de dinheiro`;
+  c.treasury -= cost;
+  city.size++;
+  city.picked = [...(city.picked ?? []), i];
+  claim(w, city.country, city.hex, borderRadius(city.size)); // a fronteira cresce com a cidade
+  refresh(w, e);
+  return null;
+}
+
 export const borderRadius = (size: number) => Math.min(3, 1 + Math.floor(size / 2));
 
 export function buildCost(e: Economy, b: number, i: number) { return RULES.buildCost * (e.levels[b][i] + 1); }
@@ -468,8 +505,9 @@ export function tick(w: World, e: Economy) {
     const k = e.market[i];
     if (!k) continue;
     const city = e.cities[k - 1];
-    if (!e.urban[i] && w.pop[i] > 1) { // cidades atraem a população em volta
-      const moved = w.pop[i] * RULES.migrationWeek, to = city.urban[(e.week + i) % city.urban.length];
+    if (!e.urban[i] && w.pop[i] > 1) { // cidades atraem a população em volta, enquanto houver lugar
+      const to = city.urban[(e.week + i) % city.urban.length];
+      const moved = Math.min(w.pop[i] * RULES.migrationWeek, Math.max(0, popCap(w, e, to) - w.pop[to]));
       w.pop[i] -= moved; w.pop[to] += moved;
     }
     city.market.pop += w.pop[i];
@@ -505,7 +543,8 @@ export function tick(w: World, e: Economy) {
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals);
-    for (const [g, q] of out) m.supply[g] += q * mult * staffing * penalty;
+    const natural = e.urban[i] ? RULES.urbanExtract : 1;
+    for (const [g, q] of out) m.supply[g] += q * mult * staffing * penalty * natural;
     if (mined && w.reserve[i] !== Infinity) { // jazida: cada semana de extração gasta a reserva
       w.reserve[i] -= (mined / RULES.outputPerLevel) * staffing;
       if (w.reserve[i] <= 0) {
@@ -517,7 +556,7 @@ export function tick(w: World, e: Economy) {
       const lv = e.levels[b][i];
       if (lv) for (const [t, share] of JOBS[c.research.era][b]) c.pops.count[t] += lv * BUILDINGS[b].workers * staffing * share;
     }
-    for (const b of INDUSTRIES) if (e.levels[b][i]) throughput[e.market[i] - 1][b] += e.levels[b][i] * staffing * penalty * (1 + c.bonus[b]);
+    for (const b of INDUSTRIES) if (e.levels[b][i]) throughput[e.market[i] - 1][b] += e.levels[b][i] * staffing * penalty * (1 + c.bonus[b]) * RULES.urbanIndustry;
   }
 
   // o que cada mercado quer: consumo da população + insumos das indústrias a plena carga
@@ -600,17 +639,6 @@ export function tick(w: World, e: Economy) {
 
   if (e.week % 4 === 0) migrate(w, e);
 
-  if (e.week % 4 === 0) { // cidades crescem quando a população urbana passa do limite do tamanho atual
-    let grew = false;
-    for (const city of e.cities) {
-      const urbanPop = city.urban.reduce((s, j) => s + w.pop[j], 0);
-      if (city.size < RULES.maxCitySize && urbanPop > city.size * RULES.cityGrowthPop) {
-        city.size++; grew = true;
-        claim(w, city.country, city.hex, borderRadius(city.size)); // a fronteira cresce com a cidade
-      }
-    }
-    if (grew) refresh(w, e);
-  }
   e.week++;
 }
 

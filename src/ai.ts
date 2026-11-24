@@ -2,12 +2,12 @@
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
 import {
-  build, buildCost, buildingsFor, outputOf, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
+  build, buildCost, buildingsFor, outputOf, urbanize, urbanCost, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
-import { hexDistance, hexesInRadius } from "./hex.ts";
+import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 
 export const AI = {
@@ -63,6 +63,15 @@ function expand(w: World, e: Economy, country: number, era: number) {
     if (site >= 0) orderMove(w, e, d.id, site);
   }
   const c = e.countries[country - 1], cities = e.cities.filter((k) => k.country === country).length;
+  e.cities.forEach((city, k) => { // cidade cheia: compra o vizinho mais povoado como centro urbano novo
+    if (city.country !== country || c.treasury < urbanCost(city) * AI.reserve) return;
+    if (city.urban.reduce((s, j) => s + w.pop[j], 0) < city.size * RULES.cityGrowthPop) return;
+    let best = -1;
+    for (const u of city.urban) forNeighbors(u % w.W, (u / w.W) | 0, w.W, w.H, (j) => {
+      if (w.owner[j] === country && !e.urban[j] && isLand(w.terrain[j]) && (best < 0 || w.pop[j] > w.pop[best])) best = j;
+    });
+    if (best >= 0) urbanize(w, e, k, best);
+  });
   if (cities + settlersOf(e, country) < AI.maxCitiesBase + 2 * era && c.treasury > RULES.settlerCost * AI.reserve) trainSettlers(w, e, country);
 }
 

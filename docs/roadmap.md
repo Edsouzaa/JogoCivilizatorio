@@ -16,66 +16,64 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Nós marítimos: bolinha no centro de cada zona e ligações pontilhadas (aparecem com zoom). O bloqueio de comércio por frota inimiga já existia.
 - Recursos: todo hex de terra tem recurso. Jazidas minerais têm reserva (150–600 anos com 1 nível; pedra e sal 5× mais); ao acabar a mina fecha, o povo perde o emprego e chega aviso. Jazida em cima de lavoura/floresta = 2 produtos, desenhados como meia-fatia no mapa de recursos.
 
+- Cidades não crescem sozinhas: compra-se um hex vizinho como centro urbano (150 × tamanho; a IA compra quando a cidade enche). Teto de população por hex (rural pela fertilidade, urbano 2.500 + 25% por era). Centro urbano tira metade do recurso natural e a indústria rende 25% a mais.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
-5. **Cidades**
-   - Crescimento comprando centro urbano vizinho.
-   - Teto de população por hex.
-   - Centros urbanos com menos recurso natural e bônus industrial.
-6. **Controle e proximidade (estilo EU5)**
+2. **Controle e proximidade (estilo EU5)**
    - Controle de 0 a 100% por hex e controle máximo pela proximidade da capital.
    - Efeitos em imposto, adesão ao mercado e recrutamento.
    - Pontos administrativos gerados por centros administrativos, que consomem papel.
-7. **Mercados**
+3. **Mercados**
    - Mercado nacional como soma dos metropolitanos.
    - Cada hex compra da cidade mais barata, não só da mais próxima.
    - Centros comerciais e mercado mundial (Vic3 1.9) no lugar do comércio por pactos.
-8. **Infraestrutura**
+4. **Infraestrutura**
    - Estradas em níveis (−10% no custo terrestre por nível).
    - Ferrovias (gastam carvão e locomotivas).
    - Portos com nível limitado pela era.
-9. **Rios**
+5. **Rios**
    - Sem espirais e com mais lagos.
    - Rios navegáveis largos, ligados a um nó de mar, com nome (votação no multiplayer).
    - Cidades e portos na margem.
    - Disputa de navegação.
-10. **Guerra**
+6. **Guerra**
     - Cerco de cidade (a cidade dominada leva a região).
     - Hexes ocupados listrados na cor do ocupante.
     - Painel da guerra: baixas, custo e apoio.
     - Exploração por unidades terrestres e aéreas.
-11. **Mapas novos**: satisfação, recursos com %, população (com zoom no hex), tecnologia, clima, atração de imigração e suprimentos.
-12. **População**
+7. **Mapas novos**: satisfação, recursos com %, população (com zoom no hex), tecnologia, clima, atração de imigração e suprimentos.
+8. **População**
     - Cultura, língua e religião por POP, independentes entre si.
     - Assimilação e conversão.
     - Letrados dando bônus à pesquisa.
-13. **Eventos**
+9. **Eventos**
     - Pestes e fomes, com aviso.
     - Eventos aleatórios com escolha (pausa todos, 2 min).
-14. **Leis**
+10. **Leis**
     - 3 fases com oposição política e popular.
     - Incentivos por estado ou cidade, pagos com pontos administrativos.
-15. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
-16. **Diplomacia**
+11. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
+12. **Diplomacia**
     - Relação, confiança e influência.
     - Tratados com manutenção em pontos administrativos.
     - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
     - Esferas de influência e prestígio.
-17. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
-18. **Propagação de tecnologia** por fronteira e comércio; o comércio também revela a névoa.
-19. **Oceano profundo**: bloqueia navios de tecnologia baixa.
-20. **Continentes com nome**: no solo o jogador altera; no multiplayer há votação.
-21. **Personagens**
+13. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
+14. **Propagação de tecnologia** por fronteira e comércio; o comércio também revela a névoa.
+15. **Oceano profundo**: bloqueia navios de tecnologia baixa.
+16. **Continentes com nome**: no solo o jogador altera; no multiplayer há votação.
+17. **Personagens**
     - Ficha, atributos e retrato gerado.
     - Comandantes e generais.
     - Livro de história exportável em PDF.
-22. **Militar completo**
+18. **Militar completo**
     - Categorias de unidade por era e comandantes por domínio.
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
-23. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
-24. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
+19. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
+20. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
 
 ## Fora por enquanto
 
