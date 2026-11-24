@@ -1,13 +1,14 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, CLIMATES, type World } from "./world.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, CLIMATES, T, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   proposePact, cancelPact, hasPact, INFAMY,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available } from "./tech.ts";
-import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, type Pops } from "./pops.ts";
+import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
+import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { createRenderer } from "./render.ts";
@@ -662,6 +663,13 @@ function hexHtml() {
   const i = selected, res = world.resource[i], city = cityOf(i);
   let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]} · pop ${fmt(world.pop[i])}`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
+  const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
+  if (hst) { // estado: população, PIB (valor do que os mercados oferecem) e qualidade de vida
+    const cs = eco.cities.filter((k) => k.state === hst.id);
+    const gdp = cs.reduce((s, k) => s + k.market.supply.reduce((a, q, g) => a + q * k.market.price[g], 0), 0);
+    const pops = eco.countries[hst.country - 1].pops;
+    h += `<br>🗺 <b>${hst.name}</b> · ${cs.length} cidade(s) · pop ${fmt(cs.reduce((s, k) => s + k.market.pop, 0))} · PIB ${fmt(gdp)}/sem · QV ${Math.round(lowerClassQol(pops))} <small>(do país)</small> · lealdade ${Math.round(averageLoyalty(pops))}`;
+  }
   if (world.owner[i] !== active || !active) {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
     if (net && world.owner[i] && !mp?.players.some((p) => p.country === world.owner[i])) h += ` <button data-act="claim">Assumir este país</button>`;
@@ -745,6 +753,74 @@ const divScreen = (i: number): [number, number] => {
 };
 const flagOf = (k: number): Flag => world.countries[k - 1].flag ?? randomFlag(k, world.countries[k - 1].color);
 
+// ---- nós marítimos e destaque da região clicada (estado ou zona marítima)
+let nodes: SeaNodes | null = null, nodesWorld: unknown = null;
+let hl: { key: string; segs: number[]; label: string; lx: number; ly: number; zone: number } | null = null;
+/** Região do hex selecionado: zona marítima (no mar) ou estado (em terra, se a cidade dele tiver estado). */
+function highlight() {
+  const sea = selected >= 0 && world.terrain[selected] === T.OCEAN; // zona só muda com o mundo; estado muda com as cidades
+  const key = sea ? `z${world.seaZone[selected]}:${world.seed}` : `${selected}:${eco.version}:${world.seed}`;
+  if (hl?.key === key) return hl;
+  hl = null;
+  if (selected < 0) return null;
+  if (world.seaZone[selected] && world.terrain[selected] === T.OCEAN) {
+    const z = world.seaZone[selected], hexes = zoneHexes(world, z);
+    const [lx, ly] = hexCenter(nodesOf().hex[z] % W, (nodesOf().hex[z] / W) | 0);
+    hl = { key, segs: outline(world, hexes, (j) => world.seaZone[j] === z && world.terrain[j] === T.OCEAN), label: `Zona marítima ${z}`, lx, ly, zone: z };
+  } else {
+    const st = eco.market[selected] ? eco.cities[eco.market[selected] - 1].state : undefined;
+    if (st === undefined) return null;
+    const inState = (j: number) => !!eco.market[j] && eco.cities[eco.market[j] - 1].state === st;
+    const hexes = [...eco.owned].filter(inState), s = eco.states.find((x) => x.id === st)!;
+    let sx = 0, sy = 0, k = 0;
+    for (const j of hexes) { const [x, y] = hexCenter(j % W, (j / W) | 0); if (!k || Math.abs(x - sx / k) < WORLD_W / 2) { sx += x; sy += y; k++; } }
+    hl = { key, segs: outline(world, hexes, inState), label: s.name, lx: sx / k, ly: sy / k, zone: 0 };
+  }
+  return hl;
+}
+const nodesOf = () => { if (nodesWorld !== world) { nodes = seaNodes(world); nodesWorld = world; } return nodes!; };
+/** Mundo → tela, na cópia do mundo mais perto da câmera. */
+const worldToScreen = (x: number, y: number): [number, number] => {
+  x += Math.round((cam.x - x) / WORLD_W) * WORLD_W;
+  return [(x - cam.x) * cam.zoom + unitsCanvas.width / 2, (y - cam.y) * cam.zoom + unitsCanvas.height / 2];
+};
+function drawRegions() {
+  const n = nodesOf(), h = highlight();
+  if (h) { // borda brilhando: traço largo translúcido + traço fino
+    for (const [width, color] of [[7, "#ffd76a55"], [2, "#ffe9a0"]] as const) {
+      units.strokeStyle = color; units.lineWidth = width; units.beginPath();
+      for (let s = 0; s < h.segs.length; s += 4) {
+        const [x1, y1] = worldToScreen(h.segs[s], h.segs[s + 1]), dx = (h.segs[s + 2] - h.segs[s]) * cam.zoom, dy = (h.segs[s + 3] - h.segs[s + 1]) * cam.zoom;
+        units.moveTo(x1, y1); units.lineTo(x1 + dx, y1 + dy);
+      }
+      units.stroke();
+    }
+  }
+  if (cam.zoom >= 1.5) { // ligações pontilhadas e bolinhas dos nós
+    units.strokeStyle = "#cfe3ff88"; units.lineWidth = 1.5; units.setLineDash([4, 5]); units.beginPath();
+    for (const [a, b] of n.links) {
+      const [ax, ay] = hexCenter(n.hex[a] % W, (n.hex[a] / W) | 0), [bx, by] = hexCenter(n.hex[b] % W, (n.hex[b] / W) | 0);
+      const [x1, y1] = worldToScreen(ax, ay), bxNear = bx + Math.round((ax - bx) / WORLD_W) * WORLD_W;
+      units.moveTo(x1, y1); units.lineTo(x1 + (bxNear - ax) * cam.zoom, y1 + (by - ay) * cam.zoom);
+    }
+    units.stroke(); units.setLineDash([]);
+    const rr = Math.max(3, Math.min(cam.zoom * 0.5, 9));
+    for (let z = 1; z < n.hex.length; z++) {
+      if (n.hex[z] < 0) continue;
+      const [x, y] = worldToScreen(...hexCenter(n.hex[z] % W, (n.hex[z] / W) | 0));
+      if (x < -rr || y < -rr || x > unitsCanvas.width + rr || y > unitsCanvas.height + rr) continue;
+      const gold = h?.zone === z;
+      units.fillStyle = gold ? "#ffd700" : "#e8f1ff"; units.strokeStyle = gold ? "#7a5a00" : "#24456b"; units.lineWidth = 1.5;
+      units.beginPath(); units.arc(x, y, gold ? rr * 1.4 : rr, 0, Math.PI * 2); units.fill(); units.stroke();
+    }
+  }
+  if (h) { // nome
+    const [x, y] = worldToScreen(h.lx, h.ly);
+    units.font = "bold 14px sans-serif"; units.textAlign = "center"; units.textBaseline = "bottom";
+    units.strokeStyle = "#000"; units.lineWidth = 4; units.strokeText(h.label, x, y - 10); units.fillStyle = "#ffe9a0"; units.fillText(h.label, x, y - 10);
+  }
+}
+
 /** Divisões desenhadas por cima do mapa (canvas 2D): círculo na cor do país, com soldados e organização. */
 function drawUnits() {
   units.clearRect(0, 0, unitsCanvas.width, unitsCanvas.height);
@@ -757,6 +833,7 @@ function drawUnits() {
     }
   }
   const toScreen = divScreen;
+  drawRegions();
   if (drag?.box && drag.moved >= 5) { // caixa de seleção
     const dpr = window.devicePixelRatio || 1;
     units.strokeStyle = "#fff"; units.lineWidth = 1; units.setLineDash([5, 3]);
