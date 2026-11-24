@@ -26,6 +26,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Propagação de tecnologia: cada vizinho de fronteira ou parceiro comercial que já conhece a tecnologia em pesquisa dá +15% (até +60%). Acordo comercial revela o território do parceiro na névoa.
 
+- Mapas: 6 Clima, 7 Tecnologia (azul = mais tecnologias) e 8 Satisfação (vermelho → verde), com o valor ao passar o mouse.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -48,7 +50,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Hexes ocupados listrados na cor do ocupante.
     - Painel da guerra: baixas, custo e apoio.
     - Exploração por unidades terrestres e aéreas.
-7. **Mapas novos**: satisfação, recursos com %, população (com zoom no hex), tecnologia, clima, atração de imigração e suprimentos.
+7. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
 8. **População**
     - Cultura, língua e religião por POP, independentes entre si.
     - Assimilação e conversão.

@@ -206,14 +206,16 @@ export function claim(w: World, country: number, center: number, radius: number)
   return got;
 }
 
-export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Controle"] as const;
+export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Controle", "Clima", "Tecnologia", "Satisfação"] as const;
+const CLIMATE_COLORS = [[40, 150, 60], [220, 190, 90], [110, 190, 110], [120, 150, 190], [225, 235, 245]];
 export const URBAN_COLOR = [190, 180, 170];
 
 /**
  * Cor RGBA de cada hex para o modo de mapa escolhido; `urban[i]` = 1 marca hex de cidade; `occupier[i]` = país que ocupa.
  * Trocar de modo = recalcular isto e subir a textura.
  */
-export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4), control?: Float32Array) {
+/** `byCountry[país − 1]` em 0..1 para os mapas por país (Tecnologia, Satisfação). */
+export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint16Array, out = new Uint8Array(w.W * w.H * 4), control?: Float32Array, byCountry?: number[]) {
   for (let i = 0; i < w.W * w.H; i++) {
     const t = w.terrain[i];
     let c: readonly number[] = TERRAINS[t].color;
@@ -224,8 +226,11 @@ export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Ui
       if (mode === 1 && occupier[i] && ((i % w.W) + ((i / w.W) | 0)) % 2) c = w.countries[occupier[i] - 1].color; // ocupado: listrado
       else if (mode === 2) { const v = Math.min(1, Math.sqrt(w.pop[i] / 400)); c = [40 + 215 * v, 40 + 80 * v, 40]; }
       else if (mode === 3) c = w.resource[i] ? RES_COLORS[w.resource[i]] : [70, 70, 70];
+      else if (mode === 5) c = CLIMATE_COLORS[w.climate[i]];
+      else if (mode === 6) { const v = w.owner[i] ? byCountry?.[w.owner[i] - 1] ?? 0 : -1; c = v < 0 ? [70, 70, 70] : [30 + 40 * v, 50 + 110 * v, 90 + 165 * v]; } // azul: mais avançado
+      else if (mode === 7) { const v = w.owner[i] ? byCountry?.[w.owner[i] - 1] ?? 0.5 : -1; c = v < 0 ? [70, 70, 70] : v < 0.5 ? [220, 60 + 260 * v, 60] : [440 - 400 * v, 200, 70]; } // vermelho → amarelo → verde
       else if (mode === 4) { const v = control?.[i] ?? 0; c = w.owner[i] ? [220 - 180 * v, 60 + 160 * v, 60] : [70, 70, 70]; } // vermelho = pouco, verde = muito
-      if (urban[i] && mode !== 2 && mode !== 4) c = mode === 1 ? c.map((v) => v * 0.6) : URBAN_COLOR;
+      if (urban[i] && (mode === 0 || mode === 1 || mode === 3)) c = mode === 1 ? c.map((v) => v * 0.6) : URBAN_COLOR;
     }
     out[i * 4] = c[0]; out[i * 4 + 1] = c[1]; out[i * 4 + 2] = c[2];
     // alfa = id do bioma para o shader; 255 = desenhar cor lisa (cidade, ou modo que não é terreno)

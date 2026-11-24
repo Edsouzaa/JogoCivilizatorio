@@ -171,7 +171,7 @@ function newWorld(seed: number) {
 }
 function recolor() {
   const t = performance.now();
-  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba, eco.control));
+  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba, eco.control, mode === 6 ? eco.countries.map((c) => c.research.known.size / TECHS.length) : mode === 7 ? eco.countries.map((c) => averageLoyalty(c.pops) / 100) : undefined));
   colorMs = performance.now() - t;
   drawnVersion = eco.version;
   renderer.uploadBorders(buildBorders(world, eco, borders)); // fronteiras mudam junto com o mapa político
@@ -476,7 +476,7 @@ function updateUI() {
   const hidden = inMap(hc, hr) && active > 0 && !explored.get(active)?.[hi];
   const info = hidden ? "Inexplorado" : inMap(hc, hr)
     ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.seaZone[hi] ? ` · zona marítima ${world.seaZone[hi]}` : ""}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]}${world.resource2[hi] ? ` + ${RESOURCES[world.resource2[hi]]}` : ""}${world.reserve[hi] !== Infinity ? ` (jazida ~${Math.round(world.reserve[hi] / 52)} anos)` : ""} · pop ${Math.round(world.pop[hi])}` +
-      (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
+      (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` + (mode === 6 ? ` (${eco.countries[world.owner[hi] - 1].research.known.size}/${TECHS.length} tecnologias)` : mode === 7 ? ` (satisfação ${Math.round(averageLoyalty(eco.countries[world.owner[hi] - 1].pops))}%)` : "") : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
     : "—";
   const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";
   hud.innerHTML =
@@ -917,7 +917,7 @@ function frame(now: number) {
     advanceWeek(world, eco); afterWeek();
     tickMs = performance.now() - t;
   }
-  if (eco.version !== drawnVersion || (mode === 2 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou
+  if (eco.version !== drawnVersion || (mode >= 2 && mode !== 3 && mode !== 5 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou
   refreshFog();
   renderer.draw(cam.x, cam.y, cam.zoom, hover[0], hover[1], Math.cos((2 * Math.PI * (eco.week % 52)) / 52), active > 0);
   drawUnits();
