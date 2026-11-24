@@ -114,13 +114,23 @@ Todo país que não é o do jogador decide uma vez por mês:
 - **25 ou mais:** nenhum país fecha acordo comercial novo com você (vale dos dois lados).
 - **50 ou mais:** seus acordos caem e a IA pode formar coalizão: vizinhos (até 30 hexes) declaram guerra mesmo sendo mais fracos (5% ao mês cada).
 
+## Guerra naval
+
+- **Zonas marítimas:** o oceano é dividido em regiões grandes (centenas a milhares de hexes, como os nós do Victoria 3). Combate, bloqueio e transporte funcionam por zona.
+- **Frotas** (triângulo no mapa): construídas numa cidade do litoral com a tecnologia **Galés** (Clássica), por 120 de dinheiro e 20 marinheiros (manpower); custam 0,5 por semana. Andam só no mar, até 3 hexes por semana. Os marinheiros contam como POP Marinheiros.
+- **Combate naval:** frotas de países em guerra na **mesma zona** lutam toda semana; derrotadas voltam para o porto ou afundam. Navegação, Pólvora, Máquina a vapor, Motor a combustão e Mísseis aumentam a força das frotas.
+- **Bloqueio:** cidade com frota inimiga na zona colada e sem frota própria lá fica **bloqueada**: sem comércio exterior, metade do comércio interno e sem bônus de porto.
+- **Transporte:** exército pode entrar no mar se o país tiver frota naquela zona, e anda na velocidade da frota. Exército no mar sem frota própria e com frota inimiga na zona **afunda**.
+- **IA:** constrói uma frota se tiver litoral e a tecnologia; em guerra, manda a frota bloquear o porto inimigo mais perto.
+- A fazer: navegar pelos rios navegáveis, desembarque com combate na praia, comércio por zonas marítimas.
+
 ## O que fica fora da primeira versão jogável
 
 A primeira versão jogável é: economia + cidades + política básica, em uma ou duas eras, single-player. O resto entra depois que isso estiver divertido.
 
 | Cortado por enquanto | Por quê |
 |---|---|
-| Guerra aérea e naval | São quase jogos à parte; a guerra terrestre vem primeiro |
+| Guerra aérea | A naval e a terrestre vêm primeiro |
 | Editor de mapas e mapas pagos | O mapa aleatório já cobre as partidas; o editor só vale quando houver jogadores |
 | Multiplayer em rede | O jogo precisa ser divertido sozinho antes; hoje é só no PC do jogador |
 | Todas as eras de uma vez | Fazer tribal → clássica bem feitas e depois avançar |

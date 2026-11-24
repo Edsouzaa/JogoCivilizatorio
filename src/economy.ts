@@ -122,6 +122,7 @@ export type Market = {
 export type City = {
   name: string; country: number; hex: number; size: number; urban: number[]; market: Market;
   port: boolean; // cidade em rio navegável: exporta mais no comércio
+  blockaded?: boolean; // frota inimiga na zona marítima colada: sem comércio exterior, metade do interno, sem porto
 };
 export type Country = {
   treasury: number; debt: number; tax: number;
@@ -153,7 +154,7 @@ function updateBonus(c: Country) {
  * strength = soldados (ou pessoas, nos colonos); org = organização 0..1.
  */
 export type Division = {
-  id: number; kind: "army" | "settler"; country: number; hex: number; strength: number; org: number;
+  id: number; kind: "army" | "settler" | "fleet"; country: number; hex: number; strength: number; org: number;
   target: number | null; progress: number; // destino e avanço (0..1) até o próximo hex
   equip: number;                           // 0,5..1: quanto de Armas o país conseguiu dar
 };
@@ -339,7 +340,7 @@ function foreignTrade(w: World, e: Economy) {
     const [a, b] = key.split("-").map(Number);
     const near = (city: City, other: number) => e.cities.some((k) => k.country === other &&
       hexDistance(city.hex % w.W, (city.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W) <= RULES.foreignRange * (city.port || k.port ? 2 : 1));
-    const pool = e.cities.filter((k) => (k.country === a && near(k, b)) || (k.country === b && near(k, a)));
+    const pool = e.cities.filter((k) => !k.blockaded && ((k.country === a && near(k, b)) || (k.country === b && near(k, a))));
     if (!pool.some((k) => k.country === a) || !pool.some((k) => k.country === b)) continue;
     for (let gi = 1; gi < NG; gi++) {
       const net = pool.map((k) => k.market.supply[gi] - k.market.used[gi] - k.market.pop * POP_DEMAND[gi]);
@@ -373,7 +374,7 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
   }
   for (const [country, cs] of byCountry) {
     if (cs.length < 2) continue;
-    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.port ? RULES.portTradeBonus : 1));
+    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : c.port ? RULES.portTradeBonus : 1));
     const c0 = e.countries[country - 1];
     const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")); // lei de Economia + tecnologia
     for (let gi = 1; gi < NG; gi++) {
@@ -399,6 +400,7 @@ function updatePops(e: Economy, c: Country, country: number) {
   const add = (t: number, v: number) => { n[t] += v; };
   add(P["Clérigos"], c.pop * POP_RULES.clergyShare);
   for (const d of e.divisions) if (d.country === country && d.kind === "army") add(P["Soldados"], d.strength);
+  for (const d of e.divisions) if (d.country === country && d.kind === "fleet") add(P["Marinheiros"], d.strength);
   if (r.era >= 1) { add(P["Burocratas"], c.pop * POP_RULES.bureaucratShare / 2); add(P["Escriturários"], c.pop * POP_RULES.bureaucratShare / 2); }
   if (r.known.has("Escrita")) add(P["Acadêmicos"], c.pop * POP_RULES.academicShare);
   const counted = n.reduce((s, v) => s + v, 0);

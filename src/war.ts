@@ -18,6 +18,48 @@ export const WAR = {
   peaceThreshold: 0.05, // vantagem mínima de pontuação para tomar território na paz
 };
 
+/** Marinha: frotas andam só no mar, lutam por zona marítima, bloqueiam cidades e transportam exércitos. */
+export const NAVY = {
+  sailors: 20,      // marinheiros por frota (saem do manpower)
+  cost: 120,        // dinheiro para construir
+  upkeep: 0.5,      // dinheiro por semana por frota
+  speed: 3,         // hexes de mar por semana (exército transportado anda junto)
+  tech: "Galés",    // tecnologia que libera frotas
+};
+
+/** Hex de mar colado no hex (−1 se não houver). */
+export function coastOf(w: World, i: number) {
+  let s = -1;
+  forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { if (s < 0 && w.terrain[j] === T.OCEAN) s = j; });
+  return s;
+}
+/** Primeiro hex de mar colado numa cidade do país (onde frotas nascem e para onde recuam). */
+export function homePort(w: World, e: Economy, country: number) {
+  for (const k of e.cities) if (k.country === country) for (const j of k.urban) { const s = coastOf(w, j); if (s >= 0) return s; }
+  return -1;
+}
+export const hasFleetIn = (w: World, e: Economy, country: number, zone: number) =>
+  zone > 0 && e.divisions.some((d) => d.kind === "fleet" && d.strength >= 1 && d.country === country && w.seaZone[d.hex] === zone); // afundada não conta
+
+/** A unidade pode pisar no hex? Frota só no mar; exército no mar só com frota do país na zona (transporte). */
+function passable(w: World, e: Economy, d: Division, i: number) {
+  if (w.terrain[i] === T.OCEAN) return d.kind === "fleet" || (d.kind === "army" && hasFleetIn(w, e, d.country, w.seaZone[i]));
+  return d.kind !== "fleet" && MOVE_WEEKS[w.terrain[i]] !== Infinity;
+}
+
+export function buildFleet(w: World, e: Economy, country: number, hex: number): string | null {
+  if (w.owner[hex] !== country || !e.urban[hex] || e.occupier[hex]) return "Construa a frota numa cidade sua";
+  const c = e.countries[country - 1];
+  if (!c.research.known.has(NAVY.tech)) return `Precisa pesquisar ${NAVY.tech}`;
+  const sea = coastOf(w, hex);
+  if (sea < 0) return "Essa parte da cidade não fica no litoral";
+  if (c.manpower < NAVY.sailors) return `Manpower insuficiente (precisa ${NAVY.sailors})`;
+  if (c.treasury < NAVY.cost) return `Precisa de ${NAVY.cost} no tesouro`;
+  c.manpower -= NAVY.sailors; c.treasury -= NAVY.cost;
+  e.divisions.push({ id: e.nextDivision++, kind: "fleet", country, hex: sea, strength: NAVY.sailors, org: 1, target: null, progress: 0, equip: 1 });
+  return null;
+}
+
 /** Semanas para entrar num hex de cada terreno (Infinity = intransitável). */
 const MOVE_WEEKS: number[] = [];
 MOVE_WEEKS[T.OCEAN] = Infinity; MOVE_WEEKS[T.ICE] = Infinity;
@@ -62,7 +104,7 @@ export function recruit(w: World, e: Economy, country: number, hex: number): str
 export function disband(w: World, e: Economy, id: number) {
   const d = e.divisions.find((x) => x.id === id);
   if (!d) return;
-  if (d.kind === "army") e.countries[d.country - 1].manpower += d.strength;
+  if (d.kind !== "settler") e.countries[d.country - 1].manpower += d.strength;
   else { const cap = e.cities.find((k) => k.country === d.country)!.hex; w.pop[cap] += d.strength; } // colonos voltam para casa
   e.divisions = e.divisions.filter((x) => x !== d);
 }
@@ -70,20 +112,22 @@ export function disband(w: World, e: Economy, id: number) {
 export function orderMove(w: World, e: Economy, id: number, target: number): string | null {
   const d = e.divisions.find((x) => x.id === id);
   if (!d) return "Divisão não existe";
-  if (MOVE_WEEKS[w.terrain[target]] === Infinity) return "Não dá para ir até lá por terra";
+  if (d.kind === "fleet" ? w.terrain[target] !== T.OCEAN : w.terrain[target] === T.ICE) return d.kind === "fleet" ? "Frotas só andam no mar" : "Não dá para ir até lá";
+  if (d.kind !== "fleet" && w.terrain[target] === T.OCEAN && (d.kind !== "army" || !hasFleetIn(w, e, d.country, w.seaZone[target])))
+    return "Para atravessar o mar, o exército precisa de uma frota sua nessa zona marítima";
   d.target = target === d.hex ? null : target; d.progress = 0;
   return null;
 }
 
 /** Próximo passo guloso até o alvo (vizinho de terra mais perto dele). */
 // shortcut: guloso, trava atrás de lagos e baías; trocar por A* se os jogadores reclamarem.
-function nextStep(w: World, from: number, target: number) {
+function nextStep(w: World, from: number, target: number, ok: (i: number) => boolean) {
   const W = w.W, tc = target % W, tr = (target / W) | 0;
   const dist = (i: number) => hexDistance(i % W, (i / W) | 0, tc, tr, W);
   let best = -1, bestD = dist(from);
   forNeighbors(from % W, (from / W) | 0, W, w.H, (j) => {
     const d = dist(j);
-    if (MOVE_WEEKS[w.terrain[j]] !== Infinity && d < bestD) { best = j; bestD = d; }
+    if (ok(j) && d < bestD) { best = j; bestD = d; }
   });
   return best;
 }
@@ -95,6 +139,7 @@ export function crossesRiver(w: World, a: number, b: number) {
 }
 
 /** Força de combate: soldados × organização × armas × tecnologia militar do país. */
+const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "fleet")), 0);
 const power = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army")), 0);
 
 /** Tira baixas das divisões proporcionalmente à força, e a mesma gente da população da capital. */
@@ -113,6 +158,11 @@ export function stepWar(w: World, e: Economy) {
   const ARMS = GOODS.indexOf("Armas");
   const count = new Map<number, number>();
   for (const d of e.divisions) if (d.kind === "army") count.set(d.country, (count.get(d.country) ?? 0) + 1);
+  for (const d of e.divisions) if (d.kind === "fleet") { // manutenção da frota
+    const c = e.countries[d.country - 1];
+    c.treasury -= NAVY.upkeep;
+    if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
+  }
   for (const [country, n] of count) { // armas e manutenção
     const c = e.countries[country - 1], m = e.cities.find((k) => k.country === country)!.market;
     const fill = m.demand[ARMS] ? Math.min(1, m.supply[ARMS] / m.demand[ARMS]) : 1;
@@ -121,26 +171,36 @@ export function stepWar(w: World, e: Economy) {
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
   }
 
+  // no mar anda mais rápido: passos extras para frotas e exércitos embarcados (sem combate no meio)
+  for (let k = 1; k < NAVY.speed; k++) for (const d of e.divisions) {
+    if (d.target === null || (d.kind !== "fleet" && w.terrain[d.hex] !== T.OCEAN)) continue;
+    const n = nextStep(w, d.hex, d.target, (j) => passable(w, e, d, j));
+    if (n < 0 || w.terrain[n] !== T.OCEAN) continue;
+    d.hex = n;
+    if (n === d.target) d.target = null;
+  }
+
   const at = new Map<number, Division[]>(); // divisões por hex
   for (const d of e.divisions) { if (!at.has(d.hex)) at.set(d.hex, []); at.get(d.hex)!.push(d); }
-  const enemiesIn = (hex: number, country: number) => (at.get(hex) ?? []).filter((x) => x.kind === "army" && atWar(e, country, x.country));
+  const enemiesIn = (hex: number, country: number) => (at.get(hex) ?? []).filter((x) => x.kind === "army" && w.terrain[x.hex] !== T.OCEAN && atWar(e, country, x.country));
 
   const battles = new Map<number, Division[]>(); // hex defendido → atacantes
   const fighting = new Set<Division>();
   let changed = false;
   for (const d of e.divisions) {
     if (d.target === null) continue;
-    const next = nextStep(w, d.hex, d.target);
+    const next = nextStep(w, d.hex, d.target, (j) => passable(w, e, d, j));
+    const sea = next >= 0 && w.terrain[next] === T.OCEAN;
     if (next < 0) { d.target = null; continue; }
-    if (enemiesIn(next, d.country).length) {
+    if (!sea && enemiesIn(next, d.country).length) {
       if (d.kind === "settler") { d.target = null; continue; } // colonos não atacam
       if (!battles.has(next)) battles.set(next, []);
       battles.get(next)!.push(d);
       continue;
     }
     const ctrl = controller(w, e, next);
-    if (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country)) { d.target = null; continue; }
-    d.progress += 1 / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
+    if (!sea && (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country))) { d.target = null; continue; }
+    d.progress += sea ? 1 : 1 / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
     if (d.progress < 1) continue;
     d.progress = 0;
     at.set(d.hex, (at.get(d.hex) ?? []).filter((x) => x !== d));
@@ -149,7 +209,7 @@ export function stepWar(w: World, e: Economy) {
     at.get(next)!.push(d);
     if (next === d.target) d.target = null;
     if (d.kind === "army") for (const x of at.get(next)!) if (x.kind === "settler" && atWar(e, d.country, x.country)) x.strength = 0; // exército inimigo destrói colonos
-    if (d.kind === "settler") continue;
+    if (d.kind !== "army" || sea) continue;
     // ocupar território inimigo; libertar o próprio
     if (w.owner[next] && w.owner[next] !== d.country && atWar(e, d.country, w.owner[next]) && e.occupier[next] !== d.country) { e.occupier[next] = d.country; changed = true; }
     if (w.owner[next] === d.country && e.occupier[next]) { e.occupier[next] = 0; changed = true; }
@@ -174,16 +234,56 @@ export function stepWar(w: World, e: Economy) {
     }
   }
 
+  // combate naval: em cada zona marítima, frotas de países em guerra lutam entre si
+  const fleetsIn = new Map<number, Division[]>();
+  for (const d of e.divisions) if (d.kind === "fleet") { const z = w.seaZone[d.hex]; if (!fleetsIn.has(z)) fleetsIn.set(z, []); fleetsIn.get(z)!.push(d); }
+  for (const fs of fleetsIn.values()) {
+    const cs = [...new Set(fs.map((f) => f.country))];
+    for (const a of cs) for (const b of cs) {
+      if (a >= b || !atWar(e, a, b)) continue;
+      const A = fs.filter((f) => f.country === a && f.strength >= 1), B = fs.filter((f) => f.country === b && f.strength >= 1);
+      if (!A.length || !B.length) continue;
+      const pa = fleetPower(e, A), pb = fleetPower(e, B);
+      takeLosses(w, e, B, pa * WAR.casualties);
+      takeLosses(w, e, A, pb * WAR.casualties);
+      for (const f of A) f.org = Math.max(0, f.org - WAR.orgLoss * (pb / (pa || 1)));
+      for (const f of B) f.org = Math.max(0, f.org - WAR.orgLoss * (pa / (pb || 1)));
+      for (const f of [...A, ...B]) {
+        fighting.add(f);
+        if (f.org >= WAR.brokenOrg) continue;
+        const home = homePort(w, e, f.country); // frota derrotada volta para o porto, ou afunda
+        if (home < 0 || w.seaZone[home] === w.seaZone[f.hex]) f.strength = 0; else { f.hex = home; f.target = null; }
+      }
+    }
+  }
+  // exército no mar sem frota própria na zona e com frota inimiga: afunda
+  for (const d of e.divisions) {
+    if (d.kind !== "army" || w.terrain[d.hex] !== T.OCEAN) continue;
+    const z = w.seaZone[d.hex];
+    if (!hasFleetIn(w, e, d.country, z) && e.divisions.some((f) => f.kind === "fleet" && f.strength >= 1 && w.seaZone[f.hex] === z && atWar(e, d.country, f.country))) d.strength = 0;
+  }
+  // bloqueio: zona colada na cidade com frota inimiga e sem frota própria
+  for (const k of e.cities) {
+    k.blockaded = false;
+    for (const j of k.urban) {
+      const s = coastOf(w, j);
+      if (s < 0) continue;
+      const z = w.seaZone[s];
+      if (!hasFleetIn(w, e, k.country, z) && (fleetsIn.get(z) ?? []).some((f) => f.strength >= 1 && atWar(e, k.country, f.country))) { k.blockaded = true; break; }
+    }
+  }
+
   for (const d of e.divisions) {
     if (d.kind === "settler") { // colonos longe das cidades ficam sem suprimentos e vão morrendo
       if (settlerDistance(w, e, d) > RULES.settlerSupplyRange) d.strength -= Math.max(0.5, d.strength * RULES.settlerAttrition);
       continue;
     }
-    if (fighting.has(d)) continue;
+    if (fighting.has(d) || d.strength < 1) continue; // morta não se recupera nem recebe reforço
     d.org = Math.min(1, d.org + WAR.orgRecovery);
     const c = e.countries[d.country - 1];
-    if (controller(w, e, d.hex) === d.country && d.strength < WAR.divisionSize && c.manpower > 0) {
-      const add = Math.min(WAR.reinforce, c.manpower, WAR.divisionSize - d.strength);
+    const full = d.kind === "fleet" ? NAVY.sailors : WAR.divisionSize;
+    if (controller(w, e, d.hex) === d.country && d.strength < full && c.manpower > 0) { // reforço em território (ou águas) próprio
+      const add = Math.min(WAR.reinforce, c.manpower, full - d.strength);
       d.strength += add; c.manpower -= add;
     }
   }
@@ -223,7 +323,7 @@ export function makePeace(w: World, e: Economy, a: number, b: number): string | 
   for (const city of e.cities) if (w.owner[city.hex] !== city.country) city.country = w.owner[city.hex];
   e.wars.delete(key(a, b));
   // tropas que ficaram em território que agora é do outro voltam para a capital
-  for (const d of e.divisions) if (!canEnter(w, e, d.country, d.hex)) { d.hex = e.cities.find((k) => k.country === d.country)!.hex; d.target = null; }
+  for (const d of e.divisions) if (d.kind !== "fleet" && !canEnter(w, e, d.country, d.hex)) { d.hex = e.cities.find((k) => k.country === d.country)!.hex; d.target = null; }
   refresh(w, e);
   return null;
 }

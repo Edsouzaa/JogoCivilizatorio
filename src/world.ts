@@ -52,6 +52,7 @@ export type World = {
   terrain: Uint8Array; resource: Uint8Array; owner: Uint8Array; pop: Float32Array; climate: Uint8Array;
   river: Uint8Array;     // bits 0–5: rio na borda k do hex (ver `across`)
   navigable: Uint8Array; // bits 0–5: trecho navegável (futuro: navios)
+  seaZone: Uint16Array;  // zona marítima do hex de oceano (1..n); 0 = terra/gelo
   countries: { name: string; color: [number, number, number]; capital: number }[];
   landCount: number;
 };
@@ -153,7 +154,8 @@ export function generateWorld(W: number, H: number, seed: number, nCountries = 2
 
   // Países: uma capital em terra fértil, com território de raio START_RADIUS. O resto do mundo começa livre.
   const owner = new Uint8Array(N), countries: World["countries"] = [];
-  const w: World = { W, H, seed, terrain, resource, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N) };
+  const w: World = { W, H, seed, terrain, resource, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
+  generateSeaZones(w);
   generateRivers(w, elev, hills, rand);
   for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água
   for (let tries = 0; countries.length < nCountries && tries < 200000; tries++) {
@@ -294,4 +296,32 @@ export function snowAt(w: World, i: number, week: number) {
   if (c === C.POLAR) return true;
   const wi = winterOf(w, i, week);
   return (c === C.CONTINENTAL && wi > 0.3) || (c === C.TEMPERATE && wi > 0.8);
+}
+
+/**
+ * Zonas marítimas (como os nós do Victoria 3): o oceano é dividido em regiões grandes, crescendo por
+ * busca em largura a partir de sementes numa grade. Mares fechados viram zona própria.
+ */
+export const SEA_ZONE_SPACING = { cols: 48, rows: 32 };
+function generateSeaZones(w: World) {
+  const { W, H, terrain, seaZone } = w;
+  let next = 1;
+  const grow = (seeds: number[]) => {
+    let queue = seeds;
+    while (queue.length) {
+      const nq: number[] = [];
+      for (const i of queue) forNeighbors(i % W, (i / W) | 0, W, H, (j) => {
+        if (!seaZone[j] && terrain[j] === T.OCEAN) { seaZone[j] = seaZone[i]; nq.push(j); }
+      });
+      queue = nq;
+    }
+  };
+  const seeds: number[] = [];
+  for (let r = SEA_ZONE_SPACING.rows >> 1; r < H; r += SEA_ZONE_SPACING.rows)
+    for (let c = SEA_ZONE_SPACING.cols >> 1; c < W; c += SEA_ZONE_SPACING.cols) {
+      const i = r * W + c;
+      if (terrain[i] === T.OCEAN && next < 65535) { seaZone[i] = next++; seeds.push(i); }
+    }
+  grow(seeds);
+  for (let i = 0; i < W * H; i++) if (terrain[i] === T.OCEAN && !seaZone[i] && next < 65535) { seaZone[i] = next++; grow([i]); } // mares fechados
 }

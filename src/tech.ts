@@ -18,6 +18,7 @@ export type Tech = {
   trade?: number;              // +fração do que circula entre cidades e com parceiros
   army?: number;               // +fração de força de combate das divisões
   infamy?: number;             // infâmia ganha ao descobrir (armas que assustam os vizinhos)
+  fleet?: number;              // +fração de força das frotas
   manpower?: number;           // +fração da população mobilizável
   unrest?: number;             // pontos a menos (+) ou a mais (−) no alvo de lealdade: ideias novas agitam o povo
 };
@@ -36,6 +37,7 @@ export const TECHS: Tech[] = [
   { name: "Trabalho do ferro", era: 1, cost: 250 * COST, requires: ["Metalurgia do bronze"], unlocks: ["Ferraria"], bonus: [["Mina", 0.25]] },
   { name: "Estradas", era: 1, cost: 250 * COST, requires: [], unlocks: ["Trilhas de transporte"], bonus: [["Serraria", 0.25]] },
   { name: "Escrita", era: 1, cost: 300 * COST, requires: [], research: 0.25 },
+  { name: "Galés", era: 1, cost: 220 * COST, requires: ["Metalurgia do bronze"], trade: 0.05 }, // libera frotas (war.ts NAVY.tech)
   // Medieval
   { name: "Feudalismo", era: 2, cost: 400 * COST, requires: [], bonus: [["Fazenda", 0.2]], manpower: 0.05 },
   { name: "Moinhos", era: 2, cost: 400 * COST, requires: ["Irrigação"], bonus: [["Fazenda", 0.2], ["Serraria", 0.25]] },
@@ -43,13 +45,13 @@ export const TECHS: Tech[] = [
   { name: "Universidades", era: 2, cost: 500 * COST, requires: ["Escrita"], research: 0.25 },
   { name: "Castelos", era: 2, cost: 450 * COST, requires: ["Trabalho do ferro"], army: 0.15 },
   // Colonial
-  { name: "Navegação", era: 3, cost: 600 * COST, requires: [], trade: 0.25 },
+  { name: "Navegação", era: 3, cost: 600 * COST, requires: ["Galés"], trade: 0.25, fleet: 0.3 },
   { name: "Imprensa", era: 3, cost: 650 * COST, requires: ["Universidades"], research: 0.3, unrest: 3 },
-  { name: "Pólvora", era: 3, cost: 650 * COST, requires: ["Castelos"], army: 0.3 },
+  { name: "Pólvora", era: 3, cost: 650 * COST, requires: ["Castelos"], army: 0.3, fleet: 0.2 },
   { name: "Bancos", era: 3, cost: 700 * COST, requires: ["Navegação"], trade: 0.2 },
   { name: "Mineração profunda", era: 3, cost: 600 * COST, requires: ["Mineração"], bonus: [["Mina", 0.3]] },
   // Revoluções (Revolução Industrial)
-  { name: "Máquina a vapor", era: 4, cost: 900 * COST, requires: ["Mineração profunda"], unlocks: ["Siderúrgica", "Fábrica têxtil"] },
+  { name: "Máquina a vapor", era: 4, cost: 900 * COST, requires: ["Mineração profunda"], unlocks: ["Siderúrgica", "Fábrica têxtil"], fleet: 0.3 },
   { name: "Ferrovias", era: 4, cost: 1000 * COST, requires: ["Máquina a vapor"], trade: 0.3 },
   { name: "Iluminismo", era: 4, cost: 900 * COST, requires: ["Imprensa"], research: 0.3, unrest: 5 },
   { name: "Conscrição", era: 4, cost: 900 * COST, requires: ["Pólvora"], manpower: 0.1, army: 0.1, unrest: 3 },
@@ -61,7 +63,7 @@ export const TECHS: Tech[] = [
   { name: "Telégrafo", era: 5, cost: 1300 * COST, requires: ["Ferrovias"], trade: 0.2, research: 0.15 },
   { name: "Medicina moderna", era: 5, cost: 1400 * COST, requires: ["Iluminismo"], unrest: -5 },
   // Era das Guerras
-  { name: "Motor a combustão", era: 6, cost: 1800 * COST, requires: ["Eletricidade"], trade: 0.3, bonus: [["Poço", 0.5]] },
+  { name: "Motor a combustão", era: 6, cost: 1800 * COST, requires: ["Eletricidade"], trade: 0.3, bonus: [["Poço", 0.5]], fleet: 0.3 },
   { name: "Blindados", era: 6, cost: 1900 * COST, requires: ["Metralhadora", "Motor a combustão"], army: 0.4, infamy: 5 },
   { name: "Produção em massa", era: 6, cost: 1900 * COST, requires: ["Eletricidade"], bonus: INDUSTRY(0.3) },
   { name: "Rádio", era: 6, cost: 1800 * COST, requires: ["Telégrafo"], research: 0.2, unrest: -3 },
@@ -71,7 +73,7 @@ export const TECHS: Tech[] = [
   { name: "Energia nuclear", era: 7, cost: 2600 * COST, requires: ["Produção em massa"], bonus: [["Siderúrgica", 0.4]], unrest: 3 },
   { name: "Revolução verde", era: 7, cost: 2500 * COST, requires: ["Química industrial"], bonus: [["Fazenda", 0.5]] },
   { name: "Contêineres", era: 7, cost: 2500 * COST, requires: ["Motor a combustão"], trade: 0.4 },
-  { name: "Mísseis", era: 7, cost: 2700 * COST, requires: ["Aviação"], army: 0.5, infamy: 8 },
+  { name: "Mísseis", era: 7, cost: 2700 * COST, requires: ["Aviação"], army: 0.5, fleet: 0.3, infamy: 8 },
   // Atual
   { name: "Internet", era: 8, cost: 3500 * COST, requires: ["Computadores"], research: 0.5, unrest: 5 },
   { name: "Automação", era: 8, cost: 3600 * COST, requires: ["Computadores", "Produção em massa"], bonus: INDUSTRY(0.5), unrest: 5 },
@@ -81,7 +83,7 @@ export const TECHS: Tech[] = [
 ];
 
 /** Soma de um efeito numérico de todas as tecnologias conhecidas. */
-export const techSum = (r: Research, field: "trade" | "army" | "manpower" | "unrest" | "research") =>
+export const techSum = (r: Research, field: "trade" | "army" | "manpower" | "unrest" | "research" | "fleet") =>
   TECHS.reduce((s, t) => s + (r.known.has(t.name) ? t[field] ?? 0 : 0), 0);
 
 /** Tecnologia exigida por cada construção (só as que alguma tecnologia libera). */

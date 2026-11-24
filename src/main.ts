@@ -8,7 +8,7 @@ import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tec
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
-import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, WAR } from "./war.ts";
+import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, coastOf, WAR, NAVY } from "./war.ts";
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo } from "./fog.ts";
 import { runAI } from "./ai.ts";
@@ -209,6 +209,7 @@ document.addEventListener("pointerdown", (e) => {
   }
   if (d.act === "cancel-law" && active) { cancelLaw(eco.countries[active - 1].politics); return updateUI(); }
   if (d.act === "recruit") return act(recruit(world, eco, active, selected));
+  if (d.act === "fleet") return act(buildFleet(world, eco, active, selected));
   if (d.act === "war") return act(declareWar(eco, active, world.owner[selected]));
   if (d.peace) return act(makePeace(world, eco, active, Number(d.peace)));
   if (d.act === "disband" && selectedDiv) { disband(world, eco, selectedDiv); selectedDiv = null; return updateUI(); }
@@ -237,7 +238,7 @@ function updateUI() {
   const hcity = inMap(hc, hr) ? cityOf(hi) : undefined;
   const hidden = inMap(hc, hr) && active > 0 && !explored.get(active)?.[hi];
   const info = hidden ? "Inexplorado" : inMap(hc, hr)
-    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]} · pop ${Math.round(world.pop[hi])}` +
+    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.seaZone[hi] ? ` · zona marítima ${world.seaZone[hi]}` : ""}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]} · pop ${Math.round(world.pop[hi])}` +
       (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
     : "—";
   const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";
@@ -321,6 +322,8 @@ function divisionHtml() {
       (out ? ` <span class="bad">sem suprimentos (máx. ${RULES.settlerSupplyRange}): morrendo</span>` : "") +
       `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="disband">Voltar para casa</button>${message ? ` <span class="bad">${message}</span>` : ""}</div>`;
   }
+  if (d.kind === "fleet") return `<div class="unit"><b>⛵ Frota ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
+    `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · <small>leva exércitos nessa zona</small> <button data-act="disband">Desfazer</button></div>`;
   return `<div class="unit"><b>⚔ Divisão ${d.id}</b> · ${t}` +
     `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button></div>`;
 }
@@ -419,6 +422,9 @@ function hexHtml() {
   });
   h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
   if (eco.urban[i] && !eco.occupier[i]) h += `<br><button data-act="recruit">Recrutar divisão (${WAR.recruitCost} + ${WAR.divisionSize} manpower)</button>`;
+  if (eco.urban[i] && !eco.occupier[i] && coastOf(world, i) >= 0) h += eco.countries[active - 1].research.known.has(NAVY.tech)
+    ? ` <button data-act="fleet">Construir frota (${NAVY.cost} + ${NAVY.sailors} manpower)</button>` : ` <small>🔒 frota: ${NAVY.tech}</small>`;
+  if (city?.blockaded) h += `<br><span class="bad">⚓ ${city.name} bloqueada por frota inimiga: sem comércio exterior</span>`;
   if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {
     const others = eco.cities.map((k, idx) => [k, idx] as const).filter(([k]) => k.country === city.country && k !== city);
@@ -482,7 +488,9 @@ function drawUnits() {
     units.fillStyle = `rgb(${world.countries[d.country - 1].color})`;
     units.strokeStyle = d.id === selectedDiv ? "#fff" : "#000"; units.lineWidth = d.id === selectedDiv ? 3 : 1.5;
     units.beginPath();
-    if (d.kind === "settler") units.rect(x - r * 0.8, y - r * 0.8, r * 1.6, r * 1.6); else units.arc(x, y, r, 0, Math.PI * 2);
+    if (d.kind === "settler") units.rect(x - r * 0.8, y - r * 0.8, r * 1.6, r * 1.6);
+    else if (d.kind === "fleet") { units.moveTo(x, y - r); units.lineTo(x + r, y + r * 0.8); units.lineTo(x - r, y + r * 0.8); units.closePath(); }
+    else units.arc(x, y, r, 0, Math.PI * 2);
     units.fill(); units.stroke();
     units.fillStyle = "#3c3"; units.fillRect(x - r, y + r + 2, 2 * r * d.org, 3); // barra de organização
     if (r >= 10) { units.fillStyle = "#000"; units.font = `bold ${Math.round(r * 0.8)}px sans-serif`; units.textAlign = "center"; units.textBaseline = "middle"; units.fillText(String(Math.round(d.strength)), x, y); }

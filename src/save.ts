@@ -3,7 +3,7 @@
 import type { World } from "./world.ts";
 import type { Economy } from "./economy.ts";
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2; // 2: zonas marítimas e frotas
 const MAGIC = "jogo-civilizatorio";
 
 export type SaveData = {
@@ -71,7 +71,7 @@ export async function loadGame(file: Blob): Promise<SaveData> {
   if (raw?.magic !== MAGIC) throw new Error("Arquivo inválido: não é um save do jogo");
   if (raw.version !== SAVE_VERSION) throw new Error(`Save da versão ${raw.version}; este jogo lê a versão ${SAVE_VERSION}`);
   const w = raw.world as World, e = raw.eco as Economy, N = w?.W * w?.H;
-  const arrays: unknown[] = [w.terrain, w.resource, w.owner, w.pop, w.climate, w.river, w.navigable, e.market, e.urban, e.occupier, ...(e.levels ?? [])];
+  const arrays: unknown[] = [w.terrain, w.resource, w.owner, w.pop, w.climate, w.river, w.navigable, w.seaZone, e.market, e.urban, e.occupier, ...(e.levels ?? [])];
   if (!(N > 0) || arrays.some((a) => !ArrayBuffer.isView(a) || (a as Uint8Array).length !== N) || !Array.isArray(e.countries) || !Array.isArray(e.cities))
     throw new Error("Save corrompido: tamanhos não batem");
   return raw as SaveData;

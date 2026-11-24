@@ -5,7 +5,7 @@ import {
   build, buildCost, buildingsFor, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
 } from "./economy.ts";
-import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, WAR } from "./war.ts";
+import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, coastOf, WAR, NAVY } from "./war.ts";
 import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
 import { hexDistance, hexesInRadius } from "./hex.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
@@ -102,6 +102,11 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   // defesa: uma divisão por cidade
   if (armies.length < mine.length && c.manpower >= WAR.divisionSize && c.treasury > WAR.recruitCost * AI.reserve) recruit(w, e, country, mine[armies.length % mine.length].hex);
 
+  // marinha: uma frota se tiver litoral e a tecnologia
+  const port = mine.flatMap((k) => k.urban).find((j) => coastOf(w, j) >= 0);
+  if (port !== undefined && c.research.known.has(NAVY.tech) && !e.divisions.some((d) => d.kind === "fleet" && d.country === country) &&
+      c.treasury > NAVY.cost * AI.reserve && c.manpower >= NAVY.sailors) buildFleet(w, e, country, port);
+
   const enemies = e.countries.map((_, k) => k + 1).filter((b) => atWar(e, country, b));
   for (const b of enemies) { // paz quando decidiu ou se arrastou
     const key = `${Math.min(country, b)}-${Math.max(country, b)}`, s = warScore(w, e, country, b);
@@ -111,6 +116,14 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   const still = enemies.filter((b) => atWar(e, country, b));
   if (still.length) { // ataque: cada divisão parada vai para a cidade inimiga mais perto
     const targets = e.cities.filter((k) => still.includes(k.country));
+    // frotas paradas vão bloquear o porto inimigo mais perto
+    const seas = targets.flatMap((k) => k.urban.map((j) => coastOf(w, j))).filter((s) => s >= 0);
+    for (const f of e.divisions) {
+      if (f.kind !== "fleet" || f.country !== country || f.target !== null || !seas.length) continue;
+      const t = seas.reduce((a, s) => (dist(w, f.hex, s) < dist(w, f.hex, a) ? s : a));
+      if (w.seaZone[t] === w.seaZone[f.hex]) continue; // já está bloqueando essa zona
+      orderMove(w, e, f.id, t);
+    }
     for (const d of armies) {
       if (d.target !== null || !targets.length) continue;
       const t = targets.reduce((a, k) => (dist(w, d.hex, k.hex) < dist(w, d.hex, a.hex) ? k : a));
