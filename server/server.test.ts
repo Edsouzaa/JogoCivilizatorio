@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { startServer } from "./server.ts";
+import { mkdtempSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+// saves da sala vão para uma pasta temporária (definida antes de carregar o servidor)
+const saveDir = mkdtempSync(join(tmpdir(), "jogo-salas-"));
+process.env.SAVE_DIR = saveDir;
+const { startServer } = await import("./server.ts");
 import { loadGame } from "../src/save.ts";
 import { advanceWeek, checksum } from "../src/sim.ts";
 import { applyCommand } from "../src/commands.ts";
@@ -76,7 +82,26 @@ assert.deepEqual(b.game.e.humans.sort(), [1, 2]);
 a.ws.send(JSON.stringify({ t: "pause" }));
 await waitFor(() => last(b, "status").paused === "Ana");
 
+// sala vazia é salva em disco; quem entra de novo com o código reabre ela, pausada e com os países na IA
+const weekBefore = b.game.e.week;
 a.ws.close(); b.ws.close();
+await waitFor(() => existsSync(join(saveDir, `${code}.save`)));
+const c = client();
+await open(c);
+c.ws.send(JSON.stringify({ t: "join", code, name: "Caio" }));
+await waitFor(() => last(c, "welcome") && c.game);
+assert.ok(c.game.e.week >= weekBefore, "sala reaberta voltou no tempo");
+assert.deepEqual(c.game.e.humans, [], "países deveriam voltar para a IA");
+assert.ok(last(c, "status").paused, "sala reaberta deveria começar pausada");
+c.ws.close();
+// código inválido não vira caminho de arquivo
+const d = client();
+await open(d);
+d.ws.send(JSON.stringify({ t: "join", code: "../../package" }));
+await waitFor(() => last(d, "err"));
+assert.match(last(d, "err").msg, /não encontrada/);
+d.ws.close();
 wss.close();
+rmSync(saveDir, { recursive: true, force: true });
 console.log(`server ok (sala ${code}, semana ${b.game.e.week})`);
 process.exit(0);

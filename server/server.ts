@@ -8,22 +8,61 @@ import { generateWorld, type World } from "../src/world.ts";
 import { createEconomy, type Economy } from "../src/economy.ts";
 import { advanceWeek, checksum } from "../src/sim.ts";
 import { applyCommand, type Cmd } from "../src/commands.ts";
-import { saveGame } from "../src/save.ts";
+import { saveGame, loadGame } from "../src/save.ts";
+import { mkdir, writeFile, rename, readFile } from "node:fs/promises";
+import { join as joinPath, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync as fs_exists } from "node:fs";
 import { ERA_WEEKS_PER_SECOND } from "../src/tech.ts";
 
-export const MP = { port: Number(process.env.PORT) || 8787, maxPlayers: 20, speeds: [0, 0.5, 1, 3, 10, 30], tickMs: 50, maxMsgBytes: 4096 };
+export const MP = {
+  port: Number(process.env.PORT) || 8787, maxPlayers: 20, speeds: [0, 0.5, 1, 3, 10, 30], tickMs: 50, maxMsgBytes: 4096,
+  saveDir: process.env.SAVE_DIR || joinPath(dirname(fileURLToPath(import.meta.url)), "saves"),
+  saveEveryMs: Number(process.env.SAVE_EVERY_MS) || 5 * 60 * 1000, // de jogo rodando
+};
+const CODE = /^[A-Z]{4}$/; // o código vira nome de arquivo: só 4 letras, nada de caminho
 
 type Player = { ws: WebSocket; id: number; name: string; country: number; syncing: boolean; buffer: string[] };
 export type Room = {
   code: string; world: World; eco: Economy; players: Player[];
   speed: number; paused: { by: number } | null; votes: Set<number>;
   pending: [number, Cmd, Player][]; acc: number;
+  runningMs: number; // tempo rodando desde o último save em disco
 };
+
+const roomFile = (code: string) => joinPath(MP.saveDir, `${code}.save`);
+
+/** Grava a sala em disco (arquivo temporário e depois renomeia: um desligamento no meio não corrompe o save). */
+export async function saveRoom(r: Room) {
+  if (!CODE.test(r.code)) return;
+  const blob = await saveGame({ world: r.world, eco: r.eco, ui: { active: 0, cam: { x: 0, y: 0, zoom: 0 }, mode: 0, speed: r.speed, explored: [] } });
+  await mkdir(MP.saveDir, { recursive: true });
+  const file = roomFile(r.code), tmp = file + ".tmp";
+  await writeFile(tmp, new Uint8Array(await blob.arrayBuffer()));
+  await rename(tmp, file);
+}
+
+/** Reabre uma sala salva: volta pausada e com todos os países na IA até os jogadores assumirem de novo. */
+async function openSavedRoom(code: string): Promise<Room | null> {
+  if (!CODE.test(code)) return null;
+  let data: Buffer;
+  try { data = await readFile(roomFile(code)); } catch { return null; }
+  const d = await loadGame(new Blob([new Uint8Array(data)]));
+  d.eco.humans = [];
+  const r: Room = { code, world: d.world, eco: d.eco, players: [], speed: d.ui.speed || 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0 };
+  rooms.set(code, r);
+  return r;
+}
 
 const rooms = new Map<string, Room>();
 let nextId = 1;
 
-const code = () => { let c; do c = Array.from({ length: 4 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ"[(Math.random() * 24) | 0]).join(""); while (rooms.has(c)); return c; };
+const code = (): string => {
+  for (;;) {
+    const c = Array.from({ length: 4 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ"[(Math.random() * 24) | 0]).join("");
+    if (!rooms.has(c) && !fs_exists(roomFile(c))) return c;
+  }
+};
 const send = (p: Player, o: unknown) => { const s = JSON.stringify(o); if (p.syncing) p.buffer.push(s); else if (p.ws.readyState === 1) p.ws.send(s); };
 const broadcast = (r: Room, o: unknown) => { for (const p of r.players) send(p, o); };
 const worldEra = (e: Economy) => Math.max(...e.countries.map((c) => c.research.era));
@@ -62,14 +101,16 @@ function leave(r: Room, p: Player) {
   r.votes.delete(p.id);
   if (p.country) r.pending.push([p.country, { t: "release" }, p]); // o país volta para a IA
   if (r.paused?.by === p.id) r.paused = null; // quem pausou saiu: despausa
-  if (!r.players.length) rooms.delete(r.code);
-  else status(r);
+  if (!r.players.length) { // sala vazia: guarda em disco e libera a memória
+    rooms.delete(r.code);
+    saveRoom(r).catch((err) => console.error(`falha ao salvar a sala ${r.code}:`, err));
+  } else status(r);
 }
 
 const cleanName = (v: unknown) => (typeof v === "string" ? v.replace(/[<>&"']/g, "").trim().slice(0, 24) : "") || "Jogador";
 const intIn = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
 
-export function handle(ws: WebSocket, raw: string, state: { room?: Room; player?: Player }) {
+export async function handle(ws: WebSocket, raw: string, state: { room?: Room; player?: Player }) {
   let m: any;
   try { m = JSON.parse(raw); } catch { return; }
   if (!m || typeof m !== "object") return;
@@ -78,13 +119,21 @@ export function handle(ws: WebSocket, raw: string, state: { room?: Room; player?
     const W = intIn(m.w, 50, 1600) ? m.w : 1600, H = intIn(m.h, 30, 640) ? m.h : 640;
     const seed = intIn(m.seed, 0, 2 ** 31) ? m.seed : (Math.random() * 2 ** 31) | 0;
     const world = generateWorld(W, H, seed);
-    const room: Room = { code: code(), world, eco: createEconomy(world), players: [], speed: 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0 };
+    const room: Room = { code: code(), world, eco: createEconomy(world), players: [], speed: 2, paused: { by: 0 }, votes: new Set(), pending: [], acc: 0, runningMs: 0 };
     rooms.set(room.code, room);
     state.room = room; state.player = join(room, ws, cleanName(m.name));
     room.paused = { by: state.player.id }; // começa pausado por quem criou
     status(room);
   } else if (m.t === "join" && !r) {
-    const room = rooms.get(String(m.code ?? "").toUpperCase());
+    const c = String(m.code ?? "").toUpperCase();
+    let room = rooms.get(c);
+    if (!room) {
+      try { room = (await openSavedRoom(c)) ?? undefined; } catch { return ws.send(JSON.stringify({ t: "err", msg: "O save dessa sala está corrompido" })); }
+      if (state.room || ws.readyState !== 1) { // entrou em outra sala ou desconectou enquanto lia o disco
+        if (room && !room.players.length) rooms.delete(c);
+        return;
+      }
+    }
     if (!room) return ws.send(JSON.stringify({ t: "err", msg: "Sala não encontrada" }));
     if (room.players.length >= MP.maxPlayers) return ws.send(JSON.stringify({ t: "err", msg: `Sala cheia (${MP.maxPlayers} jogadores)` }));
     state.room = room; state.player = join(room, ws, cleanName(m.name));
@@ -132,12 +181,14 @@ export function startServer(port = MP.port) {
   const wss = new WebSocketServer({ port, maxPayload: MP.maxMsgBytes });
   wss.on("connection", (ws) => {
     const state: { room?: Room; player?: Player } = {};
-    ws.on("message", (data, isBinary) => { if (!isBinary) handle(ws, data.toString(), state); });
+    ws.on("message", (data, isBinary) => { if (!isBinary) handle(ws, data.toString(), state).catch((err) => console.error("erro na mensagem:", err)); });
     ws.on("close", () => { if (state.room && state.player) leave(state.room, state.player); });
   });
   const loop = setInterval(() => {
     for (const r of rooms.values()) {
       if (r.paused) continue;
+      r.runningMs += MP.tickMs;
+      if (r.runningMs >= MP.saveEveryMs) { r.runningMs = 0; saveRoom(r).catch((err) => console.error(`falha ao salvar a sala ${r.code}:`, err)); }
       r.acc = Math.min(r.acc + (MP.tickMs / 1000) * MP.speeds[r.speed] * ERA_WEEKS_PER_SECOND[worldEra(r.eco)], 10);
       for (; r.acc >= 1; r.acc--) step(r);
     }
@@ -146,7 +197,16 @@ export function startServer(port = MP.port) {
   return wss;
 }
 
+/** Salva todas as salas abertas (ao fechar o servidor). */
+export const saveAll = () => Promise.all([...rooms.values()].map((r) => saveRoom(r).catch((err) => console.error(`falha ao salvar a sala ${r.code}:`, err))));
+
 if (process.argv[1]?.endsWith("server.ts")) {
   startServer();
+  for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, async () => {
+    console.log("Salvando as salas...");
+    await saveAll();
+    process.exit(0);
+  });
+  console.log(`Salas salvas em ${MP.saveDir}`);
   console.log(`Servidor do Jogo Civilizatório na porta ${MP.port}. Os jogadores conectam em ws://<IP deste PC>:${MP.port}`);
 }

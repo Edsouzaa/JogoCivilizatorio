@@ -142,7 +142,8 @@ Todo país que não é o do jogador decide uma vez por mês:
 - **Lockstep:** o servidor e todos os navegadores simulam a mesma partida; pela rede vão só os comandos de cada semana. Quem entra recebe uma foto da partida (o formato do save). Uma vez por ano o servidor manda uma soma de conferência; quem divergir recebe a foto de novo.
 - **Pausa:** a sala começa pausada. Qualquer jogador pausa; quem pausou despausa, ou os outros despausam por maioria (votos no topo). Velocidade: qualquer jogador muda.
 - **Segurança:** tudo que vem do jogador é validado no servidor (formato, tamanho das mensagens, só comanda o próprio país, nome sem HTML).
-- A fazer: salvar a sala no servidor, senha de sala, chat, escolher quem pode mudar a velocidade.
+- **Salas salvas no servidor:** cada sala é gravada em server/saves/CODIGO.save a cada 5 minutos de jogo rodando, quando o último jogador sai e quando o servidor é fechado (Ctrl+C). Entrar com o código de uma sala salva reabre ela: volta pausada e com os países na IA até cada jogador assumir o seu de novo. Pasta e intervalo mudam com as variáveis SAVE_DIR e SAVE_EVERY_MS.
+- A fazer: senha de sala, chat, escolher quem pode mudar a velocidade.
 
 ## O que fica fora da primeira versão jogável
 
