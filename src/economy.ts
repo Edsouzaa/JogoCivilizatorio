@@ -8,6 +8,7 @@ import type { Flag } from "./flags.ts";
 import { makeName } from "./names.ts";
 import { updateControl, CONTROL } from "./control.ts";
 import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
+import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
@@ -178,6 +179,7 @@ export type Country = {
   investPool?: number;  // fundo de investimento privado (sim.ts → ai.ts privateInvest)
   investWeek?: number;  // quanto entrou na última semana
   ruler?: number;       // id do governante (characters.ts)
+  tributeWeek?: number; // tributo da semana: + recebido (soberano), − pago (súdito)
   glory?: number;       // prestígio de guerras (diplomacy.ts), se apaga devagar
   culturePenalty?: number; // pontos de lealdade perdidos por gente de cultura não aceita
   adminWeek?: number;   // produzidos na última semana
@@ -227,6 +229,8 @@ export type Economy = {
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
   characters?: Character[]; nextCharacter?: number; // personagens (characters.ts)
   obituaries?: { name: string; country: number; age: number }[]; // governantes que morreram nesta semana (aviso)
+  subjects?: Record<number, Subject>; // súdito → ligação com o soberano (subjects.ts)
+  freed?: number[];                   // súditos que se soltaram neste mês (aviso)
   relations?: Record<string, number>; // "a-b" → −100..100 (diplomacy.ts); ausente = 0
   choices?: Record<number, { id: number; week: number }>; // evento esperando a escolha do jogador (choices.ts)
   incentives?: Incentive[]; // incentivos ativos (admin.ts)
@@ -462,6 +466,8 @@ export function proposePact(e: Economy, a: number, b: number): string | null {
   if (hasPact(e, a, b)) return "Já existe acordo";
   const bad = [a, b].find((x) => e.countries[x - 1].infamy >= INFAMY.noPacts);
   if (bad) return `Recusado: infâmia alta (${Math.round(e.countries[bad - 1].infamy)} ≥ ${INFAMY.noPacts})`;
+  const puppet = [a, b].find((x) => e.subjects?.[x]?.kind === "Fantoche" && e.subjects[x].overlord !== (x === a ? b : a));
+  if (puppet) return "Fantoche não assina acordos sem o soberano";
   if (relation(e, a, b) < DIPLO.pactMin) return `Recusado: relações ruins demais (${Math.round(relation(e, a, b))})`;
   e.pacts.add(pactKey(a, b));
   return null;
@@ -603,8 +609,8 @@ export const cityName = (w: World, e: Economy, country: number) => {
 
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
-  e.exhausted = [];
-  if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); }
+  e.exhausted = []; e.freed = [];
+  if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); }
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
@@ -704,6 +710,7 @@ export function tick(w: World, e: Economy) {
     }
   });
 
+  for (const c of e.countries) c.tributeWeek = 0;
   e.countries.forEach((c, ci) => {
     let gdp = 0, taxed = 0, nominal = 0; // taxed = PIB × imposto de cada cidade (na Federação, o do estado dela)
     e.cities.forEach((city, k) => {
@@ -764,6 +771,7 @@ export function tick(w: World, e: Economy) {
   if (e.week % 4 === 0) migrate(w, e);
 
   stepAdmin(e);
+  payTribute(e);
   e.week++;
 }
 

@@ -11,6 +11,7 @@ import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
 import { countryMix, cultureName, languageName, RELIGIONS, acceptedShare } from "./culture.ts";
 import { SERIES } from "./history.ts";
 import { relation, prestige, DIPLO } from "./diplomacy.ts";
+import { subjectOf, SUBJECT_KINDS, SUBJ, type SubjectKind } from "./subjects.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
@@ -75,6 +76,7 @@ function showNotes(cat: string | null) {
 
 /** Depois de cada semana simulada: avisos que só existem naquela semana. */
 function afterWeek() {
+  for (const k of eco.freed ?? []) if (k === active) notify(`<i class=i-diplomacy></i> Você se libertou do seu soberano`);
   for (const o of eco.obituaries ?? []) if (o.country === active) notify(`<i class=i-politics></i> Morreu ${o.name}, aos ${o.age} anos. Um novo governante assumiu.`);
   for (const n of eco.news ?? []) if (eco.cities[n.city]?.country === active) notify(n.kind === "fome" ? `<i class=i-bread></i> Fome em ${eco.cities[n.city].name}: falta comida no mercado, o povo está morrendo` : `<i class=i-skull></i> Peste em ${eco.cities[n.city].name}`);
   for (const i of eco.exhausted) if (world.owner[i] === active) notify(`<i class=i-pick></i> Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
@@ -518,6 +520,9 @@ document.addEventListener("pointerdown", (e) => {
   }
   if (d.book) return openBook(Number(d.book));
   if (d.saveChar) return cmd({ t: "saveCharacter", id: Number(d.saveChar) });
+  if (d.subject) { const [k, kind] = d.subject.split("|"); return cmd({ t: "subject", target: +k, kind: kind as SubjectKind }); }
+  if (d.free) return cmd({ t: "freeSubject", target: Number(d.free) });
+  if (d.act === "independence") return cmd({ t: "independence" });
   if (d.improve) return cmd({ t: "improve", target: Number(d.improve) });
   if (d.chart) { chartKey = d.chart; return updateUI(); }
   if (d.rank) { rankKey = d.rank; return updateUI(); }
@@ -875,11 +880,16 @@ function diplomacyHtml() {
   const known = new Set<number>([...(eco.contacts?.[active - 1] ?? [])]);
   for (let k = 1; k <= eco.countries.length; k++) if (k !== active && (atWar(eco, active, k) || hasPact(eco, active, k) || relation(eco, active, k) !== 0)) known.add(k);
   const rows = [...known].sort((a, b) => relation(eco, active, b) - relation(eco, active, a)).map((k) => {
-    const r = relation(eco, active, k);
-    return `<tr><td><img src="${flagURL(flagOf(k))}" width="21" height="14" style="vertical-align:-2px"> ${world.countries[k - 1].name}${atWar(eco, active, k) ? ' <span class="bad">guerra</span>' : hasPact(eco, active, k) ? " <small>acordo</small>" : ""}</td>` +
+    const r = relation(eco, active, k), sub = subjectOf(eco, k);
+    const link = sub?.overlord === active ? `<br><small>${sub.kind} seu · autonomia ${Math.round(sub.autonomy)}</small> <button data-free="${k}">Soltar</button>`
+      : sub ? `<br><small>${sub.kind} de ${world.countries[sub.overlord - 1].name}</small>`
+      : !subjectOf(eco, active) ? `<br><small>Propor:</small> ${(Object.keys(SUBJECT_KINDS) as SubjectKind[]).map((kind) => `<button data-subject="${k}|${kind}" title="${SUBJECT_KINDS[kind].desc} Precisa de relação ${SUBJECT_KINDS[kind].relationMin} e ${SUBJ.prestigeRatio}× o prestígio deles.">${kind}</button>`).join(" ")}` : "";
+    return `<tr><td><img src="${flagURL(flagOf(k))}" width="21" height="14" style="vertical-align:-2px"> ${world.countries[k - 1].name}${atWar(eco, active, k) ? ' <span class="bad">guerra</span>' : hasPact(eco, active, k) ? " <small>acordo</small>" : ""}${link}</td>` +
       `<td class="${r < 0 ? "up" : "down"}">${Math.round(r)}</td><td>${prestige(eco, k)}</td><td><button data-improve="${k}" title="+${DIPLO.improve} de relação por ${DIPLO.improveCost} pontos administrativos">Melhorar</button></td></tr>`;
   }).join("");
-  return `<table><tr><td><b>País</b></td><td><b>Relação</b></td><td><b>Prestígio</b></td><td></td></tr>${rows}</table>` +
+  const me = subjectOf(eco, active);
+  return (me ? `<div class="card">Você é <b>${me.kind}</b> de ${world.countries[me.overlord - 1].name} · autonomia ${Math.round(me.autonomy)}/100 <small>(em 100 você se solta sozinho)</small> <button data-act="independence" title="Romper agora: a relação com o soberano despenca">Romper</button></div>` : "") +
+    `<table><tr><td><b>País</b></td><td><b>Relação</b></td><td><b>Prestígio</b></td><td></td></tr>${rows}</table>` +
     (known.size ? "" : "<small>Ninguém conhecido ainda: vizinhos e parceiros aparecem aqui.</small>");
 }
 

@@ -29,3 +29,29 @@ assert.ok(Math.abs(avg - 100) < 5, `média ${avg}`);
 const p = prestige(e, 1); e.countries[0].glory = (e.countries[0].glory ?? 0) + 50;
 assert.equal(prestige(e, 1), p + 50);
 console.log("diplomacy ok");
+
+// dependências: aceitar exige prestígio e relação; tributário paga; vassalo entra nas guerras; autonomia 100 solta
+{
+  const { proposeSubject, stepSubjects, SUBJ } = await import("../src/subjects.ts");
+  const w2 = generateWorld(200, 100, 4, 3), e2 = createEconomy(w2);
+  tick(w2, e2);
+  e2.countries[0].glory = 1000; // país 1 bem mais forte
+  assert.match(proposeSubject(e2, 1, 2, "Vassalo")!, /relação/);
+  addRelation(e2, 1, 2, 60);
+  assert.match(proposeSubject(e2, 2, 1, "Tributário")!, /prestígio/);
+  assert.equal(proposeSubject(e2, 1, 2, "Vassalo"), null);
+  assert.match(proposeSubject(e2, 3, 2, "Tributário")!, /já é súdito/);
+  // tributo
+  const t1 = e2.countries[0].treasury; tick(w2, e2);
+  assert.ok((e2.countries[0].tributeWeek ?? 0) >= 0 && (e2.countries[1].tributeWeek ?? 0) <= 0);
+  assert.ok(e2.countries[0].treasury > t1 - 1e9);
+  // guerra: atacar o soberano arrasta o vassalo; súdito não ataca o soberano
+  assert.match(declareWar(e2, 2, 1)!, /soberano/);
+  declareWar(e2, 3, 1);
+  assert.ok(e2.wars.has("2-3"), "vassalo deveria entrar na guerra do soberano");
+  // autonomia: soberano fraco e odiado perde o súdito
+  e2.countries[0].glory = -1000; addRelation(e2, 1, 2, -200); e2.subjects![2].autonomy = SUBJ.free - 1;
+  assert.deepEqual(stepSubjects(e2), [2]);
+  assert.equal(e2.subjects![2], undefined);
+}
+console.log("subjects ok");

@@ -3,6 +3,7 @@
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
 import { refresh, GOODS, RULES, INFAMY, type Economy, type Division, type WarStats } from "./economy.ts";
 import { DIPLO } from "./diplomacy.ts";
+import { warAllies } from "./subjects.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, note } from "./characters.ts";
 import { UNITS, unitOf, SHIPS, PLANES, craftOf } from "./units.ts";
 import { techSum } from "./tech.ts";
@@ -142,7 +143,12 @@ export const controller = (w: World, e: Economy, i: number) => e.occupier[i] || 
 export function declareWar(e: Economy, a: number, b: number): string | null {
   if (a === b) return "Não dá para declarar guerra a si mesmo";
   if (atWar(e, a, b)) return "Já estão em guerra";
+  if (e.subjects?.[a]?.overlord === b) return "Súdito não declara guerra ao soberano (rompa a dependência antes)";
   e.wars.add(key(a, b));
+  for (const [x, y] of warAllies(e, a, b)) if (x !== y && !atWar(e, x, y)) { // súditos e protetores entram (sem infâmia)
+    e.wars.add(key(x, y));
+    (e.warStats ??= {})[key(x, y)] = { start: e.week, dead: { [x]: 0, [y]: 0 }, civil: { [x]: 0, [y]: 0 }, cost: { [x]: 0, [y]: 0 } };
+  }
   (e.warStats ??= {})[key(a, b)] = { start: e.week, dead: { [a]: 0, [b]: 0 }, civil: { [a]: 0, [b]: 0 }, cost: { [a]: 0, [b]: 0 } };
   e.countries[a - 1].infamy += INFAMY.declareWar;
   e.pacts.delete(key(a, b)); // guerra cancela o acordo comercial

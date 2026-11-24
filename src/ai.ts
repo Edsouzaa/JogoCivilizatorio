@@ -9,10 +9,12 @@ import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDist
 import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { relation, DIPLO } from "./diplomacy.ts";
+import { proposeSubject } from "./subjects.ts";
 import { bestUnit, bestCraft, SHIPS, PLANES } from "./units.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 
 export const AI = {
+  subjectChancePerMonth: 0.05, // chance de propor dependência a um vizinho
   reserve: 1.5,         // só gasta se o tesouro passar de reserve × custo
   maxCitiesBase: 3,     // cidades que a IA quer na era tribal (+2 por era)
   lawSupport: 0.25,     // apoio mínimo para propor uma lei
@@ -211,5 +213,8 @@ export function runAI(w: World, e: Economy, country: number) {
     }
     if (best) proposePact(e, country, best);
   }
+  // dependências: país forte tenta pôr um vizinho (da IA) sob a sua asa; quem aceita é decidido pelas regras
+  if (!e.subjects?.[country] && rand() < AI.subjectChancePerMonth)
+    for (const k of e.contacts?.[country - 1] ?? []) if (!e.humans.includes(k) && proposeSubject(e, country, k, relation(e, country, k) >= 40 ? "Vassalo" : "Tributário") === null) break;
   military(w, e, country, rand);
 }

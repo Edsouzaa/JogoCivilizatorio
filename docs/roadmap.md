@@ -84,6 +84,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Abastecimento: exército em terra precisa estar a até 6 + 3 × era hexes de um depósito (cidade sua ou cidade inimiga que ele ocupa); fora disso perde 5% de organização e 2% dos soldados por semana e não se recupera. O painel da divisão mostra se tem suprimento e a distância.
 
+- Dependências: Tributário (paga 15%), Vassalo (paga 10%, luta nas guerras do soberano, é defendido), Fantoche (paga 20%, luta junto, não assina acordos sozinho) e Protetorado (não paga; o protetor entra nas guerras contra ele). Proposta aceita se o soberano tiver 1,5× o prestígio e relação mínima por tipo. Autonomia de 0 a 100 anda todo mês (soberano forte e querido segura); em 100 o súdito se solta; pode romper antes (relação despenca). Tributo cai com a autonomia. Súdito não ataca o soberano. A IA propõe a vizinhos da IA. Tudo na aba Diplomacia.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -108,7 +110,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 11. **Diplomacia**
     - Confiança, influência e esferas.
     - Tratados com manutenção em pontos administrativos.
-    - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
+    - Colônia, satélite e união pessoal; proposta de dependência a jogador (hoje só IA aceita sozinha) e dependência imposta na paz.
 12. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
 13. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
 14. **Personagens**

@@ -8,6 +8,7 @@ import { proposeLaw, cancelLaw } from "./politics.ts";
 import { validFlag, type Flag } from "./flags.ts";
 import { EVENT_LIST, resolve } from "./choices.ts";
 import { improveRelations } from "./diplomacy.ts";
+import { proposeSubject, releaseSubject, SUBJECT_KINDS, type SubjectKind } from "./subjects.ts";
 import { hireGeneral } from "./characters.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
@@ -25,6 +26,9 @@ export type Cmd =
   | { t: "acceptCulture"; culture: number; off?: boolean }
   | { t: "choose"; option: number }
   | { t: "improve"; target: number } // melhorar relações
+  | { t: "subject"; target: number; kind: SubjectKind } // propor dependência (o outro vira súdito)
+  | { t: "freeSubject"; target: number } // soberano solta o súdito
+  | { t: "independence" }            // súdito rompe com o soberano
   | { t: "saveCharacter"; id: number } // guardar na história (o livro continua depois da morte) // resposta ao evento pendente
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
@@ -81,6 +85,9 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     }
     case "settlers": return trainSettlers(w, e, country);
     case "saveCharacter": { const ch = e.characters?.find((x) => x.id === c.id && x.country === country); if (!ch) return "Personagem não é seu"; ch.saved = true; return null; }
+    case "subject": return isInt(c.target, 1) && c.target <= e.countries.length && c.kind in SUBJECT_KINDS ? proposeSubject(e, country, c.target, c.kind) : "Proposta inválida";
+    case "freeSubject": return e.subjects?.[c.target]?.overlord === country ? releaseSubject(e, c.target, true) : "Não é seu súdito";
+    case "independence": return e.subjects?.[country] ? releaseSubject(e, country, false) : "Você não é súdito";
     case "improve": return isInt(c.target, 1) && c.target <= e.countries.length ? improveRelations(e, country, c.target) : "País inválido";
     case "choose": {
       const ev = e.choices?.[country];
