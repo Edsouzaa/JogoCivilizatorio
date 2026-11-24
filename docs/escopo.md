@@ -57,6 +57,16 @@ Ver docs/politica.md.
 - **Migração entre países (mensal):** a população rural vai para as cidades do país onde a classe baixa tem a melhor QV, se a diferença passar de 5 pontos (até 0,3% por mês). A população total se conserva. Por enquanto vale qualquer distância.
 - A fazer: escravidão/servidão por lei, soldados vindos do exército, dependentes, migração só para vizinhos.
 
+## Guerra terrestre (src/war.ts)
+
+- **Divisões** (100 soldados, sem customização): recrutadas em hex de cidade por 150 de dinheiro e 100 de manpower; custam 1 por semana e consomem 0,5 Armas por semana do mercado da capital. Sem armas lutam com metade da força. Os soldados aparecem na população como POP Soldados.
+- **Controles:** clique num hex com divisões para selecionar (clicar de novo alterna entre elas); **botão direito** no mapa manda andar. Botões no painel: Recrutar divisão (hex urbano), Declarar guerra (hex de outro país), Paz (no resumo do país), Desfazer.
+- **Movimento:** 1 hex por vez, em 1 semana (planície, pradaria, deserto, tundra), 2 (floresta, selva, colinas) ou 3 (montanha); oceano e gelo são intransitáveis. Só entra em território de outro país em guerra com ele. O caminho é guloso (pode travar atrás de lagos).
+- **Combate:** ao tentar entrar num hex com inimigos, as duas partes perdem soldados (8% do poder inimigo por semana) e organização. Colinas, selva, floresta e montanha dão bônus a quem defende. Divisão com organização abaixo de 10% recua para um vizinho seguro, ou é destruída se não houver. Fora de combate, a organização volta e a divisão se reforça em território próprio. Baixas saem da população.
+- **Ocupação:** divisão que entra em hex inimigo o ocupa (listrado no mapa político); hex ocupado não produz para o dono. Voltar ao próprio hex o liberta.
+- **Paz:** a pontuação de guerra é a fração da população inimiga ocupada menos a fração própria ocupada. Quem estiver mais de 5 pontos na frente fica com os hexes que ocupou (menos a capital do perdedor); senão, paz branca.
+- A fazer: IA que move tropas, frentes automáticas, suprimentos, guerra aérea e naval, exigências de paz escolhidas pelo jogador.
+
 ## O que fica fora da primeira versão jogável
 
 A primeira versão jogável é: economia + cidades + política básica, em uma ou duas eras, single-player. O resto entra depois que isso estiver divertido.

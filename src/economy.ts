@@ -134,12 +134,24 @@ function updateBonus(c: Country) {
 }
 
 /** levels[b][i] = nível da construção b no hex i. market[i] = cidade (1-based) cujo mercado atende o hex. */
+/** Divisão do exército (regras em war.ts). strength = soldados; org = organização 0..1. */
+export type Division = {
+  id: number; country: number; hex: number; strength: number; org: number;
+  target: number | null; progress: number; // destino e avanço (0..1) até o próximo hex
+  equip: number;                           // 0,5..1: quanto de Armas o país conseguiu dar
+};
 export type Economy = {
   week: number; levels: Uint8Array[]; producers: Set<number>;
   countries: Country[]; cities: City[];
   market: Uint16Array; urban: Uint8Array; owned: Int32Array;
-  version: number; // muda a cada refresh: hora de redesenhar cidades e fronteiras
+  version: number; // muda a cada refresh ou ocupação: hora de redesenhar o mapa
+  divisions: Division[]; nextDivision: number;
+  wars: Set<string>;    // pares de países em guerra, "a-b" com a < b
+  occupier: Uint8Array; // país que ocupa o hex (0 = ninguém); hex ocupado não produz para o dono
 };
+
+/** Armas consumidas por semana por divisão (vão para a demanda do mercado da capital). */
+export const ARMS_PER_DIVISION = 0.5;
 
 const newMarket = (): Market => ({
   supply: new Float64Array(NG), demand: new Float64Array(NG), price: new Float64Array(NG).fill(1), pop: 0,
@@ -186,6 +198,7 @@ export function createEconomy(w: World): Economy {
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket() })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
+    divisions: [], nextDivision: 1, wars: new Set(), occupier: new Uint8Array(N),
   };
   refresh(w, e);
   for (const i of e.owned) {
@@ -295,6 +308,7 @@ function updatePops(e: Economy, c: Country, country: number) {
   const n = c.pops.count, r = c.research;
   const add = (t: number, v: number) => { n[t] += v; };
   add(P["Clérigos"], c.pop * POP_RULES.clergyShare);
+  for (const d of e.divisions) if (d.country === country) add(P["Soldados"], d.strength);
   if (r.era >= 1) { add(P["Burocratas"], c.pop * POP_RULES.bureaucratShare / 2); add(P["Escriturários"], c.pop * POP_RULES.bureaucratShare / 2); }
   if (r.known.has("Escrita")) add(P["Acadêmicos"], c.pop * POP_RULES.academicShare);
   const counted = n.reduce((s, v) => s + v, 0);
@@ -352,18 +366,19 @@ export function tick(w: World, e: Economy) {
       w.pop[i] -= moved; w.pop[to] += moved;
     }
     city.market.pop += w.pop[i];
+    const c = e.countries[w.owner[i] - 1];
+    c.pop += w.pop[i];
+    if (e.occupier[i]) continue; // ocupado: a população continua, mas não produz para o dono
     // subsistência: caça, coleta e roças sem construção; fazendas vêm por cima disso
     const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence;
-    const c = e.countries[w.owner[i] - 1];
     for (const f of FOOD) { city.market.supply[f] += food; c.subsistence += food * BASE_PRICE[f] * city.market.price[f]; }
-    c.pop += w.pop[i];
   }
 
   // throughput[cidade][b] = soma de nível × ocupação das indústrias b no mercado da cidade
   const throughput = e.cities.map(() => new Float64Array(NB));
   for (const i of e.producers) {
     const k = e.market[i];
-    if (!k) continue;
+    if (!k || e.occupier[i]) continue;
     const m = e.cities[k - 1].market, c = e.countries[w.owner[i] - 1];
     let base = 0, mult = 1, required = 0;
     for (let b = 0; b < NB; b++) {
@@ -406,6 +421,9 @@ export function tick(w: World, e: Economy) {
     }
   });
   trade(e, (m, gi) => m.pop * POP_DEMAND[gi]); // produtos prontos circulam
+
+  const ARMS = g("Armas"); // exércitos compram armas no mercado da capital
+  for (const d of e.divisions) e.cities.find((k) => k.country === d.country)!.market.demand[ARMS] += ARMS_PER_DIVISION;
 
   e.cities.forEach((city) => {
     const m = city.market;

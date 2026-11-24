@@ -6,7 +6,8 @@ import {
 import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, type Politics } from "./politics.ts";
-import { pixelToHex, wrapCol, SQRT3 } from "./hex.ts";
+import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
+import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, WAR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 
 // 1600 × 640 = 1.024.000 hexágonos ≈ Terra com 500 km² por hex. Mude por ?w=&h= na URL para testar.
@@ -18,6 +19,8 @@ const canvas = document.getElementById("map") as HTMLCanvasElement;
 const hud = document.getElementById("hud")!;
 const panel = document.getElementById("panel")!;
 const renderer = createRenderer(canvas, W, H, BIOME_FILES.map((f) => `/biomas/${f}`));
+const unitsCanvas = document.getElementById("units") as HTMLCanvasElement;
+const units = unitsCanvas.getContext("2d")!;
 
 let world: World, eco: Economy, mode = 0, genMs = 0, colorMs = 0, tickMs = 0, drawnVersion = -1;
 const rgba = new Uint8Array(W * H * 4);
@@ -26,6 +29,7 @@ let hover: [number, number] = [-1, -1];
 let selected = -1; // índice do hex clicado
 let active = 0;    // país que o jogador está controlando (o último país clicado)
 let message = "";
+let selectedDiv: number | null = null; // divisão selecionada (id)
 
 // Multiplicador sobre o ritmo da era (ERA_WEEKS_PER_SECOND). "Média" = 1×.
 const SPEEDS = [0, 0.25, 0.5, 1, 2, 4];
@@ -46,12 +50,12 @@ function newWorld(seed: number) {
   world = generateWorld(W, H, seed);
   genMs = performance.now() - t;
   eco = createEconomy(world);
-  selected = -1; active = 0; message = "";
+  selected = -1; active = 0; message = ""; selectedDiv = null;
   recolor();
 }
 function recolor() {
   const t = performance.now();
-  renderer.upload(colorize(world, mode, eco.urban, rgba));
+  renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba));
   colorMs = performance.now() - t;
   drawnVersion = eco.version;
 }
@@ -61,6 +65,7 @@ function resize() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(canvas.clientWidth * dpr);
   canvas.height = Math.round(canvas.clientHeight * dpr);
+  unitsCanvas.width = canvas.width; unitsCanvas.height = canvas.height;
   if (!(cam.zoom > 0)) fit(); // aba carregada escondida tem tamanho 0 e deixa zoom = 0
 }
 function fit() { cam.x = WORLD_W / 2; cam.y = (1.5 * H) / 2; cam.zoom = Math.min(canvas.width / WORLD_W, canvas.height / (1.5 * H)); }
@@ -73,12 +78,20 @@ const inMap = (c: number, r: number) => c >= 0 && r >= 0 && c < W && r < H;
 const cityOf = (i: number) => (eco.market[i] ? eco.cities[eco.market[i] - 1] : undefined);
 
 let drag: { x: number; y: number; moved: number } | null = null;
-canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, moved: 0 }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return; // botão direito é ordem de movimento (contextmenu), não seleção nem arrasto
+  drag = { x: e.clientX, y: e.clientY, moved: 0 }; canvas.setPointerCapture(e.pointerId);
+});
 canvas.addEventListener("pointerup", (e) => {
   if (drag && drag.moved < 5) { // clique sem arrastar = selecionar hex
     const [c, r] = hexAt(e.clientX, e.clientY);
     selected = inMap(c, r) ? r * W + c : -1;
     if (selected >= 0 && world.owner[selected]) active = world.owner[selected];
+    // clicar num hex com divisões seleciona a próxima delas (cliques repetidos alternam)
+    const here = eco.divisions.filter((d) => d.hex === selected);
+    const k = here.findIndex((d) => d.id === selectedDiv);
+    selectedDiv = here.length ? here[(k + 1) % here.length].id : null;
+    if (selectedDiv) active = here[(k + 1) % here.length].country;
     message = "";
     updateUI();
   }
@@ -94,6 +107,12 @@ canvas.addEventListener("pointermove", (e) => {
     drag.x = e.clientX; drag.y = e.clientY;
   }
   hover = hexAt(e.clientX, e.clientY);
+});
+// botão direito = mandar a divisão selecionada andar até o hex
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  const [c, r] = hexAt(e.clientX, e.clientY);
+  if (selectedDiv && inMap(c, r)) act(orderMove(world, eco, selectedDiv, r * W + c));
 });
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -133,6 +152,10 @@ document.addEventListener("pointerdown", (e) => {
     return act(proposeLaw(c.politics, cat, name, c.research.era));
   }
   if (d.act === "cancel-law" && active) { cancelLaw(eco.countries[active - 1].politics); return updateUI(); }
+  if (d.act === "recruit") return act(recruit(world, eco, active, selected));
+  if (d.act === "war") return act(declareWar(eco, active, world.owner[selected]));
+  if (d.peace) return act(makePeace(world, eco, active, Number(d.peace)));
+  if (d.act === "disband" && selectedDiv) { disband(eco, selectedDiv); selectedDiv = null; return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
@@ -157,8 +180,9 @@ function updateUI() {
     SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${SPEED_NAMES[k + 1]}</button>`).join(" ") +
     `<br>${(W * H).toLocaleString("pt-BR")} hexágonos · ${world.landCount.toLocaleString("pt-BR")} em terra · ${eco.cities.length} cidades · seed ${world.seed}` +
     `<br>${fps.toFixed(0)} FPS · pior frame ${worst.toFixed(1)} ms · gerar ${genMs.toFixed(0)} ms · colorir ${colorMs.toFixed(0)} ms · semana ${tickMs.toFixed(1)} ms` +
-    `<br>${info}<br><small>Arraste = mover · roda = zoom · clique = selecionar · B = construir · C = fundar cidade · Espaço = pausar · +/− = velocidade · F = ver tudo</small>`;
-  panel.innerHTML = selected >= 0 ? countryHtml() + hexHtml() + marketHtml() : "";
+    `<br>${info}<br><small>Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover divisão · B = construir · C = fundar cidade · Espaço = pausar · +/− = velocidade · F = ver tudo</small>`;
+  if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = null; // destruída
+  panel.innerHTML = selected >= 0 ? divisionHtml() + countryHtml() + hexHtml() + marketHtml() : "";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
 }
@@ -175,8 +199,27 @@ function countryHtml() {
     `<br>Manpower livre <b class="${c.manpower < 20 ? "bad" : ""}">${fmt(c.manpower)}</b>` +
     `<br>Semana: +${fmt(c.income)} impostos (${Math.round(c.tax * 100)}%) − ${fmt(c.upkeep)} manutenção − ${fmt(c.interest)} juros` +
     (c.bankruptWeeks ? `<br><span class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</span>` : "") +
+    warsHtml() +
     `<br>Colonos: <b>${c.settlers}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>` +
     researchHtml(c.research, c.researchWeek) + popsHtml(c.pops) + politicsHtml(c.politics, c.research.era) + "<hr>";
+}
+
+function divisionHtml() {
+  const d = eco.divisions.find((x) => x.id === selectedDiv);
+  if (!d) return "";
+  const t = d.target === null ? "parada" : `indo para (${d.target % W}, ${(d.target / W) | 0})`;
+  return `<b>⚔ Divisão ${d.id}</b> · ${world.countries[d.country - 1].name} · ${t}` +
+    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · organização ${Math.round(d.org * 100)}% · armas ${Math.round(d.equip * 100)}%` +
+    `<br><small>Botão direito no mapa = mover · clique de novo no hex = próxima divisão</small> <button data-act="disband">Desfazer</button><hr>`;
+}
+
+function warsHtml() {
+  const enemies = world.countries.map((_, k) => k + 1).filter((b) => atWar(eco, active, b));
+  const n = eco.divisions.filter((d) => d.country === active).length;
+  return `<br>Exército: ${n} divisão(ões)` + (enemies.length ? " · <span class='bad'>Em guerra com</span> " + enemies.map((b) => {
+    const s = warScore(world, eco, active, b);
+    return `${world.countries[b - 1].name} (${s >= 0 ? "+" : ""}${Math.round(s * 100)}) <button data-peace="${b}">Paz</button>`;
+  }).join(" ") : "");
 }
 
 function politicsHtml(p: Politics, era: number) {
@@ -243,6 +286,8 @@ function hexHtml() {
   if (world.owner[i] !== active || !active) {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
     if (active && !world.owner[i]) h += `<br><button data-act="found">C Fundar cidade aqui</button>`;
+    if (active && world.owner[i] && !atWar(eco, active, world.owner[i])) h += ` <button data-act="war">Declarar guerra</button>`;
+    if (eco.occupier[i]) h += `<br>Ocupado por ${world.countries[eco.occupier[i] - 1].name}`;
     return h + (message ? `<br><span class="bad">${message}</span>` : "") + "<hr>";
   }
   const rows = buildingsFor(res, !!eco.urban[i]).map((b) => {
@@ -255,6 +300,8 @@ function hexHtml() {
   });
   h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
   if (!eco.urban[i]) h += `<br><button data-act="found">C Fundar cidade aqui</button>`;
+  if (eco.urban[i] && !eco.occupier[i]) h += `<br><button data-act="recruit">Recrutar divisão (${WAR.recruitCost} + ${WAR.divisionSize} manpower)</button>`;
+  if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {
     const others = eco.cities.map((k, idx) => [k, idx] as const).filter(([k]) => k.country === city.country && k !== city);
     h += `<br><b>${city.name}</b> · tamanho ${city.size} · pop urbana ${fmt(city.urban.reduce((s, j) => s + world.pop[j], 0))}` +
@@ -293,6 +340,33 @@ function drawChart(cv: HTMLCanvasElement, data: number[]) {
   g.fillStyle = "#aaa"; g.font = "10px sans-serif"; g.fillText(fmt(max / 1.1), 4, 12);
 }
 
+/** Divisões desenhadas por cima do mapa (canvas 2D): círculo na cor do país, com soldados e organização. */
+function drawUnits() {
+  units.clearRect(0, 0, unitsCanvas.width, unitsCanvas.height);
+  const toScreen = (i: number): [number, number] => {
+    let [x, y] = hexCenter(i % W, (i / W) | 0);
+    x += Math.round((cam.x - x) / WORLD_W) * WORLD_W; // cópia mais perto da câmera (mundo dá a volta)
+    return [(x - cam.x) * cam.zoom + unitsCanvas.width / 2, (y - cam.y) * cam.zoom + unitsCanvas.height / 2];
+  };
+  const r = Math.max(4, Math.min(cam.zoom * 0.7, 30));
+  const stack = new Map<number, number>();
+  for (const d of eco.divisions) {
+    const [sx, sy] = toScreen(d.hex);
+    if (sx < -r || sy < -r || sx > unitsCanvas.width + r || sy > unitsCanvas.height + r) continue;
+    const n = stack.get(d.hex) ?? 0; stack.set(d.hex, n + 1);
+    const x = sx + n * r * 0.6, y = sy - n * r * 0.6;
+    if (d.target !== null && d.id === selectedDiv) {
+      const [tx, ty] = toScreen(d.target);
+      units.strokeStyle = "#fff"; units.setLineDash([4, 4]); units.beginPath(); units.moveTo(x, y); units.lineTo(tx, ty); units.stroke(); units.setLineDash([]);
+    }
+    units.fillStyle = `rgb(${world.countries[d.country - 1].color})`;
+    units.strokeStyle = d.id === selectedDiv ? "#fff" : "#000"; units.lineWidth = d.id === selectedDiv ? 3 : 1.5;
+    units.beginPath(); units.arc(x, y, r, 0, Math.PI * 2); units.fill(); units.stroke();
+    units.fillStyle = "#3c3"; units.fillRect(x - r, y + r + 2, 2 * r * d.org, 3); // barra de organização
+    if (r >= 10) { units.fillStyle = "#000"; units.font = `bold ${Math.round(r * 0.8)}px sans-serif`; units.textAlign = "center"; units.textBaseline = "middle"; units.fillText(String(Math.round(d.strength)), x, y); }
+  }
+}
+
 let frames = 0, fps = 0, last = performance.now(), worst = 0, prev = last;
 function frame(now: number) {
   const dt = now - prev;
@@ -301,10 +375,12 @@ function frame(now: number) {
   for (; acc >= 1; acc--) {
     const t = performance.now();
     tick(world, eco);
+    stepWar(world, eco);
     tickMs = performance.now() - t;
   }
   if (eco.version !== drawnVersion || (mode === 2 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou
   renderer.draw(cam.x, cam.y, cam.zoom, hover[0], hover[1]);
+  drawUnits();
   frames++;
   if (now - last >= 500) {
     fps = (frames * 1000) / (now - last);

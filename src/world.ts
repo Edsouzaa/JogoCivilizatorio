@@ -145,16 +145,17 @@ export const MAP_MODES = ["Terreno", "Político", "População", "Recursos"] as 
 export const URBAN_COLOR = [190, 180, 170];
 
 /**
- * Cor RGBA de cada hex para o modo de mapa escolhido; `urban[i]` = 1 marca hex de cidade.
+ * Cor RGBA de cada hex para o modo de mapa escolhido; `urban[i]` = 1 marca hex de cidade; `occupier[i]` = país que ocupa.
  * Trocar de modo = recalcular isto e subir a textura.
  */
-export function colorize(w: World, mode: number, urban: Uint8Array, out = new Uint8Array(w.W * w.H * 4)) {
+export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Uint8Array, out = new Uint8Array(w.W * w.H * 4)) {
   const resColors = RESOURCES.map((_, k) => [((k * 97) % 200) + 55, ((k * 57) % 200) + 55, ((k * 151) % 200) + 55]);
   for (let i = 0; i < w.W * w.H; i++) {
     const t = w.terrain[i];
     let c: readonly number[] = TERRAINS[t].color;
     if (t !== T.OCEAN) {
       if (mode === 1) c = w.owner[i] ? w.countries[w.owner[i] - 1].color : [90, 90, 90];
+      if (mode === 1 && occupier[i] && ((i % w.W) + ((i / w.W) | 0)) % 2) c = w.countries[occupier[i] - 1].color; // ocupado: listrado
       else if (mode === 2) { const v = Math.min(1, Math.sqrt(w.pop[i] / 400)); c = [40 + 215 * v, 40 + 80 * v, 40]; }
       else if (mode === 3) c = w.resource[i] ? resColors[w.resource[i]] : [70, 70, 70];
       if (urban[i] && mode !== 2) c = mode === 1 ? c.map((v) => v * 0.6) : URBAN_COLOR;
