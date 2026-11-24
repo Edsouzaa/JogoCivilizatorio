@@ -3,7 +3,8 @@
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
 import { refresh, GOODS, RULES, INFAMY, type Economy, type Division, type WarStats } from "./economy.ts";
 import { DIPLO } from "./diplomacy.ts";
-import { rulerOf, attrMod, CHAR, noteRuler } from "./characters.ts";
+import { rulerOf, attrMod, CHAR, noteRuler, note } from "./characters.ts";
+import { UNITS, unitOf } from "./units.ts";
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
@@ -150,13 +151,16 @@ export function canEnter(w: World, e: Economy, country: number, i: number) {
   return !ctrl || ctrl === country || atWar(e, country, ctrl);
 }
 
-export function recruit(w: World, e: Economy, country: number, hex: number): string | null {
+export function recruit(w: World, e: Economy, country: number, hex: number, unit = "Lanceiros"): string | null {
   if (w.owner[hex] !== country || !e.urban[hex] || e.occupier[hex]) return "Recrute numa cidade sua";
-  const c = e.countries[country - 1];
+  const c = e.countries[country - 1], u = UNITS.find((x) => x.name === unit);
+  if (!u) return "Tipo de tropa desconhecido";
+  if (u.tech && !c.research.known.has(u.tech)) return `Precisa pesquisar ${u.tech}`;
+  const cost = Math.round(WAR.recruitCost * u.cost);
   if (c.manpower < WAR.divisionSize) return `Manpower insuficiente (precisa ${WAR.divisionSize})`;
-  if (c.treasury < WAR.recruitCost) return `Precisa de ${WAR.recruitCost} no tesouro`;
-  c.manpower -= WAR.divisionSize; c.treasury -= WAR.recruitCost;
-  e.divisions.push({ id: e.nextDivision++, kind: "army", country, hex, strength: WAR.divisionSize, org: 1, target: null, progress: 0, equip: 1 });
+  if (c.treasury < cost) return `Precisa de ${cost} no tesouro`;
+  c.manpower -= WAR.divisionSize; c.treasury -= cost;
+  e.divisions.push({ id: e.nextDivision++, kind: "army", country, hex, strength: WAR.divisionSize, org: 1, target: null, progress: 0, equip: 1, unit: u.name });
   return null;
 }
 
@@ -224,7 +228,12 @@ export function crossesRiver(w: World, a: number, b: number) {
 
 /** Força de combate: soldados × organização × armas × tecnologia militar do país. */
 const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "fleet")), 0);
-const power = (e: Economy, ds: Division[]) => ds.reduce((s, d) => { const r = rulerOf(e, d.country); return s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army")) * (1 + (r ? CHAR.milArmy * attrMod(r.mil) : 0)); }, 0);
+/** Força de combate: soldados × organização × armas × tecnologia × tipo (ataque ou defesa) × governante × general. */
+const power = (e: Economy, ds: Division[], role: "atk" | "def") => ds.reduce((s, d) => {
+  const r = rulerOf(e, d.country), g = d.general ? e.characters?.find((c) => c.id === d.general) : undefined, u = unitOf(d.unit);
+  return s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army")) * u[role]
+    * (1 + (r ? CHAR.milArmy * attrMod(r.mil) : 0)) * (1 + (g ? CHAR.generalArmy * attrMod(g.mil) + CHAR.generalBase : 0));
+}, 0);
 
 /** Tira baixas das divisões proporcionalmente à força, e a mesma gente da população da capital. */
 function takeLosses(w: World, e: Economy, ds: Division[], losses: number) {
@@ -299,7 +308,7 @@ export function stepWar(w: World, e: Economy) {
     }
     const ctrl = controller(w, e, next);
     if (!sea && (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country))) { d.target = null; continue; }
-    d.progress += sea ? 1 : 1 / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
+    d.progress += sea ? 1 : unitOf(d.kind === "army" ? d.unit : undefined).speed / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
     if (d.progress < 1) continue;
     d.progress = 0; d.siege = 0; // saiu do lugar: o cerco recomeça
     at.set(d.hex, (at.get(d.hex) ?? []).filter((x) => x !== d));
@@ -333,7 +342,8 @@ export function stepWar(w: World, e: Economy) {
     if (!besiegers.length) return;
     const who = besiegers[0].country, mine = besiegers.filter((d) => d.country === who);
     for (const d of mine) d.siege = (d.siege ?? 0) + 1;
-    if (Math.max(...mine.map((d) => d.siege!)) < siegeWeeks(city.size, mine.length)) return;
+    const siegePower = Math.max(...mine.map((d) => unitOf(d.unit).siege)); // máquinas de cerco e artilharia abrem as muralhas
+    if (Math.max(...mine.map((d) => d.siege!)) < siegeWeeks(city.size, mine.length) / siegePower) return;
     for (const i of e.owned) if (e.market[i] === k + 1 && w.owner[i] === city.country) e.occupier[i] = who;
     for (const d of mine) d.siege = 0;
     changed = true;
@@ -361,13 +371,18 @@ export function stepWar(w: World, e: Economy) {
     if (!defenders.length) continue;
     const riverLine = attackers.some((a) => crossesRiver(w, a.hex, hex)); // atacar atravessando rio é pior
     const sup = airSuperiority(e, airRegion(e, hex), attackers[0].country, defenders[0].country); // céu de quem?
-    const pa = power(e, attackers) * (1 + AIR.bonus * (2 * sup - 1));
-    const pd = power(e, defenders) * DEFENSE[w.terrain[hex]] * (riverLine ? 1.25 : 1) * (1 + AIR.bonus * (1 - 2 * sup));
+    const pa = power(e, attackers, "atk") * (1 + AIR.bonus * (2 * sup - 1));
+    const pd = power(e, defenders, "def") * DEFENSE[w.terrain[hex]] * (riverLine ? 1.25 : 1) * (1 + AIR.bonus * (1 - 2 * sup));
     takeLosses(w, e, defenders, pa * WAR.casualties);
     takeLosses(w, e, attackers, pd * WAR.casualties);
     for (const d of defenders) d.org = Math.max(0, d.org - WAR.orgLoss * (pa / (pd || 1)));
     for (const d of attackers) d.org = Math.max(0, d.org - WAR.orgLoss * (pd / (pa || 1)));
     for (const d of [...attackers, ...defenders]) fighting.add(d);
+    if (defenders.some((d) => d.org < WAR.brokenOrg)) { // batalha decidida: entra na vida dos generais
+      const na = Math.round(attackers.reduce((x, d) => x + d.strength, 0)), nd = Math.round(defenders.reduce((x, d) => x + d.strength, 0));
+      for (const d of attackers) { const g = d.general && e.characters?.find((c) => c.id === d.general); if (g) note(g, e.week, `venceu uma batalha contra §${defenders[0].country}§: ${na} × ${nd} soldados`); }
+      for (const d of defenders) { const g = d.general && e.characters?.find((c) => c.id === d.general); if (g) note(g, e.week, `perdeu uma batalha para §${attackers[0].country}§: ${nd} × ${na} soldados`); }
+    }
     for (const d of defenders) if (d.org < WAR.brokenOrg) { // recua para um vizinho seguro ou é destruída
       let to = -1;
       forNeighbors(hex % w.W, (hex / w.W) | 0, w.W, w.H, (j) => {

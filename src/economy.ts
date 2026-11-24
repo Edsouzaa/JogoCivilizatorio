@@ -204,6 +204,8 @@ export type Division = {
   target: number | null; progress: number; // destino e avanço (0..1) até o próximo hex
   equip: number;                           // 0,5..1: quanto de Armas o país conseguiu dar
   siege?: number;                          // semanas cercando a cidade onde está
+  unit?: string;                           // tipo de tropa (units.ts); sem = Lanceiros
+  general?: number;                        // id do personagem que comanda (characters.ts)
   path?: { target: number; steps: number[] }; // caminho calculado (vai no save: o lockstep precisa dele igual em todos)
 };
 /** Números de uma guerra, por país participante. */

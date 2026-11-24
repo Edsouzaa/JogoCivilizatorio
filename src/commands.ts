@@ -8,6 +8,7 @@ import { proposeLaw, cancelLaw } from "./politics.ts";
 import { validFlag, type Flag } from "./flags.ts";
 import { EVENT_LIST, resolve } from "./choices.ts";
 import { improveRelations } from "./diplomacy.ts";
+import { hireGeneral } from "./characters.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
 import { available } from "./tech.ts";
@@ -28,7 +29,8 @@ export type Cmd =
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
-  | { t: "recruit"; hex: number }
+  | { t: "recruit"; hex: number; unit?: string }
+  | { t: "general"; id: number } // contratar general para a divisão
   | { t: "fleet"; hex: number }
   | { t: "air"; hex: number }
   | { t: "move"; id: number; target: number }
@@ -106,7 +108,8 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     }
     case "law": return proposeLaw(co.politics, c.cat, c.name, co.research.era);
     case "cancelLaw": cancelLaw(co.politics); return null;
-    case "recruit": return recruit(w, e, country, c.hex);
+    case "recruit": return recruit(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
+    case "general": return own(c.id) ? hireGeneral(w, e, c.id) : "Unidade não é sua";
     case "fleet": return buildFleet(w, e, country, c.hex);
     case "air": return buildAir(w, e, country, c.hex);
     case "move": return own(c.id) && isInt(c.target) && c.target < w.W * w.H ? orderMove(w, e, c.id, c.target) : "Unidade não é sua";

@@ -13,12 +13,16 @@ export type Character = {
   adm: number; dip: number; mil: number; traits: string[]; looks: Looks;
   life: string[]; // acontecimentos ("ano: texto"), para o livro da história
   dead?: boolean; saved?: boolean;
+  role?: "General";      // sem = governante
+  division?: number;     // general: divisão que comanda
 };
 
 export const TRAITS = ["Ambicioso", "Cauteloso", "Corrupto", "Honesto", "Carismático", "Cruel", "Devoto", "Erudito", "Guerreiro", "Pacifista"];
 export const CHAR = {
   admTax: 0.2,  // governante com adm 100 arrecada +10%; com 0, −10%
   milArmy: 0.2, // idem para a força do exército
+  generalCost: 80,  // dinheiro para contratar um general
+  generalBase: 0.05, generalArmy: 0.3, // general dá +5% e mais até ±15% pela habilidade militar
   dipRelation: 0.02, // relação mensal a mais com vizinhos por ponto acima de 50 (× 0,02)
 };
 export const ageOf = (c: Character, week: number) => Math.floor((week - c.born) / 52);
@@ -64,9 +68,30 @@ function crown(w: World, e: Economy, country: number, how: string) {
   return c;
 }
 
+/** Contrata um general (personagem novo) para comandar a divisão. */
+export function hireGeneral(w: World, e: Economy, id: number): string | null {
+  const d = e.divisions.find((x) => x.id === id && x.kind === "army");
+  if (!d) return "Só exércitos têm general";
+  if (d.general) return "A divisão já tem general";
+  const c = e.countries[d.country - 1];
+  if (c.treasury < CHAR.generalCost) return `Precisa de ${CHAR.generalCost} no tesouro`;
+  c.treasury -= CHAR.generalCost;
+  const g = newCharacter(w, e, d.country, e.week * 7 + id);
+  g.role = "General"; g.division = id; g.mil = Math.min(100, g.mil + 15); // quem vira general já sabe lutar
+  note(g, g.born, `nasceu em §${d.country}§`); note(g, e.week, `virou general da divisão ${id}`);
+  (e.characters ??= []).push(g);
+  d.general = g.id;
+  return null;
+}
+
 /** Uma vez por mês: governantes envelhecem e morrem; vem o sucessor. Devolve as mortes (para avisar o jogador). */
 export function stepCharacters(w: World, e: Economy) {
   const deaths: Character[] = [];
+  for (const g of e.characters ?? []) { // general morre de velhice ou perde a divisão (destruída)
+    if (g.role !== "General" || g.dead) continue;
+    const d = e.divisions.find((x) => x.id === g.division);
+    if (e.week >= g.dies || !d) { g.dead = true; note(g, e.week, d ? `morreu aos ${ageOf(g, e.week)} anos` : "caiu com a sua divisão"); if (d) d.general = undefined; }
+  }
   e.countries.forEach((ctry, i) => {
     const k = i + 1;
     let ruler = rulerOf(e, k);

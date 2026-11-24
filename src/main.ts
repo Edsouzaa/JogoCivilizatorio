@@ -14,7 +14,8 @@ import { relation, prestige, DIPLO } from "./diplomacy.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
-import { rulerOf, ageOf, lifeText } from "./characters.ts";
+import { rulerOf, ageOf, lifeText, CHAR } from "./characters.ts";
+import { unitOf, unitsFor } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
@@ -544,7 +545,8 @@ document.addEventListener("pointerdown", (e) => {
     return cmd({ t: "law", cat, name });
   }
   if (d.act === "cancel-law" && active) return cmd({ t: "cancelLaw" });
-  if (d.act === "recruit") return cmd({ t: "recruit", hex: selected });
+  if (d.recruit) return cmd({ t: "recruit", hex: selected, unit: d.recruit });
+  if (d.act === "hire-general" && selectedDiv) return cmd({ t: "general", id: selectedDiv });
   if (d.act === "fleet") return cmd({ t: "fleet", hex: selected });
   if (d.stateNew) {
     const k = Number(d.stateNew);
@@ -825,7 +827,7 @@ function diplomacyHtml() {
 function militaryHtml() {
   if (!active) return "";
   const mine = eco.divisions.filter((d) => d.country === active);
-  const rows = mine.map((d) => `<tr><td><button data-select-div="${d.id}">${KIND_NAMES[d.kind]?.replace(/s$/, "") ?? d.kind} ${d.id}</button></td><td>${fmt(d.strength)}</td><td>${pct(d.org)}</td><td>${d.target === null ? "parada" : "em marcha"}</td></tr>`).join("");
+  const rows = mine.map((d) => `<tr><td><button data-select-div="${d.id}">${d.kind === "army" ? unitOf(d.unit).name : KIND_NAMES[d.kind]?.replace(/s$/, "") ?? d.kind} ${d.id}</button>${d.general ? " <small>(general)</small>" : ""}</td><td>${fmt(d.strength)}</td><td>${pct(d.org)}</td><td>${d.target === null ? "parada" : "em marcha"}</td></tr>`).join("");
   return warsHtml() + `<h3>Forças</h3><table><tr><td><b>Unidade</b></td><td><b>Força</b></td><td><b>Org.</b></td><td><b>Ordem</b></td></tr>${rows}</table>` + (mine.length ? "" : "<small>Sem unidades: recrute numa cidade sua.</small>");
 }
 
@@ -960,8 +962,11 @@ function divisionHtml() {
   if (d.kind === "fleet") return `<div class="unit"><b><i class=i-ship></i> Frota ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
     `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · <small>leva exércitos nessa zona</small> <button data-act="disband">Desfazer</button></div>`;
   const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
-  return `<div class="unit"><b><i class=i-military></i> Divisão ${d.id}</b> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
-    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button></div>`;
+  const u = unitOf(d.unit), gen = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined;
+  return `<div class="unit"><b><i class=i-military></i> ${u.name} ${d.id}</b> <small>${u.cat} · ataque ${u.atk} · defesa ${u.def}</small> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
+    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button>` +
+    (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b>Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`
+      : d.country === active ? `<br><button data-act="hire-general">Contratar general (${CHAR.generalCost})</button>` : "") + `</div>`;
 }
 
 function pactsHtml() {
@@ -1150,7 +1155,8 @@ function hexHtml() {
     const s = airSuperiority(eco, airRegion(eco, i), active, b);
     h += `<br><i class=i-plane></i> Céu desta região contra ${world.countries[b - 1].name}: <b class="${s >= 0.5 ? "down" : "up"}">${pct(s)}</b> <small>(batalhas aqui: ${s >= 0.5 ? "+" : "−"}${Math.round(Math.abs(2 * s - 1) * AIR.bonus * 100)}%)</small>`;
   }
-  if (eco.urban[i] && !eco.occupier[i]) h += `<br><button data-act="recruit">Recrutar divisão (${WAR.recruitCost} + ${WAR.divisionSize} manpower)</button>`;
+  if (eco.urban[i] && !eco.occupier[i]) h += `<br><small>Recrutar (${WAR.divisionSize} manpower):</small> ` + unitsFor(eco.countries[active - 1].research.known)
+    .map((u) => `<button data-recruit="${u.name}" title="${u.cat} · ataque ${u.atk} · defesa ${u.def} · velocidade ${u.speed} · cerco ${u.siege}">${u.name} (${Math.round(WAR.recruitCost * u.cost)})</button>`).join(" ");
   if (eco.urban[i] && !eco.occupier[i] && coastOf(world, i) >= 0) h += eco.countries[active - 1].research.known.has(NAVY.tech)
     ? ` <button data-act="fleet">Construir frota (${NAVY.cost} + ${NAVY.sailors} manpower)</button>` : ` <small><i class=i-lock></i> frota: ${NAVY.tech}</small>`;
   if (eco.urban[i] && !eco.occupier[i]) h += eco.countries[active - 1].research.known.has(AIR.tech)

@@ -72,6 +72,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Livro da história: personagem guardado continua depois de morto; a vida dele anota nascimento, posse, guerras declaradas/sofridas, paz (vitória ou derrota), leis aprovadas e morte. "Abrir livro" mostra um documento com retrato e a vida, com botão "Salvar como PDF / imprimir".
 
+- Militar, primeira parte: 10 tipos de tropa terrestre liberados por tecnologia (Lanceiros, Arqueiros, Cavalaria, Infantaria pesada, Máquinas de cerco, Mosqueteiros, Artilharia, Fuzileiros, Blindados, Infantaria mecanizada), cada um com ataque, defesa, velocidade, força de cerco e custo; a IA recruta o melhor que tem. Generais: personagens contratados (80) para uma divisão, com bônus pela habilidade militar; batalhas vencidas e perdidas (soldados × soldados) entram na vida deles e no livro.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -103,7 +105,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Outros personagens (generais, ministros, líderes de grupo, empresários), família, mortes por eventos.
     - Comandantes e generais.
 15. **Militar completo**
-    - Categorias de unidade por era e comandantes por domínio.
+    - Unidades navais e aéreas por era, reconhecimento, engenharia; comandantes terrestre/naval/aéreo e exércitos com vários generais.
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
 16. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.

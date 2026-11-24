@@ -9,6 +9,7 @@ import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDist
 import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { relation, DIPLO } from "./diplomacy.ts";
+import { bestUnit } from "./units.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 
 export const AI = {
@@ -138,7 +139,7 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   const mine = e.cities.filter((k) => k.country === country);
   const armies = e.divisions.filter((d) => d.kind === "army" && d.country === country);
   // defesa: uma divisão por cidade
-  if (armies.length < mine.length && c.manpower >= WAR.divisionSize && c.treasury > WAR.recruitCost * AI.reserve) recruit(w, e, country, mine[armies.length % mine.length].hex);
+  if (armies.length < mine.length && c.manpower >= WAR.divisionSize && c.treasury > WAR.recruitCost * AI.reserve) recruit(w, e, country, mine[armies.length % mine.length].hex, bestUnit(c.research.known).name);
 
   // marinha: uma frota se tiver litoral e a tecnologia
   const port = mine.flatMap((k) => k.urban).find((j) => coastOf(w, j) >= 0);

@@ -149,3 +149,26 @@ console.log("siege ok");
   assert.equal(e6.warStats!["1-2"], undefined);
 }
 console.log("war stats ok");
+
+// tipos de tropa: exigem tecnologia, custam diferente e mudam a força; general dá bônus e ganha vida
+{
+  const { unitOf, UNITS, bestUnit } = await import("../src/units.ts");
+  const { applyCommand } = await import("../src/commands.ts");
+  const w7 = generateWorld(200, 100, 6, 2), e7 = createEconomy(w7), c = e7.countries[0];
+  c.manpower = 1e4; c.treasury = 1e4;
+  const hex = e7.cities.find((k) => k.country === 1)!.hex;
+  assert.match(recruit(w7, e7, 1, hex, "Cavalaria")!, /Domesticação/);
+  c.research.known.add("Domesticação");
+  const t0 = c.treasury;
+  assert.equal(recruit(w7, e7, 1, hex, "Cavalaria"), null);
+  assert.equal(t0 - c.treasury, Math.round(WAR.recruitCost * unitOf("Cavalaria").cost));
+  const cav = e7.divisions.find((d) => d.unit === "Cavalaria")!;
+  assert.equal(bestUnit(c.research.known).name !== "", true);
+  assert.ok(UNITS.every((u) => u.atk > 0 && u.def > 0 && u.speed > 0 && u.siege > 0));
+  // general
+  assert.equal(applyCommand(w7, e7, 1, { t: "general", id: cav.id }), null);
+  const g = e7.characters!.find((x) => x.id === cav.general)!;
+  assert.equal(g.role, "General");
+  assert.match(applyCommand(w7, e7, 1, { t: "general", id: cav.id })!, /já tem/);
+}
+console.log("units ok");
