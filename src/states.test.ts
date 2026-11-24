@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { createEconomy, tick, foundCity } from "./economy.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, cityTax, adminBonus, updateStates, STATES } from "./states.ts";
 import { declareWar, airRegion } from "./war.ts";
+import { buildBorders } from "./fog.ts";
+import { across } from "./world.ts";
 import { generateWorld, isLand } from "./world.ts";
 import { hexDistance } from "./hex.ts";
 
@@ -54,6 +56,19 @@ const loss = updateStates(e, A);
 assert.ok(["Agrícola", "Industrial", "Mercantil"].includes(s.interest));
 assert.ok(!s.happy, `estado ${s.interest} deveria estar insatisfeito`);
 assert.equal(loss, STATES.unhappyLegitimacy);
+
+// fronteira de estado: com c1 fora do estado, aparece linha entre as regiões de c0 e c1 (se forem vizinhas)
+assert.equal(removeCityFromState(e, c1), null);
+{
+  const b = buildBorders(w, e, new Uint8Array(w.W * w.H * 4));
+  let touching = false, stateLines = 0;
+  for (const i of e.owned) if (e.market[i] === c0 + 1) for (let k = 0; k < 6; k++) {
+    const n = across(w.W, w.H, i, k);
+    if (n >= 0 && e.market[n] === c1 + 1) { touching = true; stateLines += (b[i * 4 + 1] >> k) & 1; }
+  }
+  if (touching) assert.ok(stateLines > 0, "sem linha entre estados diferentes");
+}
+assert.equal(addCityToState(e, c1, s.id), null);
 
 // em guerra os estados travam; estado vazio some
 declareWar(e, A, 2);

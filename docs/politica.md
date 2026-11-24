@@ -86,4 +86,4 @@ Mais para frente, o jogador poderá dividir o território em **estados**, como o
 - **Lei "Estados":** *Centralizado* (padrão) = cada estado dá +2% de arrecadação (até +10%); *Federação* (era das Revoluções) = cada estado escolhe a própria lei de impostos (botões na aba Política), sem o bônus de administração.
 - **Interesses:** pelo que o estado produz, ele é *Agrícola* (quer imposto até 12%), *Industrial* ou *Mercantil* (querem lei de Economia com 50%+ de troca). Cada estado insatisfeito (😠) tira 5 pontos de legitimidade (até 20).
 - A **região aérea** de uma cidade que está num estado passa a ser o estado inteiro.
-- A fazer: outras leis estaduais além de impostos, autonomia e separatismo de estados insatisfeitos, desenhar as fronteiras dos estados no mapa.
+- A fazer: outras leis estaduais além de impostos, autonomia e separatismo de estados insatisfeitos. (As fronteiras de estado já aparecem no mapa, tracejadas.)

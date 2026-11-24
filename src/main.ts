@@ -10,7 +10,7 @@ import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, 
 import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { createRenderer } from "./render.ts";
-import { updateFog, buildInfo } from "./fog.ts";
+import { updateFog, buildInfo, buildBorders } from "./fog.ts";
 import { runAI } from "./ai.ts";
 import { saveGame, loadGame } from "./save.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, statesLocked, STATES } from "./states.ts";
@@ -60,7 +60,7 @@ const unitsCanvas = document.getElementById("units") as HTMLCanvasElement;
 const units = unitsCanvas.getContext("2d")!;
 
 let world: World, eco: Economy, mode = 0, genMs = 0, colorMs = 0, tickMs = 0, drawnVersion = -1;
-const rgba = new Uint8Array(W * H * 4), info = new Uint8Array(W * H * 4);
+const rgba = new Uint8Array(W * H * 4), info = new Uint8Array(W * H * 4), borders = new Uint8Array(W * H * 4);
 const visible = new Uint8Array(W * H);
 const explored = new Map<number, Uint8Array>(); // por país: o que já foi visto
 let fogAt = 0, fogKey = ""; // último cálculo da névoa (ms) e para quem
@@ -113,6 +113,7 @@ function recolor() {
   renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba));
   colorMs = performance.now() - t;
   drawnVersion = eco.version;
+  renderer.uploadBorders(buildBorders(world, eco, borders)); // fronteiras mudam junto com o mapa político
   refreshFog(true);
 }
 function setMode(m: number) { mode = m; recolor(); }

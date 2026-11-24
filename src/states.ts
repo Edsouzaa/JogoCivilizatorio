@@ -75,6 +75,7 @@ export function removeCityFromState(e: Economy, city: number): string | null {
 
 function moveCity(e: Economy, city: number, state: number | undefined) {
   e.cities[city].state = state;
+  e.version++; // fronteiras de estado mudaram: redesenhar o mapa
   e.states = e.states.filter((s) => e.cities.some((k) => k.state === s.id)); // estado vazio some
   return null;
 }

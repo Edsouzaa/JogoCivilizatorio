@@ -66,6 +66,7 @@ Ver docs/politica.md.
 - **Recursos** em jazidas agrupadas (vizinhos tendem a ter o mesmo recurso); minérios mais raros que recursos de fazenda e pasto.
 - **Rios nas bordas dos hexágonos** (como no Civ): nascem em colinas e montanhas e descem até o mar. O trecho de baixo dos rios compridos é **navegável** (linha mais grossa) e, no futuro, recebe navios. Efeitos: +50% de população e +25% de comida de subsistência no hex; cidade em rio navegável exporta 50% mais no comércio; atravessar rio custa +1 semana e quem defende atrás do rio tem +25%.
 - **Estações:** no inverno de cada hemisfério neva no clima continental (boa parte do inverno), no temperado (só no auge) e sempre no polar. Neve: −50% de comida de subsistência e +1 semana para andar.
+- **Fronteiras:** linha escura grossa entre países (inclui o limite das águas territoriais) e tracejado claro entre estados do mesmo país; aparecem com zoom em todos os modos de mapa.
 - **Visual:** no mapa de terreno a cor do país aparece translúcida por cima do bioma; hexágonos com cantos arredondados; águas territoriais (1 hex de mar) também ficam com a cor do país.
 - **Névoa de guerra** do país controlado: o que nunca foi visto fica escuro; o já explorado fica acinzentado e sem mostrar unidades estrangeiras. O país vê o próprio território (+1 hex), 3 hexes em volta das cidades e 2 em volta das unidades.
 

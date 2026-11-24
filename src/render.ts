@@ -4,6 +4,7 @@
 //                No modo terreno, RGB = cor do país dono (tingido por cima do bioma) ou do terreno.
 //   uInfo (dados): R = névoa (bits 0–1: 0 inexplorado, 1 explorado, 2 visível) + bit 7 "tem dono";
 //                  G = clima; B = bordas com rio (bits 0–5); A = bordas navegáveis (bits 0–5).
+//   uBorder (fronteiras): R = bordas de fronteira de país (bits 0–5); G = bordas de fronteira de estado.
 const VS = `#version 300 es
 void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0, 1); }`;
 
@@ -12,7 +13,7 @@ precision highp float;
 precision highp int;
 precision mediump sampler2DArray;
 uniform vec2 uCam; uniform float uZoom; uniform vec2 uRes; uniform ivec2 uSize; uniform ivec2 uHover;
-uniform sampler2D uTex; uniform sampler2D uInfo; uniform sampler2DArray uBiomes; uniform bool uHasBiomes;
+uniform sampler2D uTex; uniform sampler2D uInfo; uniform sampler2D uBorder; uniform sampler2DArray uBiomes; uniform bool uHasBiomes;
 uniform float uWinter; // 1 = auge do inverno no hemisfério norte, −1 no sul
 uniform bool uFog;
 out vec4 o;
@@ -62,6 +63,21 @@ void main() {
     color = mix(color, nav ? vec3(0.16, 0.36, 0.75) : vec3(0.28, 0.52, 0.85), 1.0 - smoothstep(w * 0.7, w, dd));
   }
 
+  // fronteiras: país = linha escura grossa; estado = tracejado claro. Somem quando o mapa está muito longe.
+  ivec2 bd = ivec2(texelFetch(uBorder, ivec2(col, row), 0).rg * 255.0 + 0.5);
+  float near = smoothstep(1.0, 3.0, uZoom);
+  for (int k = 0; k < 6; k++) {
+    vec2 a = corner(k), b = corner((k + 1) % 6);
+    if (((bd.x >> k) & 1) == 1) {
+      float wd = max(0.09, 1.6 / uZoom);
+      color = mix(color, vec3(0.08, 0.07, 0.1), near * (1.0 - smoothstep(wd * 0.6, wd, segDist(local, a, b))));
+    } else if (((bd.y >> k) & 1) == 1) {
+      float wd = max(0.045, 1.0 / uZoom), t = dot(local - a, b - a); // posição ao longo da borda (0..1)
+      float dash = step(0.5, fract(t * 4.0));
+      color = mix(color, vec3(0.95), 0.8 * near * dash * (1.0 - smoothstep(wd * 0.6, wd, segDist(local, a, b))));
+    }
+  }
+
   // hexágono de cantos arredondados: linha e vão entre hexes aparecem com zoom
   float sd = sdHex(local.yx, S3 * 0.5 - 0.14) - 0.14;
   float px = 1.0 / uZoom, show = smoothstep(4.0, 9.0, uZoom);
@@ -97,6 +113,7 @@ export function createRenderer(canvas: HTMLCanvasElement, W: number, H: number, 
   gl.uniform1i(u("uTex"), 0);
   gl.uniform1i(u("uBiomes"), 1);
   gl.uniform1i(u("uInfo"), 2);
+  gl.uniform1i(u("uBorder"), 3);
 
   const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
   if (W > max || H > max) throw new Error(`Mapa ${W}×${H} maior que a textura máxima da GPU (${max})`);
@@ -111,6 +128,7 @@ export function createRenderer(canvas: HTMLCanvasElement, W: number, H: number, 
   };
   dataTexture(gl.TEXTURE0);
   dataTexture(gl.TEXTURE2);
+  dataTexture(gl.TEXTURE3);
 
   // Imagens de bioma: carregam em segundo plano; até lá o mapa usa a cor lisa.
   const S = 128, biomes = gl.createTexture();
@@ -141,6 +159,7 @@ export function createRenderer(canvas: HTMLCanvasElement, W: number, H: number, 
   return {
     upload(rgba: Uint8Array) { upload(gl.TEXTURE0, rgba); },
     uploadInfo(rgba: Uint8Array) { upload(gl.TEXTURE2, rgba); },
+    uploadBorders(rgba: Uint8Array) { upload(gl.TEXTURE3, rgba); },
     draw(camX: number, camY: number, zoom: number, hoverCol: number, hoverRow: number, winter: number, fog: boolean) {
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(uCam, camX, camY); gl.uniform1f(uZoom, zoom);
