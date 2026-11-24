@@ -50,6 +50,8 @@ export const START_RADIUS = 1; // território inicial em volta da capital; cresc
 export type World = {
   W: number; H: number; seed: number;
   terrain: Uint8Array; resource: Uint8Array; owner: Uint8Array; pop: Float32Array; climate: Uint8Array;
+  river: Uint8Array;     // bits 0–5: rio na borda k do hex (ver `across`)
+  navigable: Uint8Array; // bits 0–5: trecho navegável (futuro: navios)
   countries: { name: string; color: [number, number, number]; capital: number }[];
   landCount: number;
 };
@@ -151,7 +153,9 @@ export function generateWorld(W: number, H: number, seed: number, nCountries = 2
 
   // Países: uma capital em terra fértil, com território de raio START_RADIUS. O resto do mundo começa livre.
   const owner = new Uint8Array(N), countries: World["countries"] = [];
-  const w: World = { W, H, seed, terrain, resource, owner, pop, climate, countries, landCount };
+  const w: World = { W, H, seed, terrain, resource, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N) };
+  generateRivers(w, elev, hills, rand);
+  for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água
   for (let tries = 0; countries.length < nCountries && tries < 200000; tries++) {
     const i = (rand() * N) | 0;
     if (!isLand(terrain[i]) || TERRAINS[terrain[i]].fertility < 0.5 || owner[i]) continue;
@@ -189,6 +193,7 @@ export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Ui
   for (let i = 0; i < w.W * w.H; i++) {
     const t = w.terrain[i];
     let c: readonly number[] = TERRAINS[t].color;
+    if (mode === 0 && w.owner[i]) c = w.countries[w.owner[i] - 1].color;
     if (t === T.OCEAN && mode === 1 && w.owner[i]) c = w.countries[w.owner[i] - 1].color.map((v, k) => (v + TERRAINS[0].color[k] * 2) / 3);
     if (t !== T.OCEAN) {
       if (mode === 1) c = w.owner[i] ? w.countries[w.owner[i] - 1].color : [90, 90, 90];
@@ -206,3 +211,87 @@ export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Ui
 
 /** Arquivo de imagem de cada bioma em public/biomas/, na ordem de TERRAINS. */
 export const BIOME_FILES = TERRAINS.map((t) => t.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase() + ".png");
+
+// ---------- Rios (nas bordas dos hexágonos, como no Civ) ----------
+// Borda k do hex (pointy-top, y para baixo): 0 NE, 1 E, 2 SE, 3 SW, 4 W, 5 NW. A borda oposta é (k + 3) % 6.
+// Canto k fica entre as bordas k−1 e k: 0 topo, 1 cima-direita, 2 baixo-direita, 3 base, 4 baixo-esquerda, 5 cima-esquerda.
+const NB_EVEN = [[0, -1], [1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+const NB_ODD = [[1, -1], [1, 0], [1, 1], [0, 1], [-1, 0], [0, -1]];
+
+/** Vizinho do hex `h` do outro lado da borda k (−1 fora do mapa, nos polos). */
+export function across(W: number, H: number, h: number, k: number) {
+  const col = h % W, row = (h / W) | 0, [dc, dr] = (row & 1 ? NB_ODD : NB_EVEN)[k];
+  const r = row + dr;
+  return r < 0 || r >= H ? -1 : r * W + (((col + dc) % W) + W) % W;
+}
+
+/** Tem rio na borda k do hex h? */
+export const riverAt = (w: World, h: number, k: number) => (w.river[h] >> k) & 1;
+
+function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () => number) {
+  const { W, H, terrain } = w;
+  const N = W * H;
+  const mark = (h: number, k: number, nav: boolean) => {
+    const n = across(W, H, h, k);
+    w.river[h] |= 1 << k; if (nav) w.navigable[h] |= 1 << k;
+    if (n >= 0) { w.river[n] |= 1 << ((k + 3) % 6); if (nav) w.navigable[n] |= 1 << ((k + 3) % 6); }
+  };
+  // um canto é (hex, k); os 3 hexes em volta dele: o próprio, o do outro lado da borda k−1 e o da borda k
+  const around = (h: number, k: number) => [h, across(W, H, h, (k + 5) % 6), across(W, H, h, k)];
+  const cornerElev = (h: number, k: number) => { const hs = around(h, k); return hs.some((x) => x < 0) ? 1 : hs.reduce((s, x) => s + elev[x], 0) / 3; };
+  const touchesSea = (h: number, k: number) => around(h, k).some((x) => x >= 0 && terrain[x] === T.OCEAN);
+  const key = (h: number, k: number) => { // mesmo canto visto por qualquer um dos 3 hexes
+    const a = across(W, H, h, (k + 5) % 6), b = across(W, H, h, k);
+    return Math.min(h * 6 + k, a >= 0 ? a * 6 + ((k + 2) % 6) : Infinity, b >= 0 ? b * 6 + ((k + 4) % 6) : Infinity);
+  };
+  const riverCorner = new Set<number>();
+  const sources = Math.round(w.landCount / 250);
+  for (let s = 0, tries = 0; s < sources && tries < sources * 50; tries++) {
+    const src = (rand() * N) | 0;
+    if (!isLand(terrain[src]) || elev[src] < minElev) continue;
+    s++;
+    let h = src, k = 0; // começa no canto de cima do hex de origem
+    const path: [number, number][] = []; // bordas do caminho (hex, k)
+    const seen = new Set<number>([key(h, k)]);
+    let reachedSea = false;
+    for (let step = 0; step < 300; step++) {
+      if (touchesSea(h, k)) { reachedSea = true; break; }
+      const b = across(W, H, h, k);
+      // 3 cantos vizinhos: dois no próprio hex e um entre os dois vizinhos; cada um com a borda percorrida
+      const moves: [number, number, number, number][] = [[h, (k + 1) % 6, h, k], [h, (k + 5) % 6, h, (k + 5) % 6]];
+      if (b >= 0) moves.push([b, (k + 5) % 6, b, (k + 4) % 6]);
+      let best: [number, number, number, number] | null = null, bestE = Infinity;
+      for (const m of moves) {
+        if (seen.has(key(m[0], m[1]))) continue;
+        const ce = cornerElev(m[0], m[1]);
+        if (ce < bestE) { bestE = ce; best = m; }
+      }
+      if (!best || bestE > cornerElev(h, k) + 0.004) break; // bacia: vira lago e para
+      path.push([best[2], best[3]]);
+      const kk = key(best[0], best[1]);
+      seen.add(kk);
+      h = best[0]; k = best[1];
+      if (riverCorner.has(kk)) { reachedSea = true; break; } // juntou com outro rio
+    }
+    if (path.length < 4) continue; // filete: descarta
+    // rio comprido que chega ao mar ou a outro rio: o trecho de baixo é navegável
+    path.forEach(([ph, pk], idx) => mark(ph, pk, reachedSea && path.length >= 14 && idx >= path.length * 0.4));
+    for (const [ph, pk] of path) { riverCorner.add(key(ph, pk)); riverCorner.add(key(ph, (pk + 1) % 6)); }
+  }
+}
+
+/**
+ * Neve: polar sempre; continental em boa parte do inverno; temperado só no auge do inverno.
+ * `week` = semana do jogo; o inverno do hemisfério sul é o verão do norte.
+ */
+export function winterOf(w: World, i: number, week: number) {
+  const phase = Math.cos((2 * Math.PI * (week % 52)) / 52); // 1 = janeiro
+  return ((i / w.W) | 0) < w.H / 2 ? phase : -phase;      // 1 = auge do inverno neste hemisfério
+}
+export function snowAt(w: World, i: number, week: number) {
+  const c = w.climate[i];
+  if (!isLand(w.terrain[i])) return false;
+  if (c === C.POLAR) return true;
+  const wi = winterOf(w, i, week);
+  return (c === C.CONTINENTAL && wi > 0.3) || (c === C.TEMPERATE && wi > 0.8);
+}

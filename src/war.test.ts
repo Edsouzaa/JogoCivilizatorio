@@ -66,6 +66,7 @@ d.target = null;
 // paz: A está na frente e fica com o hex ocupado; a guerra acaba
 const occupied = [...e.owned].filter((i) => e.occupier[i] === A);
 assert.ok(occupied.length > 0);
+w.pop[target] += 1e4; // o hex ocupado vale bastante gente: vitória clara, independente do mapa
 assert.ok(warScore(w, e, A, B) > WAR.peaceThreshold);
 assert.equal(makePeace(w, e, A, B), null);
 assert.ok(!atWar(e, A, B));

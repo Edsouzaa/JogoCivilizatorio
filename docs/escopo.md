@@ -57,6 +57,21 @@ Ver docs/politica.md.
 - **Migração entre países (mensal):** a população rural vai para as cidades do país onde a classe baixa tem a melhor QV, se a diferença passar de 5 pontos (até 0,3% por mês). A população total se conserva. Por enquanto vale qualquer distância.
 - A fazer: escravidão/servidão por lei, soldados vindos do exército, dependentes, migração só para vizinhos.
 
+## Mapa: climas, rios, estações e névoa
+
+- **Climas** por latitude e umidade: tropical, árido, temperado, continental e polar. Biomas: selva e savana (tropical); deserto e estepe (árido); floresta, pradaria e planície (temperado); taiga e estepe (continental); tundra e gelo (polar). Colinas e montanhas em qualquer clima.
+- **Recursos** em jazidas agrupadas (vizinhos tendem a ter o mesmo recurso); minérios mais raros que recursos de fazenda e pasto.
+- **Rios nas bordas dos hexágonos** (como no Civ): nascem em colinas e montanhas e descem até o mar. O trecho de baixo dos rios compridos é **navegável** (linha mais grossa) e, no futuro, recebe navios. Efeitos: +50% de população e +25% de comida de subsistência no hex; cidade em rio navegável exporta 50% mais no comércio; atravessar rio custa +1 semana e quem defende atrás do rio tem +25%.
+- **Estações:** no inverno de cada hemisfério neva no clima continental (boa parte do inverno), no temperado (só no auge) e sempre no polar. Neve: −50% de comida de subsistência e +1 semana para andar.
+- **Visual:** no mapa de terreno a cor do país aparece translúcida por cima do bioma; hexágonos com cantos arredondados; águas territoriais (1 hex de mar) também ficam com a cor do país.
+- **Névoa de guerra** do país controlado: o que nunca foi visto fica escuro; o já explorado fica acinzentado e sem mostrar unidades estrangeiras. O país vê o próprio território (+1 hex), 3 hexes em volta das cidades e 2 em volta das unidades.
+
+## Território e colonos
+
+- O país começa com a capital e **raio 1** em volta; a fronteira cresce com a cidade (raio 2 a partir do tamanho 2, raio 3 a partir do 4) e inclui 1 hex de mar colado na terra.
+- **Colonos são uma unidade** (quadrado no mapa): andam como tropa e fundam a cidade onde estão. A mais de 6 hexes de uma cidade do país ficam sem suprimentos e perdem 5% das pessoas por semana. Não lutam e são destruídos por exército inimigo.
+- Construir não gasta manpower: o trabalho vem da população dos hexes e da cidade (por tipo de POP). Manpower é só para o exército.
+
 ## Guerra terrestre (src/war.ts)
 
 - **Divisões** (100 soldados, sem customização): recrutadas em hex de cidade por 150 de dinheiro e 100 de manpower; custam 1 por semana e consomem 0,5 Armas por semana do mercado da capital. Sem armas lutam com metade da força. Os soldados aparecem na população como POP Soldados.

@@ -1,4 +1,4 @@
-import { RESOURCES, TERRAINS, isLand, claim, type World } from "./world.ts";
+import { RESOURCES, TERRAINS, isLand, claim, snowAt, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { newResearch, research, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
@@ -97,6 +97,7 @@ export const RULES = {
   radicalLegitimacy: 0.3,   // legitimidade − isto × fração de radicais
   migrationMinQol: 5,       // diferença mínima de QV da classe baixa para alguém emigrar
   migrationMonth: 0.003,    // fração máxima da população rural que emigra por mês (com 50 pontos de diferença)
+  portTradeBonus: 1.5,      // cidade em rio navegável exporta esta vezes mais
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
   cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer (no máximo 1 nível por mês)
@@ -111,7 +112,10 @@ export type Market = {
   need: Float64Array;  // consumo da população + insumos a plena carga (para o comércio)
   trade: Float64Array; // > 0 importado de outras cidades do país, < 0 exportado
 };
-export type City = { name: string; country: number; hex: number; size: number; urban: number[]; market: Market };
+export type City = {
+  name: string; country: number; hex: number; size: number; urban: number[]; market: Market;
+  port: boolean; // cidade em rio navegável: exporta mais no comércio
+};
 export type Country = {
   treasury: number; debt: number; tax: number;
   gdpWeek: number; income: number; upkeep: number; interest: number;
@@ -179,6 +183,7 @@ export function refresh(w: World, e: Economy) {
   e.cities.forEach((c, k) => {
     c.urban = hexesInRadius(c.hex, 3, w.W, w.H).filter((j) => w.owner[j] === c.country && isLand(w.terrain[j])).slice(0, c.size);
     for (const j of c.urban) e.urban[j] = 1;
+    c.port = c.urban.some((j) => w.navigable[j] > 0);
     e.market[c.hex] = k + 1; queue.push(c.hex);
   });
   // cada hex do país compra/vende no mercado da cidade mais próxima (por caminho dentro do país)
@@ -200,7 +205,7 @@ export function createEconomy(w: World): Economy {
       manpower: 0, gdpHistory: [],
       research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, bonus: new Float64Array(NB), researchWeek: 0,
     })),
-    cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket() })),
+    cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
     divisions: [], nextDivision: 1, wars: new Set(), occupier: new Uint8Array(N),
   };
@@ -257,7 +262,7 @@ export function foundCity(w: World, e: Economy, unit: number): string | null {
   e.divisions = e.divisions.filter((d) => d !== s);
   if (!w.owner[i]) w.owner[i] = country;
   claim(w, country, i, RULES.settleClaimRadius);
-  e.cities.push({ name: `Cidade ${e.cities.length + 1}`, country, hex: i, size: 1, urban: [], market: newMarket() });
+  e.cities.push({ name: `Cidade ${e.cities.length + 1}`, country, hex: i, size: 1, urban: [], market: newMarket(), port: false });
   refresh(w, e);
   return null;
 }
@@ -291,22 +296,23 @@ export function transferSize(w: World, e: Economy, from: number, to: number): st
  */
 // shortcut: instantâneo, sem custo por distância e só dentro do país; trocar quando entrarem rotas, nós e comércio exterior.
 function trade(e: Economy, need: (m: Market, gi: number) => number) {
-  const byCountry = new Map<number, Market[]>();
+  const byCountry = new Map<number, City[]>();
   for (const c of e.cities) {
     if (!byCountry.has(c.country)) byCountry.set(c.country, []);
-    byCountry.get(c.country)!.push(c.market);
+    byCountry.get(c.country)!.push(c);
   }
-  for (const [country, ms] of byCountry) {
-    if (ms.length < 2) continue;
+  for (const [country, cs] of byCountry) {
+    if (cs.length < 2) continue;
+    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.port ? RULES.portTradeBonus : 1));
     const share = lawOf(e.countries[country - 1].politics, "Economia").tradeShare!; // lei de Economia
     for (let gi = 1; gi < NG; gi++) {
       let offer = 0, lack = 0;
       const net = ms.map((m) => m.supply[gi] - m.used[gi] - need(m, gi));
-      for (const n of net) { if (n > 0) offer += n * share; else lack -= n; }
+      net.forEach((n, k) => { if (n > 0) offer += n * Math.min(1, share * port[k]); else lack -= n; });
       const moved = Math.min(offer, lack);
       if (moved <= 0) continue;
       ms.forEach((m, k) => {
-        const d = net[k] > 0 ? -net[k] * share * (moved / offer) : -net[k] * (moved / lack);
+        const d = net[k] > 0 ? -net[k] * Math.min(1, share * port[k]) * (moved / offer) : -net[k] * (moved / lack);
         m.supply[gi] += d; m.trade[gi] += d;
       });
     }
@@ -383,7 +389,8 @@ export function tick(w: World, e: Economy) {
     c.pop += w.pop[i];
     if (e.occupier[i]) continue; // ocupado: a população continua, mas não produz para o dono
     // subsistência: caça, coleta e roças sem construção; fazendas vêm por cima disso
-    const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence;
+    const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence
+      * (w.river[i] ? 1.25 : 1) * (snowAt(w, i, e.week) ? 0.5 : 1); // rio rega; neve cobre o campo
     for (const f of FOOD) { city.market.supply[f] += food; c.subsistence += food * BASE_PRICE[f] * city.market.price[f]; }
   }
 

@@ -3,7 +3,7 @@
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
 import { refresh, GOODS, RULES, type Economy, type Division } from "./economy.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
-import { T, TERRAINS, type World } from "./world.ts";
+import { T, TERRAINS, across, riverAt, snowAt, type World } from "./world.ts";
 
 export const WAR = {
   divisionSize: 100,   // soldados por divisão (saem do manpower)
@@ -85,6 +85,12 @@ function nextStep(w: World, from: number, target: number) {
   return best;
 }
 
+/** Há rio na borda entre dois hexes vizinhos? */
+export function crossesRiver(w: World, a: number, b: number) {
+  for (let k = 0; k < 6; k++) if (across(w.W, w.H, a, k) === b) return riverAt(w, a, k) === 1;
+  return false;
+}
+
 const power = (ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * d.equip, 0);
 
 /** Tira baixas das divisões proporcionalmente à força, e a mesma gente da população da capital. */
@@ -130,7 +136,7 @@ export function stepWar(w: World, e: Economy) {
     }
     const ctrl = controller(w, e, next);
     if (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country)) { d.target = null; continue; }
-    d.progress += 1 / MOVE_WEEKS[w.terrain[next]];
+    d.progress += 1 / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
     if (d.progress < 1) continue;
     d.progress = 0;
     at.set(d.hex, (at.get(d.hex) ?? []).filter((x) => x !== d));
@@ -148,7 +154,8 @@ export function stepWar(w: World, e: Economy) {
   for (const [hex, attackers] of battles) {
     const defenders = attackers.length ? enemiesIn(hex, attackers[0].country) : [];
     if (!defenders.length) continue;
-    const pa = power(attackers), pd = power(defenders) * DEFENSE[w.terrain[hex]];
+    const riverLine = attackers.some((a) => crossesRiver(w, a.hex, hex)); // atacar atravessando rio é pior
+    const pa = power(attackers), pd = power(defenders) * DEFENSE[w.terrain[hex]] * (riverLine ? 1.25 : 1);
     takeLosses(w, e, defenders, pa * WAR.casualties);
     takeLosses(w, e, attackers, pd * WAR.casualties);
     for (const d of defenders) d.org = Math.max(0, d.org - WAR.orgLoss * (pa / (pd || 1)));

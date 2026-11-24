@@ -9,6 +9,8 @@ import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, 
 import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, WAR } from "./war.ts";
 import { createRenderer } from "./render.ts";
+import { updateFog, buildInfo } from "./fog.ts";
+import { snowAt } from "./world.ts";
 
 // 1600 × 640 = 1.024.000 hexágonos ≈ Terra com 500 km² por hex. Mude por ?w=&h= na URL para testar.
 const params = new URLSearchParams(location.search);
@@ -23,7 +25,24 @@ const unitsCanvas = document.getElementById("units") as HTMLCanvasElement;
 const units = unitsCanvas.getContext("2d")!;
 
 let world: World, eco: Economy, mode = 0, genMs = 0, colorMs = 0, tickMs = 0, drawnVersion = -1;
-const rgba = new Uint8Array(W * H * 4);
+const rgba = new Uint8Array(W * H * 4), info = new Uint8Array(W * H * 4);
+const visible = new Uint8Array(W * H);
+const explored = new Map<number, Uint8Array>(); // por país: o que já foi visto
+let fogAt = 0, fogKey = ""; // último cálculo da névoa (ms) e para quem
+/** Recalcula a névoa do país ativo (no máximo 4× por segundo) e sobe a textura de dados. */
+function refreshFog(force = false) {
+  const key = `${active}:${eco.version}`;
+  if (!force && key === fogKey && performance.now() - fogAt < 250) return;
+  fogAt = performance.now(); fogKey = key;
+  let ex: Uint8Array | null = null;
+  if (active) {
+    if (!explored.has(active)) explored.set(active, new Uint8Array(W * H));
+    ex = explored.get(active)!;
+    updateFog(world, eco, active, ex, visible);
+  }
+  renderer.uploadInfo(buildInfo(world, info, ex, active ? visible : null));
+}
+const canSee = (i: number) => !active || visible[i] === 1;
 const cam = { x: WORLD_W / 2, y: (1.5 * H) / 2, zoom: 0 };
 let hover: [number, number] = [-1, -1];
 let selected = -1; // índice do hex clicado
@@ -51,6 +70,7 @@ function newWorld(seed: number) {
   genMs = performance.now() - t;
   eco = createEconomy(world);
   selected = -1; active = 0; message = ""; selectedDiv = null;
+  explored.clear();
   recolor();
 }
 function recolor() {
@@ -58,6 +78,7 @@ function recolor() {
   renderer.upload(colorize(world, mode, eco.urban, eco.occupier, rgba));
   colorMs = performance.now() - t;
   drawnVersion = eco.version;
+  refreshFog(true);
 }
 function setMode(m: number) { mode = m; recolor(); }
 
@@ -175,8 +196,9 @@ const signed = (v: number) => `${v >= 0 ? "+" : "−"}${fmt(Math.abs(v))}`;
 function updateUI() {
   const [hc, hr] = hover, hi = hr * W + hc;
   const hcity = inMap(hc, hr) ? cityOf(hi) : undefined;
-  const info = inMap(hc, hr)
-    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]} · pop ${Math.round(world.pop[hi])}` +
+  const hidden = inMap(hc, hr) && active > 0 && !explored.get(active)?.[hi];
+  const info = hidden ? "Inexplorado" : inMap(hc, hr)
+    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]} · pop ${Math.round(world.pop[hi])}` +
       (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
     : "—";
   const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";
@@ -390,6 +412,7 @@ function drawUnits() {
   const r = Math.max(4, Math.min(cam.zoom * 0.7, 30));
   const stack = new Map<number, number>();
   for (const d of eco.divisions) {
+    if (d.country !== active && !canSee(d.hex)) continue;
     const [sx, sy] = toScreen(d.hex);
     if (sx < -r || sy < -r || sx > unitsCanvas.width + r || sy > unitsCanvas.height + r) continue;
     const n = stack.get(d.hex) ?? 0; stack.set(d.hex, n + 1);
@@ -420,7 +443,8 @@ function frame(now: number) {
     tickMs = performance.now() - t;
   }
   if (eco.version !== drawnVersion || (mode === 2 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou
-  renderer.draw(cam.x, cam.y, cam.zoom, hover[0], hover[1]);
+  refreshFog();
+  renderer.draw(cam.x, cam.y, cam.zoom, hover[0], hover[1], Math.cos((2 * Math.PI * (eco.week % 52)) / 52), active > 0);
   drawUnits();
   frames++;
   if (now - last >= 500) {
