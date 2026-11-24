@@ -45,6 +45,15 @@ No protótipo a Clássica vai a 0,5 semana/s, a Medieval a 0,35 e a Colonial a 0
 
 Ver docs/politica.md.
 
+## Classes de POP (src/pops.ts)
+
+- Os tipos de POP e as classes seguem docs/game-desing.md. A população é contada **por país**, não por hexágono, para caber em 1 milhão de hexágonos.
+- **Quem é quem:** cada construção emprega tipos de POP (ex.: na era tribal, Mina = camponeses + chefes e anciãos como donos; da Clássica em diante, trabalhadores + aristocratas). Clérigos são 1% da população; burocratas e escriturários entram na Clássica; acadêmicos, com a Escrita. Quem sobra vive de subsistência: caçadores-coletores até a Agricultura, depois camponeses.
+- **Renda:** 30% do PIB de mercado vai para os donos (classe alta); o resto vira salário, dividido pelo peso de salário de cada tipo. A comida de subsistência é a renda de quem vive da terra.
+- **Qualidade de vida (1 a 50):** 25 = renda igual ao custo das necessidades básicas (comida, peles e madeira).
+- **Efeitos hoje:** acadêmicos aumentam a pesquisa. O peso político por classe já é calculado, para os grupos políticos.
+- A fazer: lealdade, migração por qualidade de vida, escravidão/servidão por lei, soldados vindos do exército, dependentes.
+
 ## O que fica fora da primeira versão jogável
 
 A primeira versão jogável é: economia + cidades + política básica, em uma ou duas eras, single-player. O resto entra depois que isso estiver divertido.

@@ -4,6 +4,7 @@ import {
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
+import { POP_TYPES, CLASSES, politicalWeight, type Pops } from "./pops.ts";
 import { pixelToHex, wrapCol, SQRT3 } from "./hex.ts";
 import { createRenderer } from "./render.ts";
 
@@ -167,7 +168,22 @@ function countryHtml() {
     `<br>Semana: +${fmt(c.income)} impostos (${Math.round(c.tax * 100)}%) − ${fmt(c.upkeep)} manutenção − ${fmt(c.interest)} juros` +
     (c.bankruptWeeks ? `<br><span class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</span>` : "") +
     `<br>Colonos: <b>${c.settlers}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>` +
-    researchHtml(c.research, c.researchWeek) + "<hr>";
+    researchHtml(c.research, c.researchWeek) + popsHtml(c.pops) + "<hr>";
+}
+
+let popsOpen = false; // o painel é redesenhado a cada 500 ms; lembra se a lista estava aberta
+document.addEventListener("toggle", (e) => { const d = e.target as HTMLDetailsElement; if (d.id === "pops") popsOpen = d.open; }, true);
+
+function popsHtml(p: Pops) {
+  const qolColor = (q: number) => (q < 15 ? "up" : q >= 30 ? "down" : "");
+  const rows = POP_TYPES.map((t, k) => [t, k] as const).filter(([, k]) => p.count[k] >= 0.5)
+    .sort(([a], [b]) => a.cls - b.cls)
+    .map(([t, k]) => `<tr><td>${t.name}</td><td>${CLASSES[t.cls]}</td><td>${fmt(p.count[k])}</td>` +
+      `<td>${(p.income[k] / p.count[k]).toFixed(2)}</td><td class="${qolColor(p.qol[k])}">${Math.round(p.qol[k])}</td></tr>`);
+  const weight = politicalWeight(p), total = weight.reduce((s, v) => s + v, 0) || 1;
+  return `<details id="pops" ${popsOpen ? "open" : ""}><summary><b>População por classe</b></summary>` +
+    `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td></tr>${rows.join("")}</table>` +
+    `<small>Peso político: ${CLASSES.map((c, k) => `${c} ${Math.round((weight[k] / total) * 100)}%`).join(" · ")}</small></details>`;
 }
 
 function researchHtml(r: Economy["countries"][number]["research"], perWeek: number) {

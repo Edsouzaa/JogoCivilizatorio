@@ -1,6 +1,7 @@
 import { RESOURCES, TERRAINS, isLand, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
-import { newResearch, research, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
+import { newResearch, research, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
+import { jobsFor, idleType, newPops, distributeIncome, P, POP_RULES, type Pops } from "./pops.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
 export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas"];
@@ -19,6 +20,7 @@ export const BASE_PRICE = GOODS.map((n) => BASE[n] ?? 0);
 const POP_DEMAND = new Float64Array(NG).fill(1 / 1500);
 POP_DEMAND[0] = 0;
 const FOOD = ["Grãos", "Frutas e vegetais", "Carne e caça"].map(g);
+const BASIC_NEEDS = [...FOOD, g("Peles"), g("Madeira")];
 for (const f of FOOD) POP_DEMAND[f] = 1 / 200;
 POP_DEMAND[g("Tecidos")] = 1 / 300; POP_DEMAND[g("Ferramentas")] = 1 / 800; POP_DEMAND[g("Armas")] = 1 / 3000;
 POP_DEMAND[g("Bronze")] = 1 / 4000;
@@ -57,6 +59,8 @@ const NB = BUILDINGS.length;
 const INDUSTRIES = BUILDINGS.map((_, b) => b).filter((b) => BUILDINGS[b].industry);
 for (const [name] of TECH_FOR_BUILDING) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`tecnologia libera construção inexistente: ${name}`);
 for (const t of TECHS) for (const [name] of t.bonus ?? []) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`bônus para construção inexistente: ${name}`);
+
+const JOBS = ERAS.map((_, era) => BUILDINGS.map((b) => jobsFor(b.name, era))); // [era][construção]
 
 /** Tecnologia que a construção b exige, se exigir alguma. */
 export const techFor = (b: number) => TECH_FOR_BUILDING.get(BUILDINGS[b].name);
@@ -109,6 +113,8 @@ export type Country = {
   settlers: number;
   gdpHistory: number[]; // PIB anual, um ponto por mês
   research: Research;
+  pops: Pops;           // população por tipo de POP, renda e qualidade de vida
+  subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
 };
@@ -168,7 +174,7 @@ export function createEconomy(w: World): Economy {
     countries: w.countries.map(() => ({
       treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
       manpower: 0, settlers: RULES.startSettlers, gdpHistory: [],
-      research: newResearch(), bonus: new Float64Array(NB), researchWeek: 0,
+      research: newResearch(), pops: newPops(), subsistence: 0, bonus: new Float64Array(NB), researchWeek: 0,
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket() })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
@@ -272,10 +278,30 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
   }
 }
 
+/**
+ * Completa a população por tipo (os empregados já foram contados nas construções): clérigos, burocratas,
+ * acadêmicos e, por último, quem sobra vive de subsistência. Depois divide a renda e calcula a qualidade de vida.
+ */
+function updatePops(e: Economy, c: Country, country: number) {
+  const n = c.pops.count, r = c.research;
+  const add = (t: number, v: number) => { n[t] += v; };
+  add(P["Clérigos"], c.pop * POP_RULES.clergyShare);
+  if (r.era >= 1) { add(P["Burocratas"], c.pop * POP_RULES.bureaucratShare / 2); add(P["Escriturários"], c.pop * POP_RULES.bureaucratShare / 2); }
+  if (r.known.has("Escrita")) add(P["Acadêmicos"], c.pop * POP_RULES.academicShare);
+  const counted = n.reduce((s, v) => s + v, 0);
+  if (counted > c.pop) { const k = c.pop / counted; for (let t = 0; t < n.length; t++) n[t] *= k; } // empregos além da população
+  else add(idleType(r.known.has("Agricultura")), c.pop - counted);
+  // custo semanal das necessidades de 1 pessoa, pelos preços da capital
+  const cap = e.cities.find((k) => k.country === country)!.market;
+  let needCost = 0; // só necessidades básicas: comida, peles e madeira (QV 25 = básicas cobertas)
+  for (const gi of BASIC_NEEDS) needCost += POP_DEMAND[gi] * BASE_PRICE[gi] * cap.price[gi];
+  distributeIncome(c.pops, c.gdpWeek, c.subsistence, needCost);
+}
+
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
-  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; }
+  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); }
 
   for (const i of e.owned) {
     const k = e.market[i];
@@ -288,8 +314,9 @@ export function tick(w: World, e: Economy) {
     city.market.pop += w.pop[i];
     // subsistência: caça, coleta e roças sem construção; fazendas vêm por cima disso
     const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence;
-    for (const f of FOOD) city.market.supply[f] += food;
-    e.countries[w.owner[i] - 1].pop += w.pop[i];
+    const c = e.countries[w.owner[i] - 1];
+    for (const f of FOOD) { city.market.supply[f] += food; c.subsistence += food * BASE_PRICE[f] * city.market.price[f]; }
+    c.pop += w.pop[i];
   }
 
   // throughput[cidade][b] = soma de nível × ocupação das indústrias b no mercado da cidade
@@ -311,6 +338,10 @@ export function tick(w: World, e: Economy) {
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1;
     if (base) m.supply[w.resource[i]] += base * mult * staffing * penalty;
+    for (let b = 0; b < NB; b++) { // quem trabalha aqui, por tipo de POP
+      const lv = e.levels[b][i];
+      if (lv) for (const [t, share] of JOBS[c.research.era][b]) c.pops.count[t] += lv * BUILDINGS[b].workers * staffing * share;
+    }
     for (const b of INDUSTRIES) if (e.levels[b][i]) throughput[e.market[i] - 1][b] += e.levels[b][i] * staffing * penalty * (1 + c.bonus[b]);
   }
 
@@ -363,7 +394,8 @@ export function tick(w: World, e: Economy) {
       c.debt /= 2;
     }
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
-    c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop;
+    updatePops(e, c, ci + 1);
+    c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic;
     if (research(c.research, c.researchWeek)) updateBonus(c);
   });
 
