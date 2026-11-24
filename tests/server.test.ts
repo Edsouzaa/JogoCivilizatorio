@@ -30,7 +30,7 @@ function client() {
     msgs.push(m);
     if (m.t === "step" || m.t === "check" || m.t === "cmds") { if (c.game) apply(m); else c.queue.push(m); }
     // evento sorteado no meio do teste: responde e vota para despausar (o servidor pausa a sala)
-    if (m.t === "status" && m.paused === "evento") { ws.send(JSON.stringify({ t: "cmd", cmd: { t: "choose", option: 0 } })); ws.send(JSON.stringify({ t: "unpause" })); }
+    if (m.t === "status" && m.paused === "evento ou votação") { ws.send(JSON.stringify({ t: "cmd", cmd: { t: "choose", option: 0 } })); ws.send(JSON.stringify({ t: "unpause" })); }
   };
   const apply = (m: any) => {
     if (m.t === "check") { c.checks.push(checksum(c.game.e) === m.sum); return; }

@@ -91,7 +91,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Propostas entre jogadores: acordo comercial ou dependência proposto a um país de jogador fica esperando ele aceitar ou recusar (8 semanas, depois vence); aviso nas notificações e lista "Propostas recebidas" na Diplomacia. Aceitar aplica com as regras normais (prestígio, relação). País da IA continua decidindo sozinho.
 
-- Votação de nomes no multiplayer: com mais de um jogador, renomear continente abre uma votação (Sim/Não na Diplomacia, com aviso); passa com mais da metade dos jogadores, cai com metade dizendo não, vence em 8 semanas. No solo continua direto. (Sem pausar o jogo; rios terão o mesmo quando ganharem nome.)
+- Votação de nomes no multiplayer: com mais de um jogador, renomear continente abre uma votação (Sim/Não na Diplomacia, com aviso); passa com mais da metade dos jogadores, cai com metade dizendo não, vence em 8 semanas. No solo continua direto. No servidor, votação nova pausa a sala ("evento ou votação"); despausa pela regra normal. Rios terão o mesmo quando ganharem nome.
 
 - Litoral enxugado: zonas de costa vizinhas também se juntam, até 3 por grupo, começando pelas menores (pedacinhos de costa grudam no vizinho). No mapa padrão as zonas costeiras caíram de 233 para 102 (total 444 → 313, a maioria do resto são lagos).
 

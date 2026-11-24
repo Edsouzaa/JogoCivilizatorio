@@ -39,7 +39,8 @@ export type Room = {
   speed: number; paused: { by: number } | null; votes: Set<number>;
   pending: [number, Cmd, Player][]; acc: number;
   runningMs: number; // tempo rodando desde o último save em disco
-  eventSeen: Map<string, number>; // "país:semana" do evento pendente → quando apareceu (prazo de 2 min)
+  eventSeen: Map<string, number>;
+  voteSeen?: Set<number>; // votações de nome já vistas (pausam a sala uma vez) // "país:semana" do evento pendente → quando apareceu (prazo de 2 min)
   pass: Pass | null; // senha da sala (opcional)
 };
 
@@ -86,7 +87,7 @@ const worldEra = (e: Economy) => Math.max(...e.countries.map((c) => c.research.e
 
 function status(r: Room) {
   broadcast(r, {
-    t: "status", code: r.code, speed: r.speed, paused: r.paused ? (r.paused.by === -1 ? "evento" : r.players.find((p) => p.id === r.paused!.by)?.name ?? "?") : null,
+    t: "status", code: r.code, speed: r.speed, paused: r.paused ? (r.paused.by === -1 ? "evento ou votação" : r.players.find((p) => p.id === r.paused!.by)?.name ?? "?") : null,
     votes: r.votes.size, needed: Math.floor((r.players.length - 1) / 2) + 1,
     players: r.players.map((p) => ({ id: p.id, name: p.name, country: p.country })),
   });
@@ -212,6 +213,11 @@ export function step(r: Room) {
     if (r.eventSeen.has(key) || !r.players.some((p) => p.country === +k)) continue;
     r.eventSeen.set(key, Date.now());
     if (!r.paused) { r.paused = { by: -1 }; r.votes.clear(); status(r); } // -1 = pausa do evento (ninguém é dono)
+  }
+  for (const v of r.eco.votes ?? []) { // votação nova (nome de continente): também pausa para todos votarem
+    if ((r.voteSeen ??= new Set()).has(v.id)) continue;
+    r.voteSeen.add(v.id);
+    if (!r.paused) { r.paused = { by: -1 }; r.votes.clear(); status(r); }
   }
   if (r.eco.week % 52 === 0) broadcast(r, { t: "check", week: r.eco.week, sum: checksum(r.eco) });
 }
