@@ -17,6 +17,15 @@ Eras (docs/game-desing.md): Tribal → Clássica → Medieval → Colonial → R
 | Revoluções em diante (Imperialismo, Guerras, Multipolar, Atual) | o dia tem 4 fases (madrugada, manhã, tarde, noite); 1 fase = 0,2 s | 1 dia = 0,8 s |
 
 As velocidades do protótipo são: muito lenta 0,25×, lenta 0,5×, **média 1×**, rápida 2× e muito rápida 4×, sobre o ritmo da era.
+No protótipo a Clássica vai a 0,5 semana/s, a Medieval a 0,35 e a Colonial a 0,25 (valores provisórios). O ritmo segue a era do país mais avançado.
+
+## Tecnologias (src/tech.ts)
+
+- Cada país pesquisa uma tecnologia por vez: 1 ponto por semana + 1 a cada 1.000 pessoas. Se o jogador não escolher, o país pega a mais barata.
+- Tecnologias **liberam construções** (as melhorias e as indústrias começam bloqueadas) e dão **bônus de produção**.
+- O país passa para a próxima era quando conhece **todas** as tecnologias da era atual.
+- Hoje existem só as eras Tribal (Agricultura, Domesticação, Tecelagem, Mineração, Metalurgia do bronze) e Clássica (Irrigação, Armas de bronze, Trabalho do ferro, Estradas, Escrita). O país para na Clássica até as próximas eras ganharem tecnologias.
+- A fazer: tecnologias que também **dificultam** coisas e dão **infâmia**, como pedido no design.
 
 ## Mapa
 

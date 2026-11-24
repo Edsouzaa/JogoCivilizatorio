@@ -1,8 +1,9 @@
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
-  BASE_PRICE, BUILDINGS, GOODS, RULES, type Economy,
+  BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
+import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
 import { pixelToHex, wrapCol, SQRT3 } from "./hex.ts";
 import { createRenderer } from "./render.ts";
 
@@ -24,8 +25,17 @@ let selected = -1; // índice do hex clicado
 let active = 0;    // país que o jogador está controlando (o último país clicado)
 let message = "";
 
-// Semanas por segundo. "Média" = 1 semana/s (era tribal). Outras eras mudam isso depois (docs/escopo.md).
+// Multiplicador sobre o ritmo da era (ERA_WEEKS_PER_SECOND). "Média" = 1×.
 const SPEEDS = [0, 0.25, 0.5, 1, 2, 4];
+// O ritmo segue a era do país mais avançado.
+// shortcut: em multiplayer isso deve ser decidido pela sala (era mais comum ou votação), quando houver salas.
+const worldEra = () => Math.max(...eco.countries.map((c) => c.research.era));
+const PHASES = ["madrugada", "manhã", "tarde", "noite"];
+function timeLabel() {
+  if (worldEra() < REVOLUTIONS) return dateLabel(eco.week);
+  const q = Math.floor(acc * 28); // 7 dias × 4 fases dentro da semana atual
+  return `${dateLabel(eco.week)} · dia ${Math.floor(q / 4) + 1} · ${PHASES[q % 4]}`;
+}
 const SPEED_NAMES = ["", "Muito lenta", "Lenta", "Média", "Rápida", "Muito rápida"];
 let speed = 3, lastSpeed = 3, acc = 0;
 
@@ -115,6 +125,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.transfer) return act(transferSize(world, eco, eco.market[selected] - 1, Number(d.transfer)));
   if (d.act === "found") return act(foundCity(world, eco, selected, active));
   if (d.act === "settlers") return act(trainSettlers(world, eco, active));
+  if (d.tech && active) { eco.countries[active - 1].research.researching = d.tech; return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
@@ -135,8 +146,8 @@ function updateUI() {
   hud.innerHTML =
     MAP_MODES.map((n, k) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}">${k + 1} ${n}</button>`).join(" ") +
     ` <button data-act="new">R Novo mapa</button>` +
-    `<br><b>${dateLabel(eco.week)}</b> <button data-act="pause">${speed ? "⏸ Pausar" : "▶ Continuar"}</button> ` +
-    SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${s} semana(s)/s">${SPEED_NAMES[k + 1]}</button>`).join(" ") +
+    `<br><b>${timeLabel()}</b> · Era ${ERAS[worldEra()]} <button data-act="pause">${speed ? "⏸ Pausar" : "▶ Continuar"}</button> ` +
+    SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${SPEED_NAMES[k + 1]}</button>`).join(" ") +
     `<br>${(W * H).toLocaleString("pt-BR")} hexágonos · ${world.landCount.toLocaleString("pt-BR")} em terra · ${eco.cities.length} cidades · seed ${world.seed}` +
     `<br>${fps.toFixed(0)} FPS · pior frame ${worst.toFixed(1)} ms · gerar ${genMs.toFixed(0)} ms · colorir ${colorMs.toFixed(0)} ms · semana ${tickMs.toFixed(1)} ms` +
     `<br>${info}<br><small>Arraste = mover · roda = zoom · clique = selecionar · B = construir · C = fundar cidade · Espaço = pausar · +/− = velocidade · F = ver tudo</small>`;
@@ -155,7 +166,23 @@ function countryHtml() {
     `<br>Manpower livre <b class="${c.manpower < 20 ? "bad" : ""}">${fmt(c.manpower)}</b>` +
     `<br>Semana: +${fmt(c.income)} impostos (${Math.round(c.tax * 100)}%) − ${fmt(c.upkeep)} manutenção − ${fmt(c.interest)} juros` +
     (c.bankruptWeeks ? `<br><span class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</span>` : "") +
-    `<br>Colonos: <b>${c.settlers}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button><hr>`;
+    `<br>Colonos: <b>${c.settlers}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>` +
+    researchHtml(c.research, c.researchWeek) + "<hr>";
+}
+
+function researchHtml(r: Economy["countries"][number]["research"], perWeek: number) {
+  const cur = TECHS.find((t) => t.name === r.researching);
+  const pct = cur ? Math.min(100, ((r.progress.get(cur.name) ?? 0) / cur.cost) * 100) : 0;
+  const effect = (t: (typeof TECHS)[number]) => [
+    ...(t.unlocks ?? []).map((b) => `libera ${b}`),
+    ...(t.bonus ?? []).map(([b, v]) => `+${Math.round(v * 100)}% ${b}`),
+    ...(t.research ? [`+${Math.round(t.research * 100)}% pesquisa`] : []),
+  ].join(", ");
+  const opts = available(r).map((t) => `<button data-tech="${t.name}" class="${t.name === r.researching ? "on" : ""}" title="${effect(t)}">${t.name} (${t.cost})</button>`);
+  return `<br><b>Era ${ERAS[r.era]}</b> · ${r.known.size}/${TECHS.length} tecnologias · ${perWeek.toFixed(1)} pesquisa/semana` +
+    (cur ? `<br>Pesquisando <b>${cur.name}</b> <small>(${effect(cur)})</small>` +
+      `<div style="background:#333;height:6px;border-radius:3px"><div style="background:#6af;height:6px;border-radius:3px;width:${pct}%"></div></div>` : "<br>Nada para pesquisar nesta era") +
+    (opts.length ? `<small>Escolher:</small> ${opts.join(" ")}` : "");
 }
 
 function hexHtml() {
@@ -171,8 +198,9 @@ function hexHtml() {
     const def = BUILDINGS[b], lv = eco.levels[b][i];
     const tip = def.boosts !== undefined ? ` <small>(+${Math.round(def.mult! * 100)}% ${BUILDINGS[def.boosts].name}/nível)</small>`
       : def.industry ? ` <small>(${def.industry.inputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")} → ${def.industry.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")})</small>` : "";
+    const tech = techFor(b), locked = tech && !eco.countries[active - 1].research.known.has(tech);
     return `<tr><td>${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} 👷</td>` +
-      `<td><button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button></td></tr>`;
+      `<td>${locked ? `<small>🔒 ${tech}</small>` : `<button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>`}</td></tr>`;
   });
   h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
   if (!eco.urban[i]) h += `<br><button data-act="found">C Fundar cidade aqui</button>`;
@@ -218,7 +246,7 @@ let frames = 0, fps = 0, last = performance.now(), worst = 0, prev = last;
 function frame(now: number) {
   const dt = now - prev;
   worst = Math.max(worst, dt); prev = now;
-  acc = Math.min(acc + (Math.min(dt, 250) / 1000) * SPEEDS[speed], 10);
+  acc = Math.min(acc + (Math.min(dt, 250) / 1000) * SPEEDS[speed] * ERA_WEEKS_PER_SECOND[worldEra()], 10);
   for (; acc >= 1; acc--) {
     const t = performance.now();
     tick(world, eco);

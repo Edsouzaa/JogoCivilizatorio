@@ -33,6 +33,11 @@ const rural = [...e.owned].find((i) => w.owner[i] === 1 && !e.urban[i])!;
 c.manpower = 1e9;
 assert.match(build(w, e, rural, forge)!, /cidade/);
 
+// fundição exige a tecnologia
+c.research.known.delete("Metalurgia do bronze");
+assert.match(build(w, e, cap, forge)!, /Precisa pesquisar Metalurgia do bronze/);
+c.research.known.add("Metalurgia do bronze");
+
 // a fundição transforma cobre + estanho em bronze; sem estanho não produz nada
 w.pop[cap] = 1e6;
 assert.equal(build(w, e, cap, forge), null);

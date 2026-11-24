@@ -1,5 +1,6 @@
 import { RESOURCES, TERRAINS, isLand, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
+import { newResearch, research, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
 export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas"];
@@ -54,6 +55,11 @@ add({ name: "Ferraria", for: [], workers: 35, industry: { inputs: [[g("Ferro"), 
 add({ name: "Armeiro", for: [], workers: 35, industry: { inputs: [[g("Bronze"), 1], [g("Madeira"), 1]], outputs: [[g("Armas"), 1]] } });
 const NB = BUILDINGS.length;
 const INDUSTRIES = BUILDINGS.map((_, b) => b).filter((b) => BUILDINGS[b].industry);
+for (const [name] of TECH_FOR_BUILDING) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`tecnologia libera construção inexistente: ${name}`);
+for (const t of TECHS) for (const [name] of t.bonus ?? []) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`bônus para construção inexistente: ${name}`);
+
+/** Tecnologia que a construção b exige, se exigir alguma. */
+export const techFor = (b: number) => TECH_FOR_BUILDING.get(BUILDINGS[b].name);
 
 export const MIN_PRICE = 0.5, MAX_PRICE = 1.75; // -50% a +75% do preço base
 
@@ -84,6 +90,8 @@ export const RULES = {
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
   cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
+  researchBase: 1,          // pontos de pesquisa por semana de qualquer país
+  researchPerPop: 1000,     // +1 ponto por semana a cada tantas pessoas
 };
 
 export type Market = {
@@ -100,7 +108,16 @@ export type Country = {
   manpower: number; // pessoas livres para trabalhar em novas construções (e, no futuro, para o exército)
   settlers: number;
   gdpHistory: number[]; // PIB anual, um ponto por mês
+  research: Research;
+  bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
+  researchWeek: number; // pontos de pesquisa na última semana
 };
+
+function updateBonus(c: Country) {
+  c.bonus.fill(0);
+  for (const t of TECHS) if (c.research.known.has(t.name))
+    for (const [name, add] of t.bonus ?? []) c.bonus[BUILDINGS.findIndex((b) => b.name === name)] += add;
+}
 
 /** levels[b][i] = nível da construção b no hex i. market[i] = cidade (1-based) cujo mercado atende o hex. */
 export type Economy = {
@@ -151,6 +168,7 @@ export function createEconomy(w: World): Economy {
     countries: w.countries.map(() => ({
       treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
       manpower: 0, settlers: RULES.startSettlers, gdpHistory: [],
+      research: newResearch(), bonus: new Float64Array(NB), researchWeek: 0,
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket() })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
@@ -176,7 +194,8 @@ export function build(w: World, e: Economy, i: number, b: number): string | null
   if (def.industry ? !e.urban[i] : !def.for.includes(w.resource[i])) return def.industry ? "Indústria só em hex de cidade" : "Construção não serve para este recurso";
   if (def.boosts !== undefined && !e.levels[def.boosts][i]) return `Precisa de ${BUILDINGS[def.boosts].name} antes`;
   if (e.levels[b][i] >= 255) return "Nível máximo";
-  const c = e.countries[w.owner[i] - 1];
+  const c = e.countries[w.owner[i] - 1], tech = techFor(b);
+  if (tech && !c.research.known.has(tech)) return `Precisa pesquisar ${tech}`;
   if (c.manpower < def.workers) return `Manpower insuficiente (precisa ${def.workers})`;
   c.treasury -= buildCost(e, b, i);
   if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
@@ -287,12 +306,12 @@ export function tick(w: World, e: Economy) {
       required += lv * def.workers;
       c.upkeep += lv * RULES.upkeepPerLevel;
       if (def.industry) continue;
-      if (def.boosts === undefined) base += lv * RULES.outputPerLevel; else mult += lv * def.mult!;
+      if (def.boosts === undefined) base += lv * RULES.outputPerLevel * (1 + c.bonus[b]); else mult += lv * def.mult!;
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1;
     if (base) m.supply[w.resource[i]] += base * mult * staffing * penalty;
-    for (const b of INDUSTRIES) if (e.levels[b][i]) throughput[e.market[i] - 1][b] += e.levels[b][i] * staffing * penalty;
+    for (const b of INDUSTRIES) if (e.levels[b][i]) throughput[e.market[i] - 1][b] += e.levels[b][i] * staffing * penalty * (1 + c.bonus[b]);
   }
 
   // o que cada mercado quer: consumo da população + insumos das indústrias a plena carga
@@ -344,6 +363,8 @@ export function tick(w: World, e: Economy) {
       c.debt /= 2;
     }
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
+    c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop;
+    if (research(c.research, c.researchWeek)) updateBonus(c);
   });
 
   if (e.week % 4 === 0) { // cidades crescem quando a população urbana passa do limite do tamanho atual
