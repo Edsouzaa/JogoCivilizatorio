@@ -69,3 +69,12 @@ Mais para frente, o jogador poderá dividir o território em **estados**, como o
   - Lei *centralizada*: o estado é só uma divisão administrativa e melhora a administração (menos custo de burocracia, impostos coletados melhor).
   - Lei *federativa*: cada estado pode ter **leis próprias** (como nos Estados Unidos), dentro do que a lei federal permite.
 - **Interesses:** cada estado, assim como os grupos políticos, tem interesses (por exemplo, um estado agrícola quer comida cara e um estado industrial quer insumos baratos). Estados insatisfeitos perdem lealdade e podem pressionar por autonomia ou separação.
+
+## O que já está no protótipo (src/politics.ts)
+
+- **Grupos:** os 12 da tabela acima, cada um com Poder Político e Poder Popular calculados toda semana a partir dos tipos de POP (cada tipo apoia alguns grupos). Grupo de uma era futura não existe; o apoio dele vai para "Sem alinhamento", que não governa nem vota.
+- **Governo:** os grupos com mais Poder Político, até passar de metade.
+- **Legitimidade** = (Poder Político do governo + Poder Popular do governo) / 2. A arrecadação é multiplicada por (0,5 + legitimidade): com 50% arrecada 100%.
+- **Partido único:** só o grupo mais forte governa e quem está fora fica com Poder Político zero. Se um grupo de fora tiver mais Poder Popular que o partido, ele vira **rival** (⚠ no painel) e a legitimidade cai 20 pontos.
+- **Leis:** Governo, Impostos (define a taxa) e Economia (quanto as cidades do país trocam entre si). Para mudar uma lei, ela precisa de apoio positivo (Poder Político de quem gosta menos o de quem não gosta); sem apoio, fica travada. Com legitimidade de 50%, leva cerca de 26 semanas.
+- A fazer: as outras categorias de leis (eleições, trabalho, religião, cidadania, exército, educação, saúde, imprensa), radicais e revoltas, e os estados.

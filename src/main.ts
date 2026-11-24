@@ -5,6 +5,7 @@ import {
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, politicalWeight, type Pops } from "./pops.ts";
+import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, type Politics } from "./politics.ts";
 import { pixelToHex, wrapCol, SQRT3 } from "./hex.ts";
 import { createRenderer } from "./render.ts";
 
@@ -127,6 +128,11 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "found") return act(foundCity(world, eco, selected, active));
   if (d.act === "settlers") return act(trainSettlers(world, eco, active));
   if (d.tech && active) { eco.countries[active - 1].research.researching = d.tech; return updateUI(); }
+  if (d.law && active) {
+    const [cat, name] = d.law.split("|"), c = eco.countries[active - 1];
+    return act(proposeLaw(c.politics, cat, name, c.research.era));
+  }
+  if (d.act === "cancel-law" && active) { cancelLaw(eco.countries[active - 1].politics); return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
@@ -168,11 +174,37 @@ function countryHtml() {
     `<br>Semana: +${fmt(c.income)} impostos (${Math.round(c.tax * 100)}%) − ${fmt(c.upkeep)} manutenção − ${fmt(c.interest)} juros` +
     (c.bankruptWeeks ? `<br><span class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</span>` : "") +
     `<br>Colonos: <b>${c.settlers}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>` +
-    researchHtml(c.research, c.researchWeek) + popsHtml(c.pops) + "<hr>";
+    researchHtml(c.research, c.researchWeek) + popsHtml(c.pops) + politicsHtml(c.politics, c.research.era) + "<hr>";
+}
+
+function politicsHtml(p: Politics, era: number) {
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const groups = GROUPS.map((g, k) => [g, k] as const).filter(([, k]) => p.political[k] > 0.005 || p.popular[k] > 0.005)
+    .sort(([, a], [, b]) => p.political[b] - p.political[a])
+    .map(([g, k]) => `<tr><td>${p.government.includes(k) ? "🏛 " : ""}${k === p.rival ? "⚠ " : ""}${g.name}</td><td>${pct(p.political[k])}</td><td>${pct(p.popular[k])}</td></tr>`);
+  const laws = Object.entries(LAWS).map(([cat, list]) => {
+    const opts = list.filter((l) => l.era <= era && l.name !== p.laws[cat]).map((l) => {
+      const s = lawSupport(p, l);
+      return `<button data-law="${cat}|${l.name}" title="Gostam: ${l.likes.join(", ") || "—"} · Não gostam: ${l.dislikes.join(", ") || "—"}">${l.name} <small class="${s > 0 ? "down" : "up"}">${s > 0 ? "+" : ""}${pct(s)}</small></button>`;
+    });
+    return `<tr><td>${cat}</td><td><b>${p.laws[cat]}</b></td></tr>` + (opts.length && !p.enacting ? `<tr><td></td><td>${opts.join(" ")}</td></tr>` : "");
+  });
+  const voting = p.enacting
+    ? `<br>Votando <b>${p.enacting.law}</b> · apoio <span class="${p.support > 0 ? "down" : "up"}">${pct(p.support)}</span>${p.support > 0 ? "" : " <span class='bad'>(travada)</span>"} <button data-act="cancel-law">Cancelar</button>` +
+      `<div style="background:#333;height:6px;border-radius:3px"><div style="background:#fa6;height:6px;border-radius:3px;width:${Math.min(100, p.enacting.progress * 100)}%"></div></div>` : "";
+  return `<details id="politics" ${politicsOpen ? "open" : ""}><summary><b>Política</b> · legitimidade <span class="${p.legitimacy < 0.4 ? "up" : "down"}">${pct(p.legitimacy)}</span>` +
+    (p.rival >= 0 ? ` <span class="bad">⚠ ${GROUPS[p.rival].name} tem mais apoio popular que o governo</span>` : "") + `</summary>` +
+    `<table><tr><td><b>Grupo</b> <small>(🏛 governo)</small></td><td><b title="decide leis e governo">Político</b></td><td><b title="dá legitimidade">Popular</b></td></tr>${groups.join("")}</table>` +
+    `<b>Leis</b> <small>(número = apoio do Poder Político)</small><table>${laws.join("")}</table>${voting}</details>`;
 }
 
 let popsOpen = false; // o painel é redesenhado a cada 500 ms; lembra se a lista estava aberta
-document.addEventListener("toggle", (e) => { const d = e.target as HTMLDetailsElement; if (d.id === "pops") popsOpen = d.open; }, true);
+let politicsOpen = false;
+document.addEventListener("toggle", (e) => {
+  const d = e.target as HTMLDetailsElement;
+  if (d.id === "pops") popsOpen = d.open;
+  if (d.id === "politics") politicsOpen = d.open;
+}, true);
 
 function popsHtml(p: Pops) {
   const qolColor = (q: number) => (q < 15 ? "up" : q >= 30 ? "down" : "");

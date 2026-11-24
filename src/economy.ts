@@ -2,6 +2,7 @@ import { RESOURCES, TERRAINS, isLand, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { newResearch, research, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, P, POP_RULES, type Pops } from "./pops.ts";
+import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
 export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas"];
@@ -90,7 +91,7 @@ export const RULES = {
   minCityDistance: 4,       // hexágonos entre cidades
   maxSettleDistance: 12,    // colonos só fundam até esta distância de uma cidade do país
   settleClaimRadius: 2,     // território que uma cidade nova reivindica
-  tradeShare: 0.5,          // fração da sobra que vai para outras cidades do país por semana (atrito do transporte)
+  taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
   cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
@@ -114,6 +115,7 @@ export type Country = {
   gdpHistory: number[]; // PIB anual, um ponto por mês
   research: Research;
   pops: Pops;           // população por tipo de POP, renda e qualidade de vida
+  politics: Politics;   // grupos, governo, legitimidade e leis
   subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
@@ -174,7 +176,7 @@ export function createEconomy(w: World): Economy {
     countries: w.countries.map(() => ({
       treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
       manpower: 0, settlers: RULES.startSettlers, gdpHistory: [],
-      research: newResearch(), pops: newPops(), subsistence: 0, bonus: new Float64Array(NB), researchWeek: 0,
+      research: newResearch(), pops: newPops(), politics: newPolitics(), subsistence: 0, bonus: new Float64Array(NB), researchWeek: 0,
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket() })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
@@ -253,7 +255,7 @@ export function transferSize(w: World, e: Economy, from: number, to: number): st
 
 /**
  * Comércio entre as cidades de cada país: quem tem sobra (oferta − já usado − necessidade) manda
- * `tradeShare` dela para quem tem falta, dividida pela falta de cada um. `trade[gi]` > 0 = importou.
+ * a fração da lei de Economia (tradeShare) dela para quem tem falta, dividida pela falta de cada um. `trade[gi]` > 0 = importou.
  */
 // shortcut: instantâneo, sem custo por distância e só dentro do país; trocar quando entrarem rotas, nós e comércio exterior.
 function trade(e: Economy, need: (m: Market, gi: number) => number) {
@@ -262,16 +264,17 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
     if (!byCountry.has(c.country)) byCountry.set(c.country, []);
     byCountry.get(c.country)!.push(c.market);
   }
-  for (const ms of byCountry.values()) {
+  for (const [country, ms] of byCountry) {
     if (ms.length < 2) continue;
+    const share = lawOf(e.countries[country - 1].politics, "Economia").tradeShare!; // lei de Economia
     for (let gi = 1; gi < NG; gi++) {
       let offer = 0, lack = 0;
       const net = ms.map((m) => m.supply[gi] - m.used[gi] - need(m, gi));
-      for (const n of net) { if (n > 0) offer += n * RULES.tradeShare; else lack -= n; }
+      for (const n of net) { if (n > 0) offer += n * share; else lack -= n; }
       const moved = Math.min(offer, lack);
       if (moved <= 0) continue;
       ms.forEach((m, k) => {
-        const d = net[k] > 0 ? -net[k] * RULES.tradeShare * (moved / offer) : -net[k] * (moved / lack);
+        const d = net[k] > 0 ? -net[k] * share * (moved / offer) : -net[k] * (moved / lack);
         m.supply[gi] += d; m.trade[gi] += d;
       });
     }
@@ -383,7 +386,8 @@ export function tick(w: World, e: Economy) {
       for (let gi = 1; gi < NG; gi++) gdp += m.supply[gi] * BASE_PRICE[gi] * m.price[gi];
     }
     c.gdpWeek = gdp;
-    c.income = gdp * c.tax;
+    c.tax = lawOf(c.politics, "Impostos").tax!;
+    c.income = gdp * c.tax * (RULES.taxBaseEfficiency + c.politics.legitimacy); // governo legítimo arrecada mais
     c.interest = (c.debt * RULES.interestYear) / 52;
     c.treasury += c.income - c.upkeep - c.interest;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
@@ -395,6 +399,8 @@ export function tick(w: World, e: Economy) {
     }
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
     updatePops(e, c, ci + 1);
+    updatePolitics(c.politics, c.pops, c.research.era);
+    advanceLaw(c.politics);
     c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic;
     if (research(c.research, c.researchWeek)) updateBonus(c);
   });
