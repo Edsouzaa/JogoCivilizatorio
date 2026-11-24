@@ -186,6 +186,9 @@ export type Economy = {
   humans: number[];     // países com jogador (fora da IA)
   aiWarStart: Record<string, number>; // semana em que cada guerra da IA começou (para a paz)
   control: Float32Array; // 0..1: quanto o governo administra o hex (control.ts)
+  famine?: boolean[];    // por cidade: passando fome (events.ts)
+  plague?: number[];     // por cidade: semanas de peste que restam
+  news?: { kind: "fome" | "peste"; city: number }[]; // começaram nesta semana (para avisar)
   exhausted: number[];   // hexes cuja jazida acabou nesta semana (para avisar o jogador)
   occupier: Uint16Array; // país que ocupa o hex (0 = ninguém); hex ocupado não produz para o dono
 };

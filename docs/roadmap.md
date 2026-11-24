@@ -22,6 +22,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Cerco: o centro da cidade só cai com exército parado nele por 4 + 2 × tamanho semanas (2 ou mais divisões: metade). Tomada a cidade, a região toda fica ocupada; retomar o centro liberta a região.
 
+- Fome (comida < 25% do necessário numa cidade com 100+ pessoas; acaba acima de 50%) e peste (por acaso em cidades grandes, pula para cidades do mesmo país, dura 26 semanas). Matam aos poucos, avisam e aparecem no painel. Medicina moderna e Biotecnologia cortam pela metade.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -50,7 +52,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Assimilação e conversão.
     - Letrados dando bônus à pesquisa.
 9. **Eventos**
-    - Pestes e fomes, com aviso.
     - Eventos aleatórios com escolha (pausa todos, 2 min).
 10. **Leis**
     - 3 fases com oposição política e popular.

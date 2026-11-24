@@ -41,6 +41,7 @@ const notify = (m: string) => {
 };
 /** Depois de cada semana simulada: avisos que só existem naquela semana. */
 function afterWeek() {
+  for (const n of eco.news ?? []) if (eco.cities[n.city]?.country === active) notify(n.kind === "fome" ? `🍞 Fome em ${eco.cities[n.city].name}: falta comida no mercado, o povo está morrendo` : `☠ Peste em ${eco.cities[n.city].name}`);
   for (const i of eco.exhausted) if (world.owner[i] === active) notify(`⛏ Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
 }
 // eventos do país do jogador que viram notificação (comparando com o quadro anterior)
@@ -718,6 +719,7 @@ function hexHtml() {
       statesOf(eco, active).map((x) => ` <button data-state-join="${ci}|${x.id}">Juntar a ${x.name}</button>`).join("");
     if (lock && !st) h += `<br><small>🗺 ${lock}</small>`;
   }
+  if (city) { const k = eco.cities.indexOf(city); if (eco.famine?.[k]) h += `<br><span class="bad">🍞 Fome em ${city.name}</span>`; if ((eco.plague?.[k] ?? 0) > 0) h += `<br><span class="bad">☠ Peste em ${city.name} (${eco.plague![k]} semanas)</span>`; }
   if (city?.blockaded) h += `<br><span class="bad">⚓ ${city.name} bloqueada por frota inimiga: sem comércio exterior</span>`;
   if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {
