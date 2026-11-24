@@ -129,7 +129,7 @@ export const RULES = {
   urbanExtract: 0.5,        // centro urbano tira só metade dos recursos naturais...
   urbanIndustry: 1.25,      // ...mas a indústria rende mais
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
-  researchBase: 1,          // pontos de pesquisa por semana de qualquer país
+  researchBase: 3,          // pontos de pesquisa por semana de qualquer país (tribo média ≈ 3,5 da tabela; atrasadas só pela "vontade")
   researchPerPop: 1000,     // +1 ponto por semana a cada tantas pessoas
   // letrados: o alvo vem das tecnologias de ensino; anda devagar até ele; pesquisa × (1 + literacyResearch × letrados)
   literacyTechs: [["Escrita", 0.05], ["Universidades", 0.1], ["Imprensa", 0.15], ["Iluminismo", 0.15], ["Telégrafo", 0.1], ["Rádio", 0.1], ["Computadores", 0.15], ["Internet", 0.15]] as [string, number][],

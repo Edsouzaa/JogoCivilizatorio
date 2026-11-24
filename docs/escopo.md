@@ -25,7 +25,7 @@ O jogo começa em **600 a.C.** O ritmo segue a era do país mais avançado.
 
 Velocidades: 0,5×, **1×**, 3×, 10× e 30× (máxima).
 
-**Pesquisa:** os pontos por semana seguem a tabela de ganho esperado (tribal ~3,5, clássica ~11, … moderna ~6.750). O custo das tecnologias é calculado para que **cada era dure o seu intervalo de datas** (src/tech.ts, ERA_YEARS e ERA_RESEARCH). Dentro de uma era, as primeiras custam metade da média e as últimas 1,7×. Isso dá custos maiores que os da tabela de custos: a tabela original faria a era tribal acabar em ~2 anos de jogo.
+**Pesquisa:** base de 3 pontos por semana (a tribo média fica perto dos 3,5 da tabela). Em simulação de 220 anos: a tribo mais rápida chega à Clássica por volta do ano 100 (500 a.C.), metade por volta do ano 200 (400 a.C.) e as atrasadas depois. Os pontos por semana seguem a tabela de ganho esperado (tribal ~3,5, clássica ~11, … moderna ~6.750). O custo das tecnologias é calculado para que **cada era dure o seu intervalo de datas** (src/tech.ts, ERA_YEARS e ERA_RESEARCH). Dentro de uma era, as primeiras custam metade da média e as últimas 1,7×. Isso dá custos maiores que os da tabela de custos: a tabela original faria a era tribal acabar em ~2 anos de jogo.
 
 **Tribos:** 1 a cada 10.000 hexes de terra (~35 no mapa padrão). Na era tribal cada uma tem uma *vontade* de 30% a 100% que freia a pesquisa. Cada acordo comercial soma 15%, o que ajuda mas não garante a saída da era.
 
