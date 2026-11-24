@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createEconomy, tick } from "../src/economy.ts";
-import { recruit, orderMove, declareWar, stepWar, warScore, makePeace, atWar, controller, settlerDistance, nextStep, WAR } from "../src/war.ts";
+import { recruit, orderMove, declareWar, stepWar, warScore, makePeace, atWar, controller, settlerDistance, nextStep, siegeWeeks, WAR } from "../src/war.ts";
 import { RULES } from "../src/economy.ts";
 import { forNeighbors } from "../src/hex.ts";
 import { generateWorld, isLand } from "../src/world.ts";
@@ -107,3 +107,26 @@ console.log("settlers ok");
   assert.equal(at % 20, 8, "deveria parar na beira do possível"); // (o mapa dá a volta: alvo perto da coluna 8)
 }
 console.log("path ok");
+
+// cerco: o centro da cidade só cai depois de semanas; aí a região toda fica ocupada; retomar o centro devolve tudo
+{
+  const w5 = generateWorld(200, 100, 6, 2), e5 = createEconomy(w5);
+  for (const c of e5.countries) { c.manpower = 1e4; c.treasury = 1e4; }
+  declareWar(e5, 1, 2);
+  const city = e5.cities.find((k) => k.country === 2)!, k = e5.cities.indexOf(city);
+  assert.equal(recruit(w5, e5, 1, e5.cities.find((c) => c.country === 1)!.hex), null);
+  const army = e5.divisions.find((d) => d.country === 1 && d.kind === "army")!;
+  army.hex = city.hex; army.target = null; army.strength = 1e3; // já chegou, sem defensores
+  const need = siegeWeeks(city.size, 1);
+  for (let t = 1; t < need; t++) { stepWar(w5, e5); assert.equal(e5.occupier[city.hex], 0, `caiu na semana ${t}`); }
+  stepWar(w5, e5);
+  const region = [...e5.owned].filter((i) => e5.market[i] === k + 1 && w5.owner[i] === 2);
+  assert.ok(region.length > 1 && region.every((i) => e5.occupier[i] === 1), "a região deveria ficar ocupada");
+  // B volta ao centro: liberta a região
+  army.strength = 0; stepWar(w5, e5); // o sitiante morre
+  const def = { ...army, id: 9999, country: 2, strength: 1e3, org: 1, siege: 0, path: undefined, target: null, hex: region.find((i) => i !== city.hex)! };
+  e5.divisions.push(def); orderMove(w5, e5, def.id, city.hex);
+  for (let t = 0; t < 20 && e5.occupier[city.hex]; t++) stepWar(w5, e5);
+  assert.ok(region.every((i) => !e5.occupier[i]), "retomar o centro deveria libertar a região");
+}
+console.log("siege ok");

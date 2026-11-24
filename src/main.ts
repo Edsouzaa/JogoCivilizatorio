@@ -10,7 +10,7 @@ import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, 
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
-import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, WAR, NAVY, AIR } from "./war.ts";
+import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, WAR, NAVY, AIR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo, buildBorders } from "./fog.ts";
 import { applyCommand, type Cmd } from "./commands.ts";
@@ -581,7 +581,8 @@ function divisionHtml() {
   }
   if (d.kind === "fleet") return `<div class="unit"><b>⛵ Frota ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
     `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · <small>leva exércitos nessa zona</small> <button data-act="disband">Desfazer</button></div>`;
-  return `<div class="unit"><b>⚔ Divisão ${d.id}</b> · ${t}` +
+  const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
+  return `<div class="unit"><b>⚔ Divisão ${d.id}</b> · ${t}` + (sieged ? ` · 🏰 cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
     `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button></div>`;
 }
 

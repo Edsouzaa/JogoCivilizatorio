@@ -17,7 +17,12 @@ export const WAR = {
   orgLoss: 0.15,       // perda de organização por semana em combate (× poder inimigo / próprio)
   brokenOrg: 0.1,      // abaixo disto a divisão recua
   peaceThreshold: 0.05, // vantagem mínima de pontuação para tomar território na paz
+  siegeBase: 4,        // semanas de cerco para tomar o centro de uma cidade...
+  siegePerSize: 2,     // ...mais isto por tamanho da cidade (dividido pelo nº de divisões cercando, até metade)
 };
+
+/** Semanas de cerco que faltam para `n` divisões tomarem a cidade. */
+export const siegeWeeks = (size: number, n: number) => (WAR.siegeBase + WAR.siegePerSize * size) / Math.min(2, Math.max(1, n));
 
 /** Marinha: frotas andam só no mar, lutam por zona marítima, bloqueiam cidades e transportam exércitos. */
 export const NAVY = {
@@ -269,7 +274,7 @@ export function stepWar(w: World, e: Economy) {
     if (!sea && (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country))) { d.target = null; continue; }
     d.progress += sea ? 1 : 1 / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
     if (d.progress < 1) continue;
-    d.progress = 0;
+    d.progress = 0; d.siege = 0; // saiu do lugar: o cerco recomeça
     at.set(d.hex, (at.get(d.hex) ?? []).filter((x) => x !== d));
     d.hex = next;
     if (!at.has(next)) at.set(next, []);
@@ -278,9 +283,25 @@ export function stepWar(w: World, e: Economy) {
     if (d.kind === "army") for (const x of at.get(next)!) if (x.kind === "settler" && atWar(e, d.country, x.country)) x.strength = 0; // exército inimigo destrói colonos
     if (d.kind !== "army" || sea) continue;
     // ocupar território inimigo; libertar o próprio
-    if (w.owner[next] && w.owner[next] !== d.country && atWar(e, d.country, w.owner[next]) && e.occupier[next] !== d.country) { e.occupier[next] = d.country; changed = true; }
-    if (w.owner[next] === d.country && e.occupier[next]) { e.occupier[next] = 0; changed = true; }
+    const center = e.market[next] && e.cities[e.market[next] - 1].hex === next; // centro de cidade só cai por cerco
+    if (!center && w.owner[next] && w.owner[next] !== d.country && atWar(e, d.country, w.owner[next]) && e.occupier[next] !== d.country) { e.occupier[next] = d.country; changed = true; }
+    if (w.owner[next] === d.country && e.occupier[next]) { // libertar: retomar o centro devolve a região toda
+      if (center) { for (const i of e.owned) if (e.market[i] === e.market[next]) e.occupier[i] = 0; } else e.occupier[next] = 0;
+      changed = true;
+    }
   }
+
+  // cerco: exército parado no centro de uma cidade inimiga; ao terminar, a cidade e toda a região dela ficam ocupadas
+  e.cities.forEach((city, k) => {
+    const besiegers = (at.get(city.hex) ?? []).filter((d) => d.kind === "army" && !fighting.has(d) && atWar(e, d.country, city.country) && e.occupier[city.hex] !== d.country);
+    if (!besiegers.length) return;
+    const who = besiegers[0].country, mine = besiegers.filter((d) => d.country === who);
+    for (const d of mine) d.siege = (d.siege ?? 0) + 1;
+    if (Math.max(...mine.map((d) => d.siege!)) < siegeWeeks(city.size, mine.length)) return;
+    for (const i of e.owned) if (e.market[i] === k + 1 && w.owner[i] === city.country) e.occupier[i] = who;
+    for (const d of mine) d.siege = 0;
+    changed = true;
+  });
 
   // combate aéreo: em cada região, esquadrões de países em guerra se derrubam
   const airIn = new Map<number, Division[]>();

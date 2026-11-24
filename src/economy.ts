@@ -171,6 +171,7 @@ export type Division = {
   id: number; kind: "army" | "settler" | "fleet" | "air"; country: number; hex: number; strength: number; org: number;
   target: number | null; progress: number; // destino e avanço (0..1) até o próximo hex
   equip: number;                           // 0,5..1: quanto de Armas o país conseguiu dar
+  siege?: number;                          // semanas cercando a cidade onde está
   path?: { target: number; steps: number[] }; // caminho calculado (vai no save: o lockstep precisa dele igual em todos)
 };
 export type Economy = {

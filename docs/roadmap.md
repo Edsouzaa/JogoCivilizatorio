@@ -20,6 +20,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Controle (estilo EU5): 0–100% por hex; o máximo cai com a distância da sede mais perto (capital ou 1ª cidade de cada estado), com alcance 6 + 3 por era; o atual sobe 4% por mês. Pouco controle: menos imposto, metade da produção pode não chegar ao mercado, menos recrutas. Mapa "5 Controle" e 🏛 no painel.
 
+- Cerco: o centro da cidade só cai com exército parado nele por 4 + 2 × tamanho semanas (2 ou mais divisões: metade). Tomada a cidade, a região toda fica ocupada; retomar o centro liberta a região.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -39,7 +41,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
    - Cidades e portos na margem.
    - Disputa de navegação.
 6. **Guerra**
-    - Cerco de cidade (a cidade dominada leva a região).
     - Hexes ocupados listrados na cor do ocupante.
     - Painel da guerra: baixas, custo e apoio.
     - Exploração por unidades terrestres e aéreas.
