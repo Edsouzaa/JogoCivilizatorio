@@ -417,4 +417,41 @@ function generateSeaZones(w: World) {
     }
   grow(seeds);
   for (let i = 0; i < W * H; i++) if (terrain[i] === T.OCEAN && !seaZone[i] && next < 65535) { seaZone[i] = next++; grow([i]); } // mares fechados
+  mergeOpenSea(w, next);
+}
+
+/** Mar aberto vira um nó só: zonas sem costa se juntam às vizinhas também sem costa, até OPEN_SEA_MAX zonas por grupo. */
+export const OPEN_SEA_MAX = 10;
+/** Zona com menos que isto de hexes encostados em terra (só ilhotas) ainda conta como mar aberto. */
+export const COAST_MIN = 10;
+function mergeOpenSea(w: World, count: number) {
+  const { W, H, terrain, seaZone } = w, N = W * H;
+  const shore = new Uint16Array(count), coast = new Uint8Array(count);
+  for (let i = 0; i < N; i++) if (seaZone[i]) { let s = false; forNeighbors(i % W, (i / W) | 0, W, H, (j) => { if (terrain[j] !== T.OCEAN) s = true; }); if (s) shore[seaZone[i]]++; }
+  for (let z = 1; z < count; z++) coast[z] = shore[z] >= COAST_MIN ? 1 : 0;
+  // vizinhança entre zonas de mar aberto
+  const adj = Array.from({ length: count }, () => new Set<number>());
+  for (let i = 0; i < N; i++) {
+    const z = seaZone[i];
+    if (!z || coast[z]) continue;
+    forNeighbors(i % W, (i / W) | 0, W, H, (j) => { const y = seaZone[j]; if (y && y !== z && !coast[y]) adj[z].add(y); });
+  }
+  // agrupa por busca em largura, com teto de tamanho (o oceano não vira um nó gigante)
+  const group = new Uint16Array(count);
+  for (let z = 1; z < count; z++) {
+    if (coast[z] || group[z]) continue;
+    group[z] = z;
+    let size = 1;
+    const queue = [z];
+    for (let q = 0; q < queue.length && size < OPEN_SEA_MAX; q++)
+      for (const y of [...adj[queue[q]]].sort((a, b) => a - b)) {
+        if (group[y] || size >= OPEN_SEA_MAX) continue;
+        group[y] = z; size++; queue.push(y);
+      }
+  }
+  // renumera de 1 em diante, sem buracos
+  const id = new Uint16Array(count);
+  let n = 0;
+  for (let z = 1; z < count; z++) { const root = coast[z] ? z : group[z]; if (!id[root]) id[root] = ++n; id[z] = id[root]; }
+  for (let i = 0; i < N; i++) if (seaZone[i]) seaZone[i] = id[seaZone[i]];
 }

@@ -74,6 +74,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Militar, primeira parte: 10 tipos de tropa terrestre liberados por tecnologia (Lanceiros, Arqueiros, Cavalaria, Infantaria pesada, Máquinas de cerco, Mosqueteiros, Artilharia, Fuzileiros, Blindados, Infantaria mecanizada), cada um com ataque, defesa, velocidade, força de cerco e custo; a IA recruta o melhor que tem. Generais: personagens contratados (80) para uma divisão, com bônus pela habilidade militar; batalhas vencidas e perdidas (soldados × soldados) entram na vida deles e no livro.
 
+- Mar aberto: zonas marítimas sem costa de verdade (menos de 10 hexes encostados em terra; ilhota não conta) se juntam às vizinhas também de mar aberto, em grupos de até 10 zonas. O oceano fica com poucos nós grandes; o litoral mantém os nós menores (no mapa padrão: 614 → 444 zonas).
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.

@@ -65,3 +65,20 @@ console.log("world ok");
   assert.ok(n > 0);
 }
 console.log("deep ok");
+
+// mar aberto: zonas sem costa juntas (até OPEN_SEA_MAX) e numeração sem buracos
+{
+  const { OPEN_SEA_MAX, SEA_ZONE_SPACING, COAST_MIN } = await import("../src/world.ts");
+  const size = new Map<number, number>(), shore = new Map<number, number>();
+  for (let i = 0; i < big.W * big.H; i++) {
+    const z = big.seaZone[i]; if (!z) continue;
+    size.set(z, (size.get(z) ?? 0) + 1);
+    if (hexesInRadius(i, 1, big.W, big.H).some((j) => big.terrain[j] !== T.OCEAN)) shore.set(z, (shore.get(z) ?? 0) + 1);
+  }
+  const ids = [...size.keys()].sort((a, b) => a - b);
+  assert.equal(ids[ids.length - 1], ids.length, "ids de zona com buraco");
+  const open = ids.filter((z) => (shore.get(z) ?? 0) < COAST_MIN);
+  assert.ok(open.some((z) => size.get(z)! > SEA_ZONE_SPACING.cols * SEA_ZONE_SPACING.rows), "mar aberto deveria ter zonas juntadas");
+  for (const z of open) assert.ok(size.get(z)! <= OPEN_SEA_MAX * SEA_ZONE_SPACING.cols * SEA_ZONE_SPACING.rows * 1.5, `zona ${z} grande demais`);
+}
+console.log("open sea ok");
