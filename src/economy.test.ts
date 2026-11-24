@@ -54,7 +54,8 @@ assert.ok(m.supply[BRONZE] > 0, "fundição não produziu bronze");
 const W = w.W;
 const dist = (a: number, b: number) => Math.hypot((a % W) - (b % W), ((a / W) | 0) - ((b / W) | 0));
 const target = [...Array(W * w.H).keys()].find((i) => isLand(w.terrain[i]) && !w.owner[i] && dist(i, cap) >= 6 && dist(i, cap) <= 9);
-if (target !== undefined) {
+assert.ok(target !== undefined, "mapa de teste sem lugar para cidade nova");
+{
   assert.match(foundCity(w, e, cap, 1)!, /perto/);
   const before = e.cities.length;
   assert.equal(foundCity(w, e, target, 1), null);
@@ -62,6 +63,17 @@ if (target !== undefined) {
   assert.equal(w.owner[target], 1);
   assert.equal(c.settlers, RULES.startSettlers - 1);
   assert.ok(e.market[target] === e.cities.length, "cidade nova sem mercado próprio");
+
+  // comércio: a capital tem muito cobre; a cidade nova, sem minas, recebe parte dele
+  const fresh = e.cities.at(-1)!.market;
+  w.pop[cap] = w.pop[copperHex] = w.pop[tinHex] = 1000; // com populações enormes o próprio mercado consumiria todo o cobre
+  tick(w, e);
+  assert.ok(m.trade[COPPER] < 0, "capital não exportou cobre");
+  assert.ok(fresh.trade[COPPER] > 0, "cidade nova não importou cobre");
+  for (let gi = 1; gi < GOODS.length; gi++) { // o que sai de uma cidade entra em outra
+    const sum = e.cities.filter((k) => k.country === 1).reduce((s, k) => s + k.market.trade[gi], 0);
+    assert.ok(Math.abs(sum) < 1e-6, `comércio criou/destruiu ${GOODS[gi]}`);
+  }
 
   // tamanho transferível entre cidades do mesmo país
   city.size = 3;

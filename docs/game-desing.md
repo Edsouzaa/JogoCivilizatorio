@@ -105,4 +105,4 @@ sejam boas.
 
 A arvore de tecnologia possui 4 eras:
 
-Era Medieval -> Era Colonial -> Era das Revoluções -> Era do Imperialismo -> Era das Guerras ->
+Era Tribal -> Era Classica -> Era Medieval -> Era Colonial -> Era das Revoluções -> Era do Imperialismo -> Era das Guerras -> Era MultiPolar -> Era Atual

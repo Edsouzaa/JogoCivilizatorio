@@ -8,12 +8,13 @@
 
 ## Tempo por era (na velocidade média)
 
+Eras (docs/game-desing.md): Tribal → Clássica → Medieval → Colonial → Revoluções → Imperialismo → Guerras → Multipolar → Atual.
+
 | Era | Ritmo | Observação |
 |---|---|---|
 | Tribal | 1 semana = 1 s | Sem dinheiro (a definir: hoje o protótipo já tem dinheiro desde o início) |
-| Clássica | mais lento que a tribal (valor a definir) | |
-| ... até a Era das Revoluções | vai desacelerando | |
-| Era das Revoluções em diante | o dia tem 4 fases (madrugada, manhã, tarde, noite); 1 fase = 0,2 s | 1 dia = 0,8 s |
+| Clássica, Medieval, Colonial | cada uma mais lenta que a anterior (valores a definir) | |
+| Revoluções em diante (Imperialismo, Guerras, Multipolar, Atual) | o dia tem 4 fases (madrugada, manhã, tarde, noite); 1 fase = 0,2 s | 1 dia = 0,8 s |
 
 As velocidades do protótipo são: muito lenta 0,25×, lenta 0,5×, **média 1×**, rápida 2× e muito rápida 4×, sobre o ritmo da era.
 
@@ -46,5 +47,5 @@ A primeira versão jogável é: economia + cidades + política básica, em uma o
 | Multiplayer em rede | O jogo precisa ser divertido sozinho antes; hoje é só no PC do jogador |
 | Todas as eras de uma vez | Fazer tribal → clássica bem feitas e depois avançar |
 | Cultura, religião e assimilação | Dependem de população com tipos de POP e de leis, que vêm antes |
-| Comércio entre mercados | Primeiro cada cidade sozinha; rotas e nós de comércio depois |
+| Comércio entre países e rotas com custo | Hoje só as cidades do mesmo país trocam entre si, sem custo de distância; rotas, nós e comércio exterior depois |
 | Estados | Fazem sentido quando o país tiver muitas cidades |

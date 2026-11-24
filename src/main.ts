@@ -191,12 +191,13 @@ function marketHtml() {
   const m = city.market, rows = [];
   for (let gi = 1; gi < GOODS.length; gi++) {
     if (!m.supply[gi] && !m.demand[gi]) continue;
-    const pct = Math.round((m.price[gi] - 1) * 100);
-    rows.push(`<tr><td>${GOODS[gi]}</td><td>${fmt(m.supply[gi])}</td><td>${fmt(m.demand[gi])}</td>` +
+    const pct = Math.round((m.price[gi] - 1) * 100), tr = m.trade[gi];
+    const trade = Math.abs(tr) < 0.05 ? "" : tr > 0 ? `<span class="down">+${fmt(tr)}</span>` : `<span class="up">−${fmt(-tr)}</span>`;
+    rows.push(`<tr><td>${GOODS[gi]}</td><td>${fmt(m.supply[gi])}</td><td>${trade}</td><td>${fmt(m.demand[gi])}</td>` +
       `<td class="${pct > 0 ? "up" : pct < 0 ? "down" : ""}">${(BASE_PRICE[gi] * m.price[gi]).toFixed(1)} (${pct > 0 ? "+" : ""}${pct}%)</td></tr>`);
   }
   return `<b>Mercado de ${city.name}</b> · ${fmt(m.pop)} pessoas` +
-    `<table><tr><td><b>Bem</b></td><td><b>Oferta</b></td><td><b>Demanda</b></td><td><b>Preço</b></td></tr>${rows.join("")}</table>`;
+    `<table><tr><td><b>Bem</b></td><td><b>Oferta</b></td><td><b title="+ importado de outras cidades do país, − exportado">Comércio</b></td><td><b>Demanda</b></td><td><b>Preço</b></td></tr>${rows.join("")}</table>`;
 }
 
 function drawChart(cv: HTMLCanvasElement, data: number[]) {

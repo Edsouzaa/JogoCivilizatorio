@@ -80,12 +80,18 @@ export const RULES = {
   minCityDistance: 4,       // hexágonos entre cidades
   maxSettleDistance: 12,    // colonos só fundam até esta distância de uma cidade do país
   settleClaimRadius: 2,     // território que uma cidade nova reivindica
+  tradeShare: 0.5,          // fração da sobra que vai para outras cidades do país por semana (atrito do transporte)
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
   cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
 };
 
-export type Market = { supply: Float64Array; demand: Float64Array; price: Float64Array; used: Float64Array; pop: number };
+export type Market = {
+  supply: Float64Array; demand: Float64Array; price: Float64Array; pop: number;
+  used: Float64Array;  // consumido por indústrias neste tick
+  need: Float64Array;  // consumo da população + insumos a plena carga (para o comércio)
+  trade: Float64Array; // > 0 importado de outras cidades do país, < 0 exportado
+};
 export type City = { name: string; country: number; hex: number; size: number; urban: number[]; market: Market };
 export type Country = {
   treasury: number; debt: number; tax: number;
@@ -104,7 +110,10 @@ export type Economy = {
   version: number; // muda a cada refresh: hora de redesenhar cidades e fronteiras
 };
 
-const newMarket = (): Market => ({ supply: new Float64Array(NG), demand: new Float64Array(NG), price: new Float64Array(NG).fill(1), used: new Float64Array(NG), pop: 0 });
+const newMarket = (): Market => ({
+  supply: new Float64Array(NG), demand: new Float64Array(NG), price: new Float64Array(NG).fill(1), pop: 0,
+  used: new Float64Array(NG), need: new Float64Array(NG), trade: new Float64Array(NG),
+});
 
 /** Construções possíveis num hex com este recurso; indústrias só se o hex for urbano. */
 export const buildingsFor = (resource: number, urban: boolean) =>
@@ -217,10 +226,36 @@ export function transferSize(w: World, e: Economy, from: number, to: number): st
   return null;
 }
 
+/**
+ * Comércio entre as cidades de cada país: quem tem sobra (oferta − já usado − necessidade) manda
+ * `tradeShare` dela para quem tem falta, dividida pela falta de cada um. `trade[gi]` > 0 = importou.
+ */
+// shortcut: instantâneo, sem custo por distância e só dentro do país; trocar quando entrarem rotas, nós e comércio exterior.
+function trade(e: Economy, need: (m: Market, gi: number) => number) {
+  const byCountry = new Map<number, Market[]>();
+  for (const c of e.cities) {
+    if (!byCountry.has(c.country)) byCountry.set(c.country, []);
+    byCountry.get(c.country)!.push(c.market);
+  }
+  for (const ms of byCountry.values()) {
+    if (ms.length < 2) continue;
+    for (let gi = 1; gi < NG; gi++) {
+      let offer = 0, lack = 0;
+      const net = ms.map((m) => m.supply[gi] - m.used[gi] - need(m, gi));
+      for (const n of net) { if (n > 0) offer += n * RULES.tradeShare; else lack -= n; }
+      const moved = Math.min(offer, lack);
+      if (moved <= 0) continue;
+      ms.forEach((m, k) => {
+        const d = net[k] > 0 ? -net[k] * RULES.tradeShare * (moved / offer) : -net[k] * (moved / lack);
+        m.supply[gi] += d; m.trade[gi] += d;
+      });
+    }
+  }
+}
+
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
-// shortcut: sem comércio entre mercados (nem entre cidades do mesmo país), trocar quando entrarem rotas/nós.
 export function tick(w: World, e: Economy) {
-  for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.pop = 0; }
+  for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
   for (const c of e.countries) { c.upkeep = 0; c.pop = 0; }
 
   for (const i of e.owned) {
@@ -260,6 +295,14 @@ export function tick(w: World, e: Economy) {
     for (const b of INDUSTRIES) if (e.levels[b][i]) throughput[e.market[i] - 1][b] += e.levels[b][i] * staffing * penalty;
   }
 
+  // o que cada mercado quer: consumo da população + insumos das indústrias a plena carga
+  e.cities.forEach((city, k) => {
+    const m = city.market;
+    for (let gi = 1; gi < NG; gi++) m.need[gi] = m.pop * POP_DEMAND[gi];
+    for (const b of INDUSTRIES) for (const [gi, q] of BUILDINGS[b].industry!.inputs) m.need[gi] += q * throughput[k][b];
+  });
+  trade(e, (m, gi) => m.need[gi]); // matéria-prima vai para onde falta, antes de virar produto
+
   e.cities.forEach((city, k) => {
     const m = city.market;
     for (const b of INDUSTRIES) { // na ordem de BUILDINGS: o bronze feito aqui já serve ao armeiro
@@ -271,6 +314,11 @@ export function tick(w: World, e: Economy) {
       for (const [gi, q] of inputs) m.used[gi] += q * thr * eff;
       for (const [go, q] of outputs) m.supply[go] += q * thr * eff;
     }
+  });
+  trade(e, (m, gi) => m.pop * POP_DEMAND[gi]); // produtos prontos circulam
+
+  e.cities.forEach((city) => {
+    const m = city.market;
     for (let gi = 1; gi < NG; gi++) {
       m.demand[gi] += m.pop * POP_DEMAND[gi];
       m.price[gi] = priceFactor(m.supply[gi], m.demand[gi]);
