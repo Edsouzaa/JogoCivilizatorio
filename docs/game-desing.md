@@ -32,29 +32,51 @@ Tipo de População, Religião, Raça, Provincia, Estado, Classe Social, Nível 
 # As classes sociais são:
 Classe Baixa, Classe Media e Classe Alta.
 
-*Classe Baixa*:
-Servos(Não consomem nada),
-Fazendeiros,
-Militares,
-Marinheiros,
-Trabalhadores.
+Cada tipo de POP tem:
+- *Salário*: multiplicador sobre o salário base da construção onde trabalha.
+- *Peso político*: quanto cada pessoa desse tipo pesa no Poder Político do grupo que apoia (ver docs/politica.md).
+- *Dependentes*: fração de População Dependente que esse POP sustenta (0 = todos trabalham).
+- *Investimento*: parte da renda que vai para o fundo de investimento do país (construção de prédios privados).
+- *Era*: primeira era em que o tipo aparece. Tipos de eras antigas podem sumir por lei ou tecnologia.
 
-*Classe Media*:
-Oficiais,
-Academicos,
-Engenheiros,
-Escriturarios,
-Clérigos.
+*Classe Baixa*: trabalha na maior parte das construções.
 
-*Classe Alta*:
-Capitalistas,
-Burocratas,
-Aristocratas.
+| POP | Salário | Peso político | Dependentes | Investimento | Especial | Era |
+|---|---|---|---|---|---|---|
+| Escravos | 0 | 0 | 0 | 0% | Não mudam de profissão nem migram. Necessidades pagas pelo dono. Só existem com lei de escravidão | Tribal |
+| Caçadores-coletores *(novo)* | 0 | 0.2 | 0.25 | 0% | Vivem sem dinheiro: produzem e consomem no próprio hex. Viram Camponeses quando o país adota agricultura | Tribal |
+| Camponeses / Servos | 0.2 | 0.2 | 0.25 | 0% | Agricultura de subsistência; consomem quase nada do mercado. Nunca ficam desempregados (viram Trabalhadores) | Tribal |
+| Trabalhadores | 1 | 1 | 0.5 | 0% | Tipo padrão; podem ser contratados sem qualificação | Antiga |
+| Fazendeiros | 2 | 1 | 0.5 | 10% | Donos de pequenas terras | Antiga |
+| Marinheiros | 1.5 | 1 | 0.5 | 0% | Tripulam portos e navios; saem do manpower naval | Antiga |
+| Soldados | 1.5 | 1.5 | 0.5 | 0% | Saem do manpower; contratados sem qualificação | Tribal |
+| Operários especializados | 1.5 | 1.5 | 0.5 | 10% | Exigidos por indústrias | Industrial |
 
-Cada Pessoa tem sua função na sociedade:
-Classe Baixa trabalha em boa parte das contruções.
-Classe media trabalha em boa parte das contruções e dão buffs a construção ao completar 100% de capacidade.
-Classe Alta trabalham em poucas contruções ao se tornarem donos dão um buff ou debuff a mais.
+*Classe Media*: trabalha em menos vagas; quando uma construção tem 100% dessas vagas preenchidas, ela ganha bônus.
+
+| POP | Salário | Peso político | Dependentes | Investimento | Especial | Era |
+|---|---|---|---|---|---|---|
+| Escriturários | 1.5 | 1.5 | 0.5 | 0% | +25% acesso à educação | Antiga |
+| Comerciantes *(novo, ex-lojistas)* | 3 | 3 | 0.5 | 20% | Rodam comércio e rotas; base do grupo Mercadores/Pequena Burguesia | Antiga |
+| Clérigos | 3 | 3 | 0.5 | 20% | +50% acesso à educação; espalham a religião do Estado | Tribal (como xamãs) |
+| Acadêmicos | 4 | 4 | 0.5 | 0% | +50% acesso à educação; aceleram pesquisa | Antiga |
+| Engenheiros | 3 | 3 | 0.5 | 15% | +25% acesso à educação; exigidos por indústrias avançadas | Industrial |
+| Oficiais | 5 | 5 | 0.5 | 0% | Comandam exércitos; poder político extra (×3) | Antiga |
+| Burocratas *(movido da Classe Alta)* | 4 | 4 | 0.5 | 15% | +50% acesso à educação; geram capacidade administrativa e coletam impostos | Antiga |
+
+*Classe Alta*: trabalha em poucas vagas; como donos, dão um bônus ou penalidade a mais à construção.
+
+| POP | Salário | Peso político | Dependentes | Investimento | Especial | Era |
+|---|---|---|---|---|---|---|
+| Chefes e anciãos *(novo)* | — | 5 | 0 | 0% | Elite tribal; viram Aristocratas quando surge o Estado | Tribal |
+| Aristocratas | — | 5 | 0.2 | 20% | Donos de terras; só recebem salário em construções do governo | Antiga |
+| Capitalistas | — | 5 | 0 | 30% | Donos de indústrias e empresas; só recebem salário em construções do governo | Industrial |
+
+Mudanças em relação à versão anterior:
+- "Militares" virou *Soldados*; *Oficiais* continuam na Classe Média.
+- *Burocratas* foram para a Classe Média: eles trabalham como funcionários e não são donos de nada.
+- Novos tipos para a era tribal (*Caçadores-coletores*, *Chefes e anciãos*) e para o comércio (*Comerciantes*).
+- Servos foram fundidos com *Camponeses*: em vez de "não consomem nada", consomem muito pouco do mercado, porque vivem de subsistência.
 
 Cada classe vai pagar uma quantidade de impostos, baseado no que a tecnologia permite.
 
