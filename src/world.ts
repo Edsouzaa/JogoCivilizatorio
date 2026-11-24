@@ -274,7 +274,7 @@ export function colorize(w: World, mode: number, urban: Uint8Array, occupier: Ui
     if (t === T.OCEAN && mode === 1 && w.owner[i]) c = w.countries[w.owner[i] - 1].color.map((v, k) => (v + TERRAINS[0].color[k] * 2) / 3);
     if (t !== T.OCEAN) {
       if (mode === 1) c = w.owner[i] ? w.countries[w.owner[i] - 1].color : [90, 90, 90];
-      if (mode === 1 && occupier[i] && ((i % w.W) + ((i / w.W) | 0)) % 2) c = w.countries[occupier[i] - 1].color; // ocupado: listrado
+      if (mode === 1 && occupier[i] && (2 * (i % w.W) + ((i / w.W) | 0)) % 4 < 2) c = w.countries[occupier[i] - 1].color; // ocupado: listras diagonais na cor de quem ocupa
       else if (mode === 2) { const v = Math.min(1, Math.sqrt(w.pop[i] / 400)); c = [40 + 215 * v, 40 + 80 * v, 40]; }
       else if (mode === 3) c = w.resource[i] ? RES_COLORS[w.resource[i]] : [70, 70, 70];
       else if (mode === 5) c = CLIMATE_COLORS[w.climate[i]];

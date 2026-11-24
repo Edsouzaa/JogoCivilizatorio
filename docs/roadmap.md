@@ -57,6 +57,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Investimento privado: a lei de Economia manda uma fração do PIB para o fundo dos donos (Tradicionalismo 1%, Mercantilismo 2%, Livre comércio 4% por semana; Subsistência nada). Todo mês os investidores fazem até 3 obras onde o produto está mais caro, sem tirar do tesouro. Fundo aparece na aba Economia.
 
+- Território ocupado aparece em listras diagonais na cor de quem ocupa (mapa Político).
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -71,7 +73,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
    - Cidades e portos na margem.
    - Disputa de navegação.
 5. **Guerra**
-    - Hexes ocupados listrados na cor do ocupante.
     - Exploração por unidades terrestres e aéreas.
 6. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
 7. **População**
