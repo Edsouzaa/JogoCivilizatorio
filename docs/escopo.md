@@ -137,7 +137,7 @@ Todo país que não é o do jogador decide uma vez por mês:
 
 ## Multiplayer (server/server.ts)
 
-- **Como jogar:** quem hospeda roda  (porta 8787) e . Cada jogador abre o jogo, clica em **🌐**, põe o endereço do servidor () e o nome, e **cria uma sala** (com o tamanho de mapa da página) ou **entra com o código** de 4 letras. Também dá para entrar direto pela URL: . Na mesma rede, use o IP local do PC que hospeda; pela internet é preciso abrir a porta 8787 no roteador.
+- **Como jogar:** quem hospeda roda `npm run server` (porta 8787) e `npm run dev`. Cada jogador abre o jogo, clica em **🌐**, põe o endereço do servidor (`ws://<IP do PC que hospeda>:8787`) e o nome, e **cria uma sala** (com o tamanho de mapa da página) ou **entra com o código** de 4 letras. Também dá para entrar direto pela URL: `?server=ws://…:8787&room=CODIGO&name=Nome`. Na mesma rede, use o IP local do PC que hospeda; pela internet é preciso abrir a porta 8787 no roteador.
 - **País:** clique num país livre e use **Assumir este país**. Países sem jogador ficam com a IA. Quem sai devolve o país para a IA.
 - **Lockstep:** o servidor e todos os navegadores simulam a mesma partida; pela rede vão só os comandos de cada semana. Quem entra recebe uma foto da partida (o formato do save). Uma vez por ano o servidor manda uma soma de conferência; quem divergir recebe a foto de novo.
 - **Pausa:** a sala começa pausada. Qualquer jogador pausa; quem pausou despausa, ou os outros despausam por maioria (votos no topo). Velocidade: qualquer jogador muda.
