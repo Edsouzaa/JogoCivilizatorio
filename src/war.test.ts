@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createEconomy, tick } from "./economy.ts";
-import { recruit, orderMove, declareWar, stepWar, warScore, makePeace, atWar, controller, settlerDistance, WAR } from "./war.ts";
+import { recruit, orderMove, declareWar, stepWar, warScore, makePeace, atWar, controller, settlerDistance, nextStep, WAR } from "./war.ts";
 import { RULES } from "./economy.ts";
 import { forNeighbors } from "./hex.ts";
 import { generateWorld, isLand } from "./world.ts";
@@ -93,3 +93,17 @@ console.log("war ok");
   assert.ok(!w.owner[s.hex] || w.owner[s.hex] === A, "colonos entraram em território estrangeiro");
 }
 console.log("settlers ok");
+
+// caminho: contorna parede (o guloso travava) e, se o alvo é inalcançável, para no ponto mais perto
+{
+  const g = { W: 20, H: 20 } as Parameters<typeof nextStep>[0];
+  const wall = (i: number) => i % 20 === 10 && ((i / 20) | 0) > 2; // parede vertical aberta só em cima
+  let at = 10 * 20 + 5, steps = 0;
+  const me: { path?: { target: number; steps: number[] } } = {};
+  while (steps < 60) { const n = nextStep(g, at, 10 * 20 + 15, (j) => !wall(j), me); if (n < 0) break; at = n; steps++; }
+  assert.equal(at, 10 * 20 + 15, "não contornou a parede");
+  at = 5 * 20 + 5;
+  for (let k = 0; k < 60; k++) { const n = nextStep(g, at, 5 * 20 + 12, (j) => j % 20 < 9); if (n < 0) break; at = n; }
+  assert.equal(at % 20, 8, "deveria parar na beira do possível"); // (o mapa dá a volta: alvo perto da coluna 8)
+}
+console.log("path ok");

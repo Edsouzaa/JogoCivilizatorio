@@ -162,23 +162,41 @@ export function orderMove(w: World, e: Economy, id: number, target: number): str
     return null;
   }
   if (d.kind === "fleet" ? w.terrain[target] !== T.OCEAN : w.terrain[target] === T.ICE) return d.kind === "fleet" ? "Frotas só andam no mar" : "Não dá para ir até lá";
-  if (d.kind !== "fleet" && w.terrain[target] === T.OCEAN && (d.kind !== "army" || !hasFleetIn(w, e, d.country, w.seaZone[target])))
-    return "Para atravessar o mar, o exército precisa de uma frota sua nessa zona marítima";
+  // alvo no mar sem frota (ou atrás da névoa): a tropa vai pelo caminho possível e para onde não dá mais (nextStep)
   d.target = target === d.hex ? null : target; d.progress = 0;
   return null;
 }
 
-/** Próximo passo guloso até o alvo (vizinho de terra mais perto dele). */
-// shortcut: guloso, trava atrás de lagos e baías; trocar por A* se os jogadores reclamarem.
-function nextStep(w: World, from: number, target: number, ok: (i: number) => boolean) {
+export const PATH = { maxNodes: 40000 }; // busca limitada: alvos muito longe vão até o ponto alcançável mais próximo
+
+/**
+ * Próximo hex no menor caminho até o alvo, só por hexes aceitos por ok. Se o alvo é inalcançável (mar sem frota,
+ * outro continente), vai até o hex alcançável mais perto dele. -1 = já está o mais perto possível.
+ */
+export function nextStep(w: World, from: number, target: number, ok: (i: number) => boolean, owner?: { path?: { target: number; steps: number[] } }) {
+  const cached = owner?.path;
+  const k = cached && cached.target === target ? cached.steps.indexOf(from) : -1; // ainda no caminho? (pode ter ficado parado lutando)
+  if (k >= 0 && k + 1 < cached!.steps.length && ok(cached!.steps[k + 1])) return cached!.steps[k + 1];
   const W = w.W, tc = target % W, tr = (target / W) | 0;
   const dist = (i: number) => hexDistance(i % W, (i / W) | 0, tc, tr, W);
-  let best = -1, bestD = dist(from);
-  forNeighbors(from % W, (from / W) | 0, W, w.H, (j) => {
-    const d = dist(j);
-    if (ok(j) && d < bestD) { best = j; bestD = d; }
-  });
-  return best;
+  const prev = new Map<number, number>([[from, -1]]);
+  let queue = [from], best = from, bestD = dist(from);
+  while (queue.length && prev.size < PATH.maxNodes && bestD > 0) {
+    const next: number[] = [];
+    for (const i of queue) forNeighbors(i % W, (i / W) | 0, W, w.H, (j) => {
+      if (prev.has(j) || !ok(j)) return;
+      prev.set(j, i); next.push(j);
+      const dj = dist(j);
+      if (dj < bestD) { bestD = dj; best = j; }
+    });
+    queue = next;
+  }
+  if (best === from) return -1;
+  const steps: number[] = [];
+  for (let i = best; i !== -1; i = prev.get(i)!) steps.push(i);
+  steps.reverse(); // [from, passo 1, passo 2, ...]
+  if (owner) owner.path = { target, steps };
+  return steps[1];
 }
 
 /** Há rio na borda entre dois hexes vizinhos? */
@@ -223,7 +241,7 @@ export function stepWar(w: World, e: Economy) {
   // no mar anda mais rápido: passos extras para frotas e exércitos embarcados (sem combate no meio)
   for (let k = 1; k < NAVY.speed; k++) for (const d of e.divisions) {
     if (d.target === null || (d.kind !== "fleet" && w.terrain[d.hex] !== T.OCEAN)) continue;
-    const n = nextStep(w, d.hex, d.target, (j) => passable(w, e, d, j));
+    const n = nextStep(w, d.hex, d.target, (j) => passable(w, e, d, j), d);
     if (n < 0 || w.terrain[n] !== T.OCEAN) continue;
     d.hex = n;
     if (n === d.target) d.target = null;
@@ -238,7 +256,7 @@ export function stepWar(w: World, e: Economy) {
   let changed = false;
   for (const d of e.divisions) {
     if (d.target === null || d.kind === "air") continue; // esquadrões não andam: voam missões
-    const next = nextStep(w, d.hex, d.target, (j) => passable(w, e, d, j));
+    const next = nextStep(w, d.hex, d.target, (j) => passable(w, e, d, j), d);
     const sea = next >= 0 && w.terrain[next] === T.OCEAN;
     if (next < 0) { d.target = null; continue; }
     if (!sea && enemiesIn(next, d.country).length) {

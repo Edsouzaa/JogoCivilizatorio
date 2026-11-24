@@ -47,7 +47,10 @@ assert.equal(recruit(w, e, A, cityA.hex), null);
 const army = e.divisions.find((d) => d.kind === "army" && d.country === A)!;
 assert.equal(orderMove(w, e, army.id, fleet.hex), null); // tem frota nessa zona
 const otherZone = [...Array(w.W * w.H).keys()].find((i) => w.terrain[i] === T.OCEAN && w.seaZone[i] !== zone)!;
-assert.match(orderMove(w, e, army.id, otherZone)!, /frota/);
+// mar sem frota: a ordem vale, mas a tropa só anda até onde dá (nunca entra na zona sem frota)
+assert.equal(orderMove(w, e, army.id, otherZone), null);
+for (let k = 0; k < 30 && army.target !== null; k++) { stepWar(w, e); assert.ok(w.terrain[army.hex] !== T.OCEAN || w.seaZone[army.hex] === zone); }
+army.hex = cityA.hex; army.path = undefined;
 army.target = null;
 
 // combate naval: frotas de países em guerra na mesma zona perdem marinheiros e organização
