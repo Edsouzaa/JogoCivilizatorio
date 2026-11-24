@@ -38,10 +38,12 @@ console.log("foreign ok");
 {
   const { buildHarbor, maxHarbor, createEconomy: ce } = await import("../src/economy.ts");
   const { generateWorld: gw } = await import("../src/world.ts");
-  const w2 = gw(200, 100, 4, 6), e2 = ce(w2);
+  let w2 = gw(200, 100, 4, 6), e2 = ce(w2);
+  for (let seed = 5; seed < 40 && !e2.cities.some((c) => c.coast); seed++) { w2 = gw(200, 100, seed, 6); e2 = ce(w2); } // acha um mapa com capital no litoral
   const k = e2.cities.findIndex((c) => c.coast), inland = e2.cities.findIndex((c) => !c.coast && !c.port);
   if (inland >= 0) assert.match(buildHarbor(e2, inland)!, /não encosta/);
-  if (k >= 0) {
+  assert.ok(k >= 0, "nenhuma cidade no litoral");
+  {
     const c = e2.countries[e2.cities[k].country - 1];
     c.treasury = 1e4;
     assert.equal(buildHarbor(e2, k), null);
