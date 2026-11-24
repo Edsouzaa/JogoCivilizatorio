@@ -51,6 +51,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Eventos aleatórios com escolha (7 eventos: colheita, profeta, sábio estrangeiro, incêndio, bandidos, escrivães, ouro), ~1 a cada 2 anos por país. A IA escolhe na hora; para o jogador o jogo pausa e abre uma janela com 2 minutos (depois vale a 1ª opção). No multiplayer o servidor pausa a sala ("evento"), aceita a resposta mesmo pausado e escolhe sozinho no fim do prazo; a sala continua pausada, despausa pela regra normal.
 
+- Aba Gráficos: 11 séries do país (PIB, população, tesouro, dívida, legitimidade, letrados, pesquisa, controle, tecnologias, recrutas, cidades), 1 ponto por mês, até 50 anos; ranking mundial (top 10 + sua posição) por PIB, população, tecnologias e cidades.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -88,7 +90,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
 15. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
-16. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
+16. **Gráficos (resto)**: comparação entre países, preços, composição cultural ao longo do tempo, modos Cidade/Estado/Mundo.
 
 ## Fora por enquanto
 

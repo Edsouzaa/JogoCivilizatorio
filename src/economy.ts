@@ -162,6 +162,7 @@ export type Country = {
   bankruptWeeks: number; pop: number;
   manpower: number; // pessoas livres para trabalhar em novas construções (e, no futuro, para o exército)
   gdpHistory: number[]; // PIB anual, um ponto por mês
+  history?: Record<string, number[]>; // séries da aba Gráficos (history.ts)
   research: Research;
   pops: Pops;           // população por tipo de POP, renda e qualidade de vida
   politics: Politics;   // grupos, governo, legitimidade e leis

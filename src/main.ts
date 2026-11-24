@@ -9,6 +9,7 @@ import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerCl
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
 import { countryMix, cultureName, languageName, RELIGIONS, acceptedShare } from "./culture.ts";
+import { SERIES } from "./history.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
@@ -459,6 +460,8 @@ document.addEventListener("pointerdown", (e) => {
     if (name) cmd({ t: "continent", id: +d.continent, name });
     return;
   }
+  if (d.chart) { chartKey = d.chart; return updateUI(); }
+  if (d.rank) { rankKey = d.rank; return updateUI(); }
   if (d.choose) return cmd({ t: "choose", option: Number(d.choose) });
   if (d.accept) { const [id, mode] = d.accept.split("|"); return cmd({ t: "acceptCulture", culture: +id, off: mode === "off" }); }
   if (d.incentive) {
@@ -514,7 +517,25 @@ window.addEventListener("resize", resize);
 
 const fmt = (v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(1)} mi` : v >= 1e3 ? `${(v / 1e3).toFixed(1)} mil` : v.toFixed(0);
 
-const TABS = ["Hex", "Economia", "Pesquisa", "Sociedade", "Política", "Mercado"] as const;
+const TABS = ["Hex", "Economia", "Pesquisa", "Sociedade", "Política", "Mercado", "Gráficos"] as const;
+/** Aba Gráficos: série escolhida do país ao longo do tempo (1 ponto por mês) e ranking mundial. */
+let chartKey = "PIB";
+let rankKey = "PIB";
+function chartsHtml() {
+  if (!active) return "";
+  const c = eco.countries[active - 1], h = c.history ?? {};
+  const keys = Object.keys(SERIES);
+  const btn = (k: string, cur: string, attr: string) => `<button data-${attr}="${k}" class="${k === cur ? "on" : ""}" style="margin:1px">${k}</button>`;
+  const ranked = eco.countries.map((x, i) => [i + 1, SERIES[rankKey](x, i + 1, eco)] as const).sort((a, b) => b[1] - a[1]);
+  const mine = ranked.findIndex(([k]) => k === active);
+  return keys.map((k) => btn(k, chartKey, "chart")).join("") +
+    `<canvas id="series" width="300" height="110" style="width:100%;background:#111;margin-top:4px"></canvas>` +
+    `<small>${(h[chartKey]?.length ?? 0)} meses · agora ${fmt(SERIES[chartKey](c, active, eco))}</small>` +
+    `<br><b>🏆 Ranking mundial</b> ` + ["PIB", "População", "Tecnologias", "Cidades"].map((k) => btn(k, rankKey, "rank")).join("") +
+    `<table>${ranked.slice(0, 10).map(([k, v], n) => `<tr${k === active ? ' style="color:#fd6"' : ""}><td>${n + 1}º ${world.countries[k - 1].name}</td><td>${fmt(v)}</td></tr>`).join("")}` +
+    (mine >= 10 ? `<tr style="color:#fd6"><td>${mine + 1}º ${world.countries[active - 1].name}</td><td>${fmt(ranked[mine][1])}</td></tr>` : "") + `</table>`;
+}
+
 let tab = 0; // aba aberta no painel
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const signed = (v: number) => `${v >= 0 ? "+" : "−"}${fmt(Math.abs(v))}`;
@@ -541,9 +562,11 @@ function updateUI() {
   group = group.filter((id) => eco.divisions.some((d) => d.id === id));
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = group[0] ?? null; // destruída
   const show = selected >= 0 || selectedDiv;
-  panel.innerHTML = show ? divisionHtml() + headerHtml() + tabsHtml() + [hexHtml, economyHtml, researchTab, societyHtml, politicsTab, marketHtml][tab]() : "";
+  panel.innerHTML = show ? divisionHtml() + headerHtml() + tabsHtml() + [hexHtml, economyHtml, researchTab, societyHtml, politicsTab, marketHtml, chartsHtml][tab]() : "";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
+  const series = document.getElementById("series") as HTMLCanvasElement | null;
+  if (series && active) drawChart(series, eco.countries[active - 1].history?.[chartKey] ?? []);
 }
 
 /** Resumo do país sempre visível no topo do painel. */

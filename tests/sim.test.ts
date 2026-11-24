@@ -54,3 +54,14 @@ assert.deepEqual(a.e.states.at(-1)!.flag, flag);
 assert.equal(applyCommand(a.w, a.e, 1, { t: "rename", kind: "state", id: a.e.states.at(-1)!.id, name: "Roma", flag: { ...flag, symbol: "<script>" } }), null);
 assert.deepEqual(a.e.states.at(-1)!.flag, flag);
 console.log("sim ok");
+
+// gráficos: um ponto por mês de cada série, com teto
+{
+  const { SERIES } = await import("../src/history.ts");
+  const m = make();
+  for (let k = 0; k < 12; k++) advanceWeek(m.w, m.e);
+  const h = m.e.countries[0].history!;
+  assert.deepEqual(Object.keys(h).sort(), Object.keys(SERIES).sort());
+  assert.equal(h["PIB"].length, 3);
+}
+console.log("history ok");
