@@ -2,6 +2,7 @@
 // Divisões andam hex a hex, lutam contra o hex vizinho que querem entrar, ocupam território inimigo,
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
 import { refresh, GOODS, RULES, INFAMY, type Economy, type Division, type WarStats } from "./economy.ts";
+import { DIPLO } from "./diplomacy.ts";
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
@@ -464,6 +465,7 @@ export function makePeace(w: World, e: Economy, a: number, b: number): string | 
   for (const city of e.cities) if (w.owner[city.hex] !== city.country) city.country = w.owner[city.hex];
   e.wars.delete(key(a, b));
   delete e.warStats?.[key(a, b)];
+  if (winner) { e.countries[winner - 1].glory = (e.countries[winner - 1].glory ?? 0) + DIPLO.warWin; e.countries[loser - 1].glory = (e.countries[loser - 1].glory ?? 0) - DIPLO.warWin; }
   // tropas que ficaram em território que agora é do outro voltam para a capital
   for (const d of e.divisions) if (d.kind !== "fleet" && !canEnter(w, e, d.country, d.hex)) { d.hex = e.cities.find((k) => k.country === d.country)!.hex; d.target = null; }
   refresh(w, e);

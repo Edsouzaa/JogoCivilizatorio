@@ -1,5 +1,6 @@
 // Séries históricas por país (1 ponto por mês) para a aba Gráficos.
 import type { Economy, Country } from "./economy.ts";
+import { prestige } from "./diplomacy.ts";
 
 /** Nome da série → valor atual do país. */
 export const SERIES: Record<string, (c: Country, k: number, e?: Economy) => number> = {
@@ -14,6 +15,7 @@ export const SERIES: Record<string, (c: Country, k: number, e?: Economy) => numb
   "Tecnologias": (c) => c.research.known.size,
   "Recrutas": (c) => c.manpower,
   "Cidades": (_c, k, e) => (e ? e.cities.filter((x) => x.country === k).length : 0),
+  "Prestígio": (_c, k, e) => (e ? prestige(e, k) : 0),
 };
 const KEEP = 600; // 50 anos de meses (o save leva tudo isto)
 

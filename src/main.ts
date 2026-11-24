@@ -10,6 +10,7 @@ import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_P
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
 import { countryMix, cultureName, languageName, RELIGIONS, acceptedShare } from "./culture.ts";
 import { SERIES } from "./history.ts";
+import { relation, prestige, DIPLO } from "./diplomacy.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
@@ -460,6 +461,7 @@ document.addEventListener("pointerdown", (e) => {
     if (name) cmd({ t: "continent", id: +d.continent, name });
     return;
   }
+  if (d.improve) return cmd({ t: "improve", target: Number(d.improve) });
   if (d.chart) { chartKey = d.chart; return updateUI(); }
   if (d.rank) { rankKey = d.rank; return updateUI(); }
   if (d.choose) return cmd({ t: "choose", option: Number(d.choose) });
@@ -531,7 +533,7 @@ function chartsHtml() {
   return keys.map((k) => btn(k, chartKey, "chart")).join("") +
     `<canvas id="series" width="300" height="110" style="width:100%;background:#111;margin-top:4px"></canvas>` +
     `<small>${(h[chartKey]?.length ?? 0)} meses · agora ${fmt(SERIES[chartKey](c, active, eco))}</small>` +
-    `<br><b>🏆 Ranking mundial</b> ` + ["PIB", "População", "Tecnologias", "Cidades"].map((k) => btn(k, rankKey, "rank")).join("") +
+    `<br><b>🏆 Ranking mundial</b> ` + ["Prestígio", "PIB", "População", "Tecnologias", "Cidades"].map((k) => btn(k, rankKey, "rank")).join("") +
     `<table>${ranked.slice(0, 10).map(([k, v], n) => `<tr${k === active ? ' style="color:#fd6"' : ""}><td>${n + 1}º ${world.countries[k - 1].name}</td><td>${fmt(v)}</td></tr>`).join("")}` +
     (mine >= 10 ? `<tr style="color:#fd6"><td>${mine + 1}º ${world.countries[active - 1].name}</td><td>${fmt(ranked[mine][1])}</td></tr>` : "") + `</table>`;
 }
@@ -783,6 +785,10 @@ function hexHtml() {
   if (world.owner[i] !== active || !active) {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
     if (net && world.owner[i] && !mp?.players.some((p) => p.country === world.owner[i])) h += ` <button data-act="claim">Assumir este país</button>`;
+    if (active && world.owner[i] && world.owner[i] !== active) {
+      const rel = relation(eco, active, world.owner[i]);
+      h += `<br>🤝 Relações: <b class="${rel < 0 ? "up" : "down"}">${Math.round(rel)}</b> · prestígio deles ${prestige(eco, world.owner[i])} <button data-improve="${world.owner[i]}" title="+${DIPLO.improve} de relação">Melhorar relações (${DIPLO.improveCost} 📜)</button>`;
+    }
     if (active && world.owner[i] && !atWar(eco, active, world.owner[i])) {
       h += hasPact(eco, active, world.owner[i]) ? ` <button data-unpact="${world.owner[i]}">Cancelar acordo</button>` : ` <button data-pact="${world.owner[i]}">Propor acordo comercial</button>`;
       h += ` <button data-act="war">Declarar guerra</button>`;

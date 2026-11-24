@@ -7,6 +7,7 @@ import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disban
 import { proposeLaw, cancelLaw } from "./politics.ts";
 import { validFlag, type Flag } from "./flags.ts";
 import { EVENT_LIST, resolve } from "./choices.ts";
+import { improveRelations } from "./diplomacy.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
 import { available } from "./tech.ts";
@@ -21,7 +22,8 @@ export type Cmd =
   | { t: "road"; city: number }
   | { t: "harbor"; city: number }
   | { t: "acceptCulture"; culture: number; off?: boolean }
-  | { t: "choose"; option: number } // resposta ao evento pendente
+  | { t: "choose"; option: number }
+  | { t: "improve"; target: number } // melhorar relações // resposta ao evento pendente
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
@@ -74,6 +76,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       return err;
     }
     case "settlers": return trainSettlers(w, e, country);
+    case "improve": return isInt(c.target, 1) && c.target <= e.countries.length ? improveRelations(e, country, c.target) : "País inválido";
     case "choose": {
       const ev = e.choices?.[country];
       if (!ev) return "Nenhum evento esperando";

@@ -8,6 +8,7 @@ import {
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
+import { relation, DIPLO } from "./diplomacy.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 
 export const AI = {
@@ -165,7 +166,7 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   }
   if (!armies.length || rand() > AI.warChancePerMonth) return;
   for (const k of e.cities) {
-    if (k.country === country || !mine.some((m) => dist(w, m.hex, k.hex) <= AI.warReach)) continue;
+    if (k.country === country || relation(e, country, k.country) > DIPLO.warMax || !mine.some((m) => dist(w, m.hex, k.hex) <= AI.warReach)) continue;
     const theirs = e.divisions.filter((d) => d.kind === "army" && d.country === k.country).length;
     if (theirs * 2 < armies.length) { declareWar(e, country, k.country); return; }
   }

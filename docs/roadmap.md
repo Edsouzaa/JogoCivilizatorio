@@ -53,6 +53,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Aba Gráficos: 11 séries do país (PIB, população, tesouro, dívida, legitimidade, letrados, pesquisa, controle, tecnologias, recrutas, cidades), 1 ponto por mês, até 50 anos; ranking mundial (top 10 + sua posição) por PIB, população, tecnologias e cidades.
 
+- Diplomacia: relação de −100 a +100 entre cada par de países. Melhora com acordo comercial (+2/mês) e diplomatas (+15 por 10 pontos adm.); piora com guerra (−8/mês), fronteira (−0,5/mês) e infâmia do vizinho; volta devagar para 0. Abaixo de −25 ninguém assina acordo; a IA só ataca quem ela gosta menos que +10. Prestígio = parcela do mundo em PIB, tecnologia e população (média 100) + glória de guerras (±50 por vitória/derrota, se apaga 1%/mês). Ranking de prestígio na aba Gráficos.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -75,10 +77,9 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 8. **Leis**
 9. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
 10. **Diplomacia**
-    - Relação, confiança e influência.
+    - Confiança, influência e esferas.
     - Tratados com manutenção em pontos administrativos.
     - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
-    - Esferas de influência e prestígio.
 11. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
 12. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
 13. **Personagens**

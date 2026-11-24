@@ -7,6 +7,7 @@ import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 import type { Flag } from "./flags.ts";
 import { makeName } from "./names.ts";
 import { updateControl, CONTROL } from "./control.ts";
+import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
 
@@ -173,6 +174,7 @@ export type Country = {
   researchWeek: number; // pontos de pesquisa na última semana
   admin?: number;       // pontos administrativos guardados (admin.ts)
   primaryCulture?: number; acceptedCultures?: number[]; officialLanguage?: number; stateReligion?: number; // culture.ts
+  glory?: number;       // prestígio de guerras (diplomacy.ts), se apaga devagar
   culturePenalty?: number; // pontos de lealdade perdidos por gente de cultura não aceita
   adminWeek?: number;   // produzidos na última semana
   literacy?: number;    // 0..1: fração dos letrados (sabem ler, escrever e contar); acelera a pesquisa
@@ -216,6 +218,7 @@ export type Economy = {
   warStats?: Record<string, WarStats>; // por guerra ("a-b"): baixas, custo, desde quando
   control: Float32Array; // 0..1: quanto o governo administra o hex (control.ts)
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
+  relations?: Record<string, number>; // "a-b" → −100..100 (diplomacy.ts); ausente = 0
   choices?: Record<number, { id: number; week: number }>; // evento esperando a escolha do jogador (choices.ts)
   incentives?: Incentive[]; // incentivos ativos (admin.ts)
   famine?: boolean[];    // por cidade: passando fome (events.ts)
@@ -450,6 +453,7 @@ export function proposePact(e: Economy, a: number, b: number): string | null {
   if (hasPact(e, a, b)) return "Já existe acordo";
   const bad = [a, b].find((x) => e.countries[x - 1].infamy >= INFAMY.noPacts);
   if (bad) return `Recusado: infâmia alta (${Math.round(e.countries[bad - 1].infamy)} ≥ ${INFAMY.noPacts})`;
+  if (relation(e, a, b) < DIPLO.pactMin) return `Recusado: relações ruins demais (${Math.round(relation(e, a, b))})`;
   e.pacts.add(pactKey(a, b));
   return null;
 }
@@ -591,7 +595,7 @@ export const cityName = (w: World, e: Economy, country: number) => {
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
   e.exhausted = [];
-  if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); }
+  if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); }
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
