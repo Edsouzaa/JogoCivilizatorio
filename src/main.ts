@@ -39,6 +39,10 @@ const notify = (m: string) => {
   notesBox.prepend(n);
   while (notesBox.childElementCount > 30) notesBox.lastChild!.remove();
 };
+/** Depois de cada semana simulada: avisos que só existem naquela semana. */
+function afterWeek() {
+  for (const i of eco.exhausted) if (world.owner[i] === active) notify(`⛏ Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
+}
 // eventos do país do jogador que viram notificação (comparando com o quadro anterior)
 let seenTechs = -1, seenWars = "", seenActive = -1;
 function watchEvents() {
@@ -346,7 +350,7 @@ function addChat(m: { from: string; country: number; week: number; text: string 
 
 function applyStep(m: { week: number; cmds: [number, Cmd][] }) {
   for (const [country, c] of m.cmds) applyCommand(world, eco, country, c);
-  advanceWeek(world, eco);
+  advanceWeek(world, eco); afterWeek();
   if (eco.week !== m.week) { synced = false; net?.send(JSON.stringify({ t: "resync" })); } // fora de passo: pede a foto
 }
 
@@ -662,6 +666,7 @@ function hexHtml() {
   if (selected < 0) return "<i>Clique num hexágono.</i>";
   const i = selected, res = world.resource[i], city = cityOf(i);
   let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]} · pop ${fmt(world.pop[i])}`;
+  if (world.reserve[i] !== Infinity) h += ` · jazida para ~${Math.round(world.reserve[i] / 52)} anos (com 1 nível)`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
   const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
   if (hst) { // estado: população, PIB (valor do que os mercados oferecem) e qualidade de vida
@@ -881,7 +886,7 @@ function frame(now: number) {
   if (!net && autoClock.tick(Math.min(dt, 250), speed > 0 && active > 0)) doAutosave(); // no multiplayer quem guarda é o servidor
   for (; !net && acc >= 1; acc--) {
     const t = performance.now();
-    advanceWeek(world, eco);
+    advanceWeek(world, eco); afterWeek();
     tickMs = performance.now() - t;
   }
   if (eco.version !== drawnVersion || (mode === 2 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou

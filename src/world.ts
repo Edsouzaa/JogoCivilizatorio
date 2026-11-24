@@ -43,6 +43,10 @@ const RESOURCES_BY_TERRAIN: number[][] = [
   [R["Madeira"], R["Peles"], R["Carne e caça"], R["Ferro"]],
 ];
 // recursos de jazida (minérios, pedras, petróleo...) são mais raros que os de fazenda/pasto
+/** Recurso comum de cada terreno: o que o hex tem quando não há jazida (o primeiro não mineral da lista). */
+const commonOf = (t: number) => RESOURCES_BY_TERRAIN[t].find((r) => !MINERAL.has(r)) ?? RESOURCES_BY_TERRAIN[t][0] ?? 0;
+/** Reservas (em semanas de extratora nível 1 com equipe completa). Pedra e sal quase não acabam. */
+export const RESERVE = { minYears: 150, maxYears: 600, abundant: 5 };
 const MINERAL = new Set(["Pedra", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Carvão mineral", "Enxofre", "Petróleo", "Sal"].map((n) => R[n]));
 
 export const START_RADIUS = 1; // território inicial em volta da capital; cresce com a cidade
@@ -50,7 +54,9 @@ export const START_RADIUS = 1; // território inicial em volta da capital; cresc
 import type { Flag } from "./flags.ts";
 export type World = {
   W: number; H: number; seed: number;
-  terrain: Uint8Array; resource: Uint8Array; owner: Uint16Array; pop: Float32Array; climate: Uint8Array;
+  terrain: Uint8Array; resource: Uint8Array; owner: Uint16Array;
+  pop: Float32Array; climate: Uint8Array;
+  reserve: Float32Array; // semanas de extração que restam na jazida (Infinity = renovável)
   river: Uint8Array;     // bits 0–5: rio na borda k do hex (ver `across`)
   navigable: Uint8Array; // bits 0–5: trecho navegável (futuro: navios)
   seaZone: Uint16Array;  // zona marítima do hex de oceano (1..n); 0 = terra/gelo
@@ -101,6 +107,9 @@ function percentile(v: Float32Array, frac: number) {
   return 0;
 }
 
+/** A jazida do hex acabou: vira o recurso comum do terreno. */
+export function exhaust(w: World, i: number) { w.resource[i] = commonOf(w.terrain[i]); w.reserve[i] = Infinity; }
+
 export function generateWorld(W: number, H: number, seed: number, nCountries?: number, landFrac = 0.29): World {
   const N = W * H, rand = mulberry32(seed);
   const elev = new Float32Array(N), moist = new Float32Array(N), hot = new Float32Array(N);
@@ -121,6 +130,7 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
   const sea = percentile(elev, landFrac), mountain = percentile(elev, landFrac * 0.06), hills = percentile(elev, landFrac * 0.2);
 
   const terrain = new Uint8Array(N), resource = new Uint8Array(N), pop = new Float32Array(N), climate = new Uint8Array(N);
+  const reserve = new Float32Array(N).fill(Infinity); // Infinity = renovável (lavoura, floresta, pasto)
   let landCount = 0;
   for (let row = 0; row < H; row++) {
     const lat = Math.abs(row / (H - 1) - 0.5) * 2; // 0 = equador, 1 = polo
@@ -147,6 +157,11 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
         const r = opts[Math.min(opts.length - 1, Math.max(0, Math.floor(((kind[i] - 0.25) / 0.5) * opts.length)))];
         if (deposit[i] > (MINERAL.has(r) ? 0.64 : 0.56)) resource[i] = r;
       }
+      if (!resource[i]) resource[i] = commonOf(t); // todo hex de terra produz alguma coisa
+      if (MINERAL.has(resource[i])) { // jazida: acaba um dia
+        const years = RESERVE.minYears + (RESERVE.maxYears - RESERVE.minYears) * Math.min(1, Math.max(0, deposit[i]));
+        reserve[i] = years * 52 * (resource[i] === R["Pedra"] || resource[i] === R["Sal"] ? RESERVE.abundant : 1);
+      }
       // espalhada por igual (~13 por hex fértil), com polos de até ~8× onde o ruído "hot" é alto
       const h = Math.min(1, Math.max(0, (hot[i] - 0.5) * 4 + 0.5));
       pop[i] = 20 * TERRAINS[t].fertility * (0.5 + 8 * h ** 4) * (0.8 + 0.4 * rand());
@@ -155,7 +170,7 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
 
   // Países: uma capital em terra fértil, com território de raio START_RADIUS. O resto do mundo começa livre.
   const owner = new Uint16Array(N), countries: World["countries"] = [];
-  const w: World = { W, H, seed, terrain, resource, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
+  const w: World = { W, H, seed, terrain, resource, reserve, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
   generateSeaZones(w);
   generateRivers(w, elev, hills, rand);
   for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água

@@ -1,4 +1,4 @@
-import { RESOURCES, TERRAINS, isLand, claim, snowAt, type World } from "./world.ts";
+import { RESOURCES, TERRAINS, isLand, claim, snowAt, exhaust, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { newResearch, research, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
@@ -175,6 +175,7 @@ export type Economy = {
   states: State[]; nextState: number;
   humans: number[];     // países com jogador (fora da IA)
   aiWarStart: Record<string, number>; // semana em que cada guerra da IA começou (para a paz)
+  exhausted: number[];   // hexes cuja jazida acabou nesta semana (para avisar o jogador)
   occupier: Uint16Array; // país que ocupa o hex (0 = ninguém); hex ocupado não produz para o dono
 };
 
@@ -228,7 +229,7 @@ export function createEconomy(w: World): Economy {
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
-    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), states: [], nextState: 1, humans: [], aiWarStart: {}, occupier: new Uint16Array(N),
+    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), states: [], nextState: 1, humans: [], aiWarStart: {}, occupier: new Uint16Array(N), exhausted: [],
   };
   refresh(w, e);
   for (const i of e.owned) {
@@ -457,6 +458,7 @@ export function migrate(w: World, e: Economy) {
 
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
+  e.exhausted = [];
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
   for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); }
 
@@ -497,6 +499,13 @@ export function tick(w: World, e: Economy) {
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals);
     if (base) m.supply[w.resource[i]] += base * mult * staffing * penalty;
+    if (base && w.reserve[i] !== Infinity) { // jazida: cada semana de extração gasta a reserva
+      w.reserve[i] -= (base / RULES.outputPerLevel) * staffing;
+      if (w.reserve[i] <= 0) {
+        for (let b = 0; b < NB; b++) if (!BUILDINGS[b].industry) e.levels[b][i] = 0; // mina e melhorias fecham
+        exhaust(w, i); e.exhausted.push(i);
+      }
+    }
     for (let b = 0; b < NB; b++) { // quem trabalha aqui, por tipo de POP
       const lv = e.levels[b][i];
       if (lv) for (const [t, share] of JOBS[c.research.era][b]) c.pops.count[t] += lv * BUILDINGS[b].workers * staffing * share;

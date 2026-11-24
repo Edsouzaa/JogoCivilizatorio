@@ -3,7 +3,7 @@ import {
   priceFactor, createEconomy, tick, build, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
   BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius, settlersOf,
 } from "../src/economy.ts";
-import { generateWorld, isLand, claim } from "../src/world.ts";
+import { generateWorld, isLand, claim, T, RESOURCES } from "../src/world.ts";
 import { forNeighbors } from "../src/hex.ts";
 
 assert.equal(priceFactor(10, 10), 1);
@@ -127,3 +127,20 @@ console.log("economy ok");
   assert.equal(borderRadius(1), 1); assert.equal(borderRadius(2), 2); assert.equal(borderRadius(10), 3);
 }
 console.log("territory ok");
+
+// recursos: todo hex de terra tem algum; jazida acaba, a mina fecha e o hex vira o recurso comum do terreno
+{
+  const w3 = generateWorld(200, 100, 8, 2), e3 = createEconomy(w3);
+  for (let i = 0; i < w3.W * w3.H; i++) if (isLand(w3.terrain[i]) && w3.terrain[i] !== T.ICE) assert.ok(w3.resource[i], `hex ${i} sem recurso`);
+  const i = [...e3.producers].find((j) => w3.reserve[j] !== Infinity && e3.market[j]);
+  if (i !== undefined) {
+    const before = w3.resource[i];
+    w3.reserve[i] = 0.01; w3.pop[i] = 1e5;
+    tick(w3, e3);
+    assert.deepEqual(e3.exhausted, [i]);
+    assert.ok(w3.resource[i] !== before || before === RESOURCES.indexOf("Pedra")); // em morro sem outra coisa fica pedra (que não acaba)
+    assert.equal(w3.reserve[i], Infinity);
+    assert.ok(BUILDINGS.every((b, k) => b.industry || !e3.levels[k][i]), "mina continuou aberta");
+  }
+}
+console.log("reserves ok");
