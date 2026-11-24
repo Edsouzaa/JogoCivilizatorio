@@ -80,7 +80,8 @@ function expand(w: World, e: Economy, country: number, era: number) {
 }
 
 /** Constrói onde o produto está mais caro no mercado local (preço alto = falta). Uma obra por mês. */
-function invest(w: World, e: Economy, country: number) {
+/** Melhor obra do país agora: onde o produto está mais caro por dinheiro gasto. [hex, construção] ou null. */
+function bestInvestment(w: World, e: Economy, country: number): [number, number] | null {
   const c = e.countries[country - 1];
   let best: [number, number] | null = null, bestV = 0;
   for (const i of e.owned) {
@@ -97,7 +98,27 @@ function invest(w: World, e: Economy, country: number) {
       if (v > bestV) { bestV = v; best = [i, b]; }
     }
   }
-  if (best && c.treasury > buildCost(e, best[1], best[0]) * AI.reserve) build(w, e, best[0], best[1]);
+  return best;
+}
+
+function invest(w: World, e: Economy, country: number) {
+  const best = bestInvestment(w, e, country);
+  if (best && e.countries[country - 1].treasury > buildCost(e, best[1], best[0]) * AI.reserve) build(w, e, best[0], best[1]);
+}
+
+/** Uma vez por mês, todo país (jogador também): os investidores privados constroem com o fundo deles. */
+export function privateInvest(w: World, e: Economy) {
+  e.countries.forEach((c, ci) => {
+    for (let n = 0; n < 3; n++) { // até 3 obras por mês
+      const best = bestInvestment(w, e, ci + 1);
+      if (!best) return;
+      const cost = buildCost(e, best[1], best[0]);
+      if ((c.investPool ?? 0) < cost) return;
+      c.treasury += cost; // o fundo paga: põe o valor e build() tira (o tesouro fica igual)
+      if (build(w, e, best[0], best[1])) { c.treasury -= cost; return; }
+      c.investPool! -= cost;
+    }
+  });
 }
 
 function legislate(c: Economy["countries"][number]) {

@@ -55,6 +55,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Diplomacia: relação de −100 a +100 entre cada par de países. Melhora com acordo comercial (+2/mês) e diplomatas (+15 por 10 pontos adm.); piora com guerra (−8/mês), fronteira (−0,5/mês) e infâmia do vizinho; volta devagar para 0. Abaixo de −25 ninguém assina acordo; a IA só ataca quem ela gosta menos que +10. Prestígio = parcela do mundo em PIB, tecnologia e população (média 100) + glória de guerras (±50 por vitória/derrota, se apaga 1%/mês). Ranking de prestígio na aba Gráficos.
 
+- Investimento privado: a lei de Economia manda uma fração do PIB para o fundo dos donos (Tradicionalismo 1%, Mercantilismo 2%, Livre comércio 4% por semana; Subsistência nada). Todo mês os investidores fazem até 3 obras onde o produto está mais caro, sem tirar do tesouro. Fundo aparece na aba Economia.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -75,7 +77,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 7. **População**
     - Cultura/língua/religião por POP (hoje é por cidade), grupos culturais, famílias de línguas e religiões, surgimento e divisão de culturas.
 8. **Leis**
-9. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
+9. **Construção estilo Vic3 (resto)**: setor de construção (capacidade, materiais), propriedade dos edifícios, privatização e nacionalização, investimento estrangeiro.
 10. **Diplomacia**
     - Confiança, influência e esferas.
     - Tratados com manutenção em pontos administrativos.

@@ -174,6 +174,8 @@ export type Country = {
   researchWeek: number; // pontos de pesquisa na última semana
   admin?: number;       // pontos administrativos guardados (admin.ts)
   primaryCulture?: number; acceptedCultures?: number[]; officialLanguage?: number; stateReligion?: number; // culture.ts
+  investPool?: number;  // fundo de investimento privado (sim.ts → ai.ts privateInvest)
+  investWeek?: number;  // quanto entrou na última semana
   glory?: number;       // prestígio de guerras (diplomacy.ts), se apaga devagar
   culturePenalty?: number; // pontos de lealdade perdidos por gente de cultura não aceita
   adminWeek?: number;   // produzidos na última semana
@@ -706,6 +708,8 @@ export function tick(w: World, e: Economy) {
       gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
     });
     c.gdpWeek = gdp;
+    c.investWeek = gdp * (lawOf(c.politics, "Economia").invest ?? 0); // o dinheiro é dos donos, não do tesouro
+    c.investPool = (c.investPool ?? 0) + c.investWeek;
     c.tax = gdp ? nominal / gdp : lawOf(c.politics, "Impostos").tax!; // imposto médio
     // governo legítimo arrecada mais; no Centralizado, estados melhoram a administração
     c.income = taxed * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1));

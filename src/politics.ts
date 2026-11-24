@@ -53,6 +53,7 @@ export type Law = {
   desc?: string;        // o que a lei faz, em uma frase
   tax?: number;         // Impostos: taxa sobre o PIB
   tradeShare?: number;  // Economia: fração da sobra que circula entre as cidades do país
+  invest?: number;      // fração do PIB por semana que os donos (capitalistas, aristocratas) põem no fundo de investimento
   singleParty?: boolean; // Governo: só o partido tem Poder Político
   federal?: boolean;     // Estados: cada estado tem lei de impostos própria
 };
@@ -75,10 +76,10 @@ export const LAWS: Record<string, Law[]> = {
     { name: "Federação", desc: "Cada estado escolhe a própria lei de impostos, como nos Estados Unidos.", era: era("Revoluções"), likes: ["Povo do Campo", "Mercadores", "Intelectuais"], dislikes: ["Latifundiários"], federal: true },
   ],
   "Economia": [
-    { name: "Subsistência", desc: "Cada comunidade vive do que produz; quase não há troca entre cidades.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [], tradeShare: 0.4 },
-    { name: "Tradicionalismo", desc: "Comércio pelas rotas e costumes de sempre.", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores"], tradeShare: 0.5 },
-    { name: "Mercantilismo", desc: "O Estado incentiva comércio e acumula riqueza.", era: era("Descobertas"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7 },
-    { name: "Livre comércio", desc: "Mercadorias circulam livremente entre as cidades.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], tradeShare: 0.9 },
+    { name: "Subsistência", desc: "Cada comunidade vive do que produz; quase não há troca entre cidades.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [], tradeShare: 0.4, invest: 0 },
+    { name: "Tradicionalismo", desc: "Comércio pelas rotas e costumes de sempre.", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores"], tradeShare: 0.5, invest: 0.01 },
+    { name: "Mercantilismo", desc: "O Estado incentiva comércio e acumula riqueza.", era: era("Descobertas"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7, invest: 0.02 },
+    { name: "Livre comércio", desc: "Mercadorias circulam livremente entre as cidades.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], tradeShare: 0.9, invest: 0.04 },
   ],
 };
 for (const laws of Object.values(LAWS)) for (const l of laws) for (const g of [...l.likes, ...l.dislikes]) if (G[g] === undefined) throw new Error(`lei ${l.name}: grupo ${g}`);

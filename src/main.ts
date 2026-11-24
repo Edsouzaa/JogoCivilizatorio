@@ -601,7 +601,8 @@ function tabsHtml() {
 function economyHtml() {
   if (!active) return "";
   const c = eco.countries[active - 1];
-  return `<canvas id="gdp" width="300" height="70" style="width:100%;background:#111"></canvas>` +
+  const pool = `<div>🏦 Fundo de investimento privado: <b>${fmt(c.investPool ?? 0)}</b> <small>(+${fmt(c.investWeek ?? 0)}/sem pela lei de Economia; os investidores constroem sozinhos onde dá mais lucro)</small></div>`;
+  return pool + `<canvas id="gdp" width="300" height="70" style="width:100%;background:#111"></canvas>` +
     `<table><tr><td>Impostos (${pct(c.tax)})</td><td class="down">+${fmt(c.income)}</td></tr>` +
     `<tr><td>Tarifas (comércio exterior)</td><td class="down">+${fmt(c.tariffs)}</td></tr>` +
     `<tr><td>Manutenção</td><td class="up">−${fmt(c.upkeep)}</td></tr><tr><td>Juros</td><td class="up">−${fmt(c.interest)}</td></tr>` +
@@ -705,6 +706,7 @@ function lawEffect(l: Law, cat: string, p: Politics) {
     const delta = c.gdpWeek * (l.tax - cur.tax!) * (RULES.taxBaseEfficiency + p.legitimacy);
     parts.push(`imposto ${pct(l.tax)} do PIB (agora ${pct(cur.tax!)}): <b class="${delta >= 0 ? "down" : "up"}">${signed(delta)}/semana</b>`);
   }
+  if (l.invest !== undefined) parts.push(`investidores privados recebem ${pct(l.invest)} do PIB para construir (agora ${pct(cur.invest ?? 0)})`);
   if (l.tradeShare !== undefined) parts.push(`cidades trocam ${pct(l.tradeShare)} da sobra por semana (agora ${pct(cur.tradeShare!)})`);
   return `${l.desc ?? ""}${parts.length ? "<br>" + parts.join(" · ") : ""}`;
 }
