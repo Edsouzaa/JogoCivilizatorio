@@ -27,7 +27,7 @@ No protótipo a Clássica vai a 0,5 semana/s, a Medieval a 0,35 e a Colonial a 0
 - Todas as 9 eras têm 5 tecnologias (Tribal e Clássica com as originais; Medieval: Feudalismo, Moinhos, Arado pesado, Universidades, Castelos; Colonial: Navegação, Imprensa, Pólvora, Bancos, Mineração profunda; Revoluções: Máquina a vapor, Ferrovias, Iluminismo, Conscrição, Agricultura científica; Imperialismo: Eletricidade, Química industrial, Metralhadora, Telégrafo, Medicina moderna; Guerras: Motor a combustão, Blindados, Produção em massa, Rádio, Aviação; Multipolar: Computadores, Energia nuclear, Revolução verde, Contêineres, Mísseis; Atual: Internet, Automação, Energias renováveis, Biotecnologia, Drones).
 - Efeitos: liberar construções, bônus de produção, pesquisa, **comércio** (mais troca entre cidades e com parceiros), **exército** (força de combate), **manpower** e **agitação** (Imprensa, Iluminismo, Conscrição, Energia nuclear, Internet e Automação baixam a lealdade; Medicina moderna, Rádio e Biotecnologia sobem).
 - Máquina a vapor libera Siderúrgica e Fábrica têxtil; Metralhadora libera o Arsenal. Da era das Revoluções em diante as fábricas empregam Operários especializados e Engenheiros, e os donos são Capitalistas.
-- A fazer: **infâmia** (pedido do design), e tecnologias que liberam unidades novas (navios, aviões).
+- A fazer: tecnologias que liberam unidades novas (navios, aviões).
 
 ## Mapa
 
@@ -107,6 +107,12 @@ Todo país que não é o do jogador decide uma vez por mês:
 - No acordo, as **cidades de fronteira** (a até 25 hexes de uma cidade do parceiro; portos fluviais alcançam o dobro) trocam sobra por falta, como o comércio interno, mas só **25% da sobra por semana**.
 - Quem importa cobra **10% de tarifa** sobre o valor importado, que entra no tesouro (linha "Tarifas" na aba Economia).
 - A fazer: rotas e nós comerciais (mar e rios), tarifas por lei, embargos.
+
+## Infâmia
+
+- Reputação de agressor (☠ no cabeçalho). Sobe ao **declarar guerra** (+10), ao **tomar território** na paz (+0,5 por hex) e ao descobrir **armas temidas** (Metralhadora +5, Aviação +3, Blindados +5, Mísseis +8, Drones +5). Cai 0,2 por semana (~10 por ano).
+- **25 ou mais:** nenhum país fecha acordo comercial novo com você (vale dos dois lados).
+- **50 ou mais:** seus acordos caem e a IA pode formar coalizão: vizinhos (até 30 hexes) declaram guerra mesmo sendo mais fracos (5% ao mês cada).
 
 ## O que fica fora da primeira versão jogável
 

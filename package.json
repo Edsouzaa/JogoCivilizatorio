@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "node src/hex.test.ts && node src/world.test.ts && node src/tech.test.ts && node src/pops.test.ts && node src/politics.test.ts && node src/loyalty.test.ts && node src/war.test.ts && node src/fog.test.ts && node src/ai.test.ts && node src/save.test.ts && node src/foreign.test.ts && node src/economy.test.ts",
+    "test": "node src/hex.test.ts && node src/world.test.ts && node src/tech.test.ts && node src/pops.test.ts && node src/politics.test.ts && node src/loyalty.test.ts && node src/war.test.ts && node src/fog.test.ts && node src/ai.test.ts && node src/save.test.ts && node src/foreign.test.ts && node src/infamy.test.ts && node src/economy.test.ts",
     "biomas": "node scripts/gerar-biomas.ts"
   },
   "devDependencies": {

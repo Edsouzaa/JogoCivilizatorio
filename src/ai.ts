@@ -2,7 +2,7 @@
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
 import {
-  build, buildCost, buildingsFor, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact,
+  build, buildCost, buildingsFor, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, WAR } from "./war.ts";
@@ -17,6 +17,7 @@ export const AI = {
   warChancePerMonth: 0.01,
   warReach: 15,         // só ataca países com cidade até esta distância
   pactChancePerMonth: 0.05, // chance de propor acordo comercial a um vizinho
+  coalitionChancePerMonth: 0.05, // chance de atacar vizinho com infâmia alta
   maxWarWeeks: 104,     // faz a paz depois de 2 anos
 };
 
@@ -118,6 +119,11 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
     return;
   }
   // guerra rara: vizinho perto e com menos da metade do exército
+  // coalizão: vizinho com infâmia alta vira alvo mesmo sendo mais forte
+  if (armies.length && rand() < AI.coalitionChancePerMonth) for (const k of e.cities) {
+    if (k.country === country || e.countries[k.country - 1].infamy < INFAMY.coalition) continue;
+    if (mine.some((m) => dist(w, m.hex, k.hex) <= AI.warReach * 2)) { declareWar(e, country, k.country); return; }
+  }
   if (!armies.length || rand() > AI.warChancePerMonth) return;
   for (const k of e.cities) {
     if (k.country === country || !mine.some((m) => dist(w, m.hex, k.hex) <= AI.warReach)) continue;

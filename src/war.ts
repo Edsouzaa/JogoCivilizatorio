@@ -1,7 +1,7 @@
 // Guerra terrestre (estilo HOI4 simplificado, sem customizar divisões).
 // Divisões andam hex a hex, lutam contra o hex vizinho que querem entrar, ocupam território inimigo,
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
-import { refresh, GOODS, RULES, type Economy, type Division } from "./economy.ts";
+import { refresh, GOODS, RULES, INFAMY, type Economy, type Division } from "./economy.ts";
 import { techSum } from "./tech.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
 import { T, TERRAINS, across, riverAt, snowAt, type World } from "./world.ts";
@@ -37,6 +37,7 @@ export function declareWar(e: Economy, a: number, b: number): string | null {
   if (a === b) return "Não dá para declarar guerra a si mesmo";
   if (atWar(e, a, b)) return "Já estão em guerra";
   e.wars.add(key(a, b));
+  e.countries[a - 1].infamy += INFAMY.declareWar;
   e.pacts.delete(key(a, b)); // guerra cancela o acordo comercial
   return null;
 }
@@ -216,7 +217,7 @@ export function makePeace(w: World, e: Economy, a: number, b: number): string | 
   for (const i of e.owned) {
     const pair = (w.owner[i] === a && e.occupier[i] === b) || (w.owner[i] === b && e.occupier[i] === a);
     if (!pair) continue;
-    if (winner && w.owner[i] === loser && i !== loserCapital) w.owner[i] = winner;
+    if (winner && w.owner[i] === loser && i !== loserCapital) { w.owner[i] = winner; e.countries[winner - 1].infamy += INFAMY.perHexTaken; }
     e.occupier[i] = 0;
   }
   for (const city of e.cities) if (w.owner[city.hex] !== city.country) city.country = w.owner[city.hex];

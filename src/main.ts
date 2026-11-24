@@ -1,7 +1,7 @@
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, CLIMATES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
-  proposePact, cancelPact, hasPact,
+  proposePact, cancelPact, hasPact, INFAMY,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
@@ -270,6 +270,7 @@ function headerHtml() {
     `<span title="Lealdade média · radicais">❤ ${Math.round(averageLoyalty(c.pops))} · <span class="${c.radicals > 0.1 ? "bad" : ""}">${pct(c.radicals)} rad.</span></span>` +
     `<span title="Manpower livre (só para o exército)">🪖 ${fmt(c.manpower)}</span>` +
     `<span title="Grupos de colonos">⛺ ${settlersOf(eco, active)}</span>` +
+    `<span title="Infâmia: reputação de agressor. ≥${INFAMY.noPacts} ninguém fecha acordo; ≥${INFAMY.pactsBreak} acordos caem e vizinhos podem se unir contra você. Cai ${INFAMY.decayWeek}/semana.">☠ <span class="${c.infamy >= INFAMY.pactsBreak ? "bad" : c.infamy >= INFAMY.noPacts ? "up" : ""}">${Math.round(c.infamy)}</span></span>` +
     `</div>` +
     (c.bankruptWeeks ? `<div class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</div>` : "") +
     (p.rival >= 0 ? `<div class="bad">⚠ ${GROUPS[p.rival].name} tem mais apoio popular que o governo</div>` : "");
@@ -326,8 +327,10 @@ function divisionHtml() {
 
 function pactsHtml() {
   const c = eco.countries[active - 1];
+  const infamy = c.infamy >= INFAMY.pactsBreak ? "<span class='bad'>Infâmia muito alta: sem acordos e vizinhos podem atacar</span><br>"
+    : c.infamy >= INFAMY.noPacts ? "<span class='up'>Infâmia alta: ninguém fecha acordo novo</span><br>" : "";
   const partners = world.countries.map((_, k) => k + 1).filter((b) => hasPact(eco, active, b));
-  return `<div>Comércio exterior: exporta ${fmt(c.exports)} · importa ${fmt(c.imports)} por semana` +
+  return `<div>${infamy}Comércio exterior: exporta ${fmt(c.exports)} · importa ${fmt(c.imports)} por semana` +
     (partners.length ? `<br>Acordos: ${partners.map((b) => `${world.countries[b - 1].name} <button data-unpact="${b}">✕</button>`).join(" ")}` : "<br><small>Sem acordos: clique num hex de outro país para propor.</small>") + "</div>";
 }
 

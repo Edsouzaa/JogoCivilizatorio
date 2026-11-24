@@ -17,6 +17,7 @@ export type Tech = {
   research?: number;           // +fração de velocidade de pesquisa
   trade?: number;              // +fração do que circula entre cidades e com parceiros
   army?: number;               // +fração de força de combate das divisões
+  infamy?: number;             // infâmia ganha ao descobrir (armas que assustam os vizinhos)
   manpower?: number;           // +fração da população mobilizável
   unrest?: number;             // pontos a menos (+) ou a mais (−) no alvo de lealdade: ideias novas agitam o povo
 };
@@ -56,27 +57,27 @@ export const TECHS: Tech[] = [
   // Imperialismo
   { name: "Eletricidade", era: 5, cost: 1300 * COST, requires: ["Máquina a vapor"], bonus: INDUSTRY(0.3) },
   { name: "Química industrial", era: 5, cost: 1300 * COST, requires: ["Agricultura científica"], bonus: [["Fazenda", 0.3], ["Mina", 0.2]] },
-  { name: "Metralhadora", era: 5, cost: 1400 * COST, requires: ["Conscrição"], army: 0.4, unlocks: ["Arsenal"] },
+  { name: "Metralhadora", era: 5, cost: 1400 * COST, requires: ["Conscrição"], army: 0.4, unlocks: ["Arsenal"], infamy: 5 },
   { name: "Telégrafo", era: 5, cost: 1300 * COST, requires: ["Ferrovias"], trade: 0.2, research: 0.15 },
   { name: "Medicina moderna", era: 5, cost: 1400 * COST, requires: ["Iluminismo"], unrest: -5 },
   // Era das Guerras
   { name: "Motor a combustão", era: 6, cost: 1800 * COST, requires: ["Eletricidade"], trade: 0.3, bonus: [["Poço", 0.5]] },
-  { name: "Blindados", era: 6, cost: 1900 * COST, requires: ["Metralhadora", "Motor a combustão"], army: 0.4 },
+  { name: "Blindados", era: 6, cost: 1900 * COST, requires: ["Metralhadora", "Motor a combustão"], army: 0.4, infamy: 5 },
   { name: "Produção em massa", era: 6, cost: 1900 * COST, requires: ["Eletricidade"], bonus: INDUSTRY(0.3) },
   { name: "Rádio", era: 6, cost: 1800 * COST, requires: ["Telégrafo"], research: 0.2, unrest: -3 },
-  { name: "Aviação", era: 6, cost: 1900 * COST, requires: ["Motor a combustão"], army: 0.2 },
+  { name: "Aviação", era: 6, cost: 1900 * COST, requires: ["Motor a combustão"], army: 0.2, infamy: 3 },
   // Multipolar
   { name: "Computadores", era: 7, cost: 2500 * COST, requires: ["Rádio"], research: 0.4 },
   { name: "Energia nuclear", era: 7, cost: 2600 * COST, requires: ["Produção em massa"], bonus: [["Siderúrgica", 0.4]], unrest: 3 },
   { name: "Revolução verde", era: 7, cost: 2500 * COST, requires: ["Química industrial"], bonus: [["Fazenda", 0.5]] },
   { name: "Contêineres", era: 7, cost: 2500 * COST, requires: ["Motor a combustão"], trade: 0.4 },
-  { name: "Mísseis", era: 7, cost: 2700 * COST, requires: ["Aviação"], army: 0.5 },
+  { name: "Mísseis", era: 7, cost: 2700 * COST, requires: ["Aviação"], army: 0.5, infamy: 8 },
   // Atual
   { name: "Internet", era: 8, cost: 3500 * COST, requires: ["Computadores"], research: 0.5, unrest: 5 },
   { name: "Automação", era: 8, cost: 3600 * COST, requires: ["Computadores", "Produção em massa"], bonus: INDUSTRY(0.5), unrest: 5 },
   { name: "Energias renováveis", era: 8, cost: 3500 * COST, requires: ["Energia nuclear"], bonus: [["Poço", 0.3], ["Mina", 0.2]] },
   { name: "Biotecnologia", era: 8, cost: 3600 * COST, requires: ["Revolução verde"], bonus: [["Fazenda", 0.4]], unrest: -5 },
-  { name: "Drones", era: 8, cost: 3700 * COST, requires: ["Mísseis"], army: 0.5 },
+  { name: "Drones", era: 8, cost: 3700 * COST, requires: ["Mísseis"], army: 0.5, infamy: 5 },
 ];
 
 /** Soma de um efeito numérico de todas as tecnologias conhecidas. */

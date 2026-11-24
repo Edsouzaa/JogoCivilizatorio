@@ -138,6 +138,7 @@ export type Country = {
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
   exports: number; imports: number; tariffs: number; // comércio exterior na última semana (valor) e tarifas cobradas
+  infamy: number;       // reputação de agressor (ver INFAMY)
 };
 
 function updateBonus(c: Country) {
@@ -212,7 +213,7 @@ export function createEconomy(w: World): Economy {
     countries: w.countries.map(() => ({
       treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
       manpower: 0, gdpHistory: [],
-      research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, exports: 0, imports: 0, tariffs: 0, bonus: new Float64Array(NB), researchWeek: 0,
+      research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, exports: 0, imports: 0, tariffs: 0, infamy: 0, bonus: new Float64Array(NB), researchWeek: 0,
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
@@ -304,6 +305,13 @@ export function transferSize(w: World, e: Economy, from: number, to: number): st
  * a fração da lei de Economia (tradeShare) dela para quem tem falta, dividida pela falta de cada um. `trade[gi]` > 0 = importou.
  */
 // shortcut: instantâneo, sem custo por distância e só dentro do país; trocar quando entrarem rotas, nós e comércio exterior.
+/**
+ * Infâmia: reputação de agressor. Sobe ao declarar guerra, tomar território e descobrir armas temidas;
+ * cai devagar com o tempo. Com noPacts ninguém fecha acordo; com pactsBreak os acordos caem e a IA pode se
+ * juntar contra o país (ai.ts).
+ */
+export const INFAMY = { declareWar: 10, perHexTaken: 0.5, decayWeek: 0.2, noPacts: 25, pactsBreak: 50, coalition: 50 };
+
 export const pactKey = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`);
 export const hasPact = (e: Economy, a: number, b: number) => a !== b && e.pacts.has(pactKey(a, b));
 
@@ -312,6 +320,8 @@ export function proposePact(e: Economy, a: number, b: number): string | null {
   if (a === b || !a || !b) return "Escolha outro país";
   if (e.wars.has(pactKey(a, b))) return "Não dá para comerciar com quem está em guerra com você";
   if (hasPact(e, a, b)) return "Já existe acordo";
+  const bad = [a, b].find((x) => e.countries[x - 1].infamy >= INFAMY.noPacts);
+  if (bad) return `Recusado: infâmia alta (${Math.round(e.countries[bad - 1].infamy)} ≥ ${INFAMY.noPacts})`;
   e.pacts.add(pactKey(a, b));
   return null;
 }
@@ -543,7 +553,10 @@ export function tick(w: World, e: Economy) {
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     advanceLaw(c.politics);
     c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic;
-    if (research(c.research, c.researchWeek)) updateBonus(c);
+    const learned = research(c.research, c.researchWeek);
+    if (learned) { updateBonus(c); c.infamy += learned.infamy ?? 0; }
+    c.infamy = Math.max(0, c.infamy - INFAMY.decayWeek);
+    if (c.infamy >= INFAMY.pactsBreak) for (const k of [...e.pacts]) if (k.split("-").map(Number).includes(ci + 1)) e.pacts.delete(k); // ninguém quer negócio
   });
 
   if (e.week % 4 === 0) migrate(w, e);
