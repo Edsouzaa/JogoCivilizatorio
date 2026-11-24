@@ -2,7 +2,7 @@
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
 import {
-  build, buildCost, buildingsFor, foundCity, trainSettlers, techFor, settlersOf,
+  build, buildCost, buildingsFor, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact,
   BUILDINGS, RULES, type Economy, type Division,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, WAR } from "./war.ts";
@@ -16,6 +16,7 @@ export const AI = {
   lawSupport: 0.25,     // apoio mínimo para propor uma lei
   warChancePerMonth: 0.01,
   warReach: 15,         // só ataca países com cidade até esta distância
+  pactChancePerMonth: 0.05, // chance de propor acordo comercial a um vizinho
   maxWarWeeks: 104,     // faz a paz depois de 2 anos
 };
 
@@ -133,5 +134,14 @@ export function runAI(w: World, e: Economy, country: number) {
   expand(w, e, country, c.research.era);
   invest(w, e, country);
   legislate(c);
+  if (rand() < AI.pactChancePerMonth) { // acordo comercial com o vizinho mais perto que ainda não tem
+    const mine = e.cities.filter((k) => k.country === country);
+    let best = 0, bestD = RULES.foreignRange;
+    for (const k of e.cities) {
+      if (k.country === country || hasPact(e, country, k.country) || atWar(e, country, k.country)) continue;
+      for (const m of mine) { const d = dist(w, m.hex, k.hex); if (d <= bestD) { bestD = d; best = k.country; } }
+    }
+    if (best) proposePact(e, country, best);
+  }
   military(w, e, country, rand);
 }

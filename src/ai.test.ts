@@ -24,4 +24,6 @@ assert.ok(e.cities.length > cities0, `IA não fundou cidades (${e.cities.length}
 assert.ok(levels() > levels0, "IA não construiu nada");
 assert.ok(e.divisions.some((d) => d.kind === "army"), "IA não formou exército");
 for (const c of e.countries) assert.ok(Number.isFinite(c.treasury) && Number.isFinite(c.debt), "economia quebrou");
+// sem bola de neve política: exército e lealdade não podem derrubar o governo de todo mundo
+for (const c of e.countries) assert.ok(c.politics.legitimacy > 0.2 && c.radicals < 0.5, `legitimidade ${c.politics.legitimacy.toFixed(2)}, radicais ${c.radicals.toFixed(2)}`);
 console.log(`ai ok (${cities0} → ${e.cities.length} cidades, ${e.divisions.filter((d) => d.kind === "army").length} divisões, ${e.wars.size} guerras)`);

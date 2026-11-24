@@ -97,6 +97,9 @@ export const RULES = {
   radicalLegitimacy: 0.3,   // legitimidade − isto × fração de radicais
   migrationMinQol: 5,       // diferença mínima de QV da classe baixa para alguém emigrar
   migrationMonth: 0.003,    // fração máxima da população rural que emigra por mês (com 50 pontos de diferença)
+  foreignShare: 0.25,       // fração da sobra que vai para parceiros comerciais por semana
+  foreignRange: 25,         // cidades a até esta distância de uma cidade do parceiro comerciam (portos: o dobro)
+  tariff: 0.1,              // quem importa cobra esta fração do valor importado
   portTradeBonus: 1.5,      // cidade em rio navegável exporta esta vezes mais
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
@@ -130,6 +133,7 @@ export type Country = {
   subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
+  exports: number; imports: number; tariffs: number; // comércio exterior na última semana (valor) e tarifas cobradas
 };
 
 function updateBonus(c: Country) {
@@ -155,6 +159,7 @@ export type Economy = {
   version: number; // muda a cada refresh ou ocupação: hora de redesenhar o mapa
   divisions: Division[]; nextDivision: number;
   wars: Set<string>;    // pares de países em guerra, "a-b" com a < b
+  pacts: Set<string>;   // pares com acordo comercial, mesmo formato
   occupier: Uint8Array; // país que ocupa o hex (0 = ninguém); hex ocupado não produz para o dono
 };
 
@@ -203,11 +208,11 @@ export function createEconomy(w: World): Economy {
     countries: w.countries.map(() => ({
       treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
       manpower: 0, gdpHistory: [],
-      research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, bonus: new Float64Array(NB), researchWeek: 0,
+      research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, exports: 0, imports: 0, tariffs: 0, bonus: new Float64Array(NB), researchWeek: 0,
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
-    divisions: [], nextDivision: 1, wars: new Set(), occupier: new Uint8Array(N),
+    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), occupier: new Uint8Array(N),
   };
   refresh(w, e);
   for (const i of e.owned) {
@@ -295,6 +300,56 @@ export function transferSize(w: World, e: Economy, from: number, to: number): st
  * a fração da lei de Economia (tradeShare) dela para quem tem falta, dividida pela falta de cada um. `trade[gi]` > 0 = importou.
  */
 // shortcut: instantâneo, sem custo por distância e só dentro do país; trocar quando entrarem rotas, nós e comércio exterior.
+export const pactKey = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`);
+export const hasPact = (e: Economy, a: number, b: number) => a !== b && e.pacts.has(pactKey(a, b));
+
+/** Acordo comercial: os dois países precisam estar em paz. Retorna erro ou null. */
+export function proposePact(e: Economy, a: number, b: number): string | null {
+  if (a === b || !a || !b) return "Escolha outro país";
+  if (e.wars.has(pactKey(a, b))) return "Não dá para comerciar com quem está em guerra com você";
+  if (hasPact(e, a, b)) return "Já existe acordo";
+  e.pacts.add(pactKey(a, b));
+  return null;
+}
+export const cancelPact = (e: Economy, a: number, b: number) => { e.pacts.delete(pactKey(a, b)); };
+
+/**
+ * Comércio exterior: em cada acordo, as cidades de fronteira (a até foreignRange de uma cidade do parceiro;
+ * portos o dobro) trocam sobra por falta, como o comércio interno, mas só foreignShare da sobra.
+ * O importador cobra tariff sobre o valor importado.
+ */
+// shortcut: distância em linha reta e todos os acordos iguais; trocar por rotas/nós e tarifas por lei quando houver.
+function foreignTrade(w: World, e: Economy) {
+  for (const c of e.countries) { c.exports = 0; c.imports = 0; c.tariffs = 0; }
+  for (const key of e.pacts) {
+    const [a, b] = key.split("-").map(Number);
+    const near = (city: City, other: number) => e.cities.some((k) => k.country === other &&
+      hexDistance(city.hex % w.W, (city.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W) <= RULES.foreignRange * (city.port || k.port ? 2 : 1));
+    const pool = e.cities.filter((k) => (k.country === a && near(k, b)) || (k.country === b && near(k, a)));
+    if (!pool.some((k) => k.country === a) || !pool.some((k) => k.country === b)) continue;
+    for (let gi = 1; gi < NG; gi++) {
+      const net = pool.map((k) => k.market.supply[gi] - k.market.used[gi] - k.market.pop * POP_DEMAND[gi]);
+      // cada país só exporta para o outro: sobra de um lado, falta do outro
+      for (const [from, to] of [[a, b], [b, a]]) {
+        let offer = 0, lack = 0;
+        pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * RULES.foreignShare * (k.port ? RULES.portTradeBonus : 1); if (k.country === to && net[i] < 0) lack -= net[i]; });
+        const moved = Math.min(offer, lack);
+        if (moved <= 0) continue;
+        const value = moved * BASE_PRICE[gi];
+        pool.forEach((k, i) => {
+          let d = 0;
+          if (k.country === from && net[i] > 0) d = -net[i] * RULES.foreignShare * (k.port ? RULES.portTradeBonus : 1) * (moved / offer);
+          if (k.country === to && net[i] < 0) d = -net[i] * (moved / lack);
+          k.market.supply[gi] += d; k.market.trade[gi] += d; net[i] += d;
+        });
+        e.countries[from - 1].exports += value;
+        e.countries[to - 1].imports += value;
+        e.countries[to - 1].tariffs += value * RULES.tariff;
+      }
+    }
+  }
+}
+
 function trade(e: Economy, need: (m: Market, gi: number) => number) {
   const byCountry = new Map<number, City[]>();
   for (const c of e.cities) {
@@ -441,6 +496,7 @@ export function tick(w: World, e: Economy) {
     }
   });
   trade(e, (m, gi) => m.pop * POP_DEMAND[gi]); // produtos prontos circulam
+  foreignTrade(w, e);
 
   const ARMS = g("Armas"); // exércitos compram armas no mercado da capital
   for (const d of e.divisions) if (d.kind === "army") e.cities.find((k) => k.country === d.country)!.market.demand[ARMS] += ARMS_PER_DIVISION;
@@ -464,7 +520,7 @@ export function tick(w: World, e: Economy) {
     c.tax = lawOf(c.politics, "Impostos").tax!;
     c.income = gdp * c.tax * (RULES.taxBaseEfficiency + c.politics.legitimacy); // governo legítimo arrecada mais
     c.interest = (c.debt * RULES.interestYear) / 52;
-    c.treasury += c.income - c.upkeep - c.interest;
+    c.treasury += c.income + c.tariffs - c.upkeep - c.interest;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
     else if (c.debt > 0) { const pay = Math.min(c.debt, c.treasury * 0.5); c.debt -= pay; c.treasury -= pay; }
     if (c.bankruptWeeks > 0) c.bankruptWeeks--;

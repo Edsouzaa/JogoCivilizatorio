@@ -131,7 +131,8 @@ export function updatePolitics(p: Politics, pops: Pops, countryEra: number) {
   const govPopular = p.government.reduce((s, g) => s + p.popular[g], 0);
   p.legitimacy = (govPolitical + govPopular) / 2;
   p.rival = -1;
-  for (let g = 0; g < NGROUPS; g++) if (g !== UNALIGNED && !p.government.includes(g) && p.popular[g] > govPopular && (p.rival < 0 || p.popular[g] > p.popular[p.rival])) p.rival = g;
+  // rival só existe no partido único: lá quem está fora não tem voz, então apoio popular maior vira instabilidade
+  if (single) for (let g = 0; g < NGROUPS; g++) if (g !== UNALIGNED && !p.government.includes(g) && p.popular[g] > govPopular && (p.rival < 0 || p.popular[g] > p.popular[p.rival])) p.rival = g;
   if (p.rival >= 0) p.legitimacy = Math.max(0, p.legitimacy - POLITICS_RULES.unstableLegitimacy);
 }
 

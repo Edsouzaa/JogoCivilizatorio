@@ -6,9 +6,9 @@ import { forNeighbors, hexDistance } from "./hex.ts";
 import { T, TERRAINS, across, riverAt, snowAt, type World } from "./world.ts";
 
 export const WAR = {
-  divisionSize: 100,   // soldados por divisão (saem do manpower)
-  recruitCost: 150,    // dinheiro para recrutar
-  upkeep: 1,           // dinheiro por semana por divisão
+  divisionSize: 25,    // soldados por divisão (saem do manpower); bando do tamanho das tribos do começo
+  recruitCost: 60,     // dinheiro para recrutar
+  upkeep: 0.3,         // dinheiro por semana por divisão
   reinforce: 5,        // soldados repostos por semana em território próprio
   orgRecovery: 0.1,    // organização recuperada por semana fora de combate
   casualties: 0.08,    // baixas por semana = poder inimigo × isto
@@ -36,6 +36,7 @@ export function declareWar(e: Economy, a: number, b: number): string | null {
   if (a === b) return "Não dá para declarar guerra a si mesmo";
   if (atWar(e, a, b)) return "Já estão em guerra";
   e.wars.add(key(a, b));
+  e.pacts.delete(key(a, b)); // guerra cancela o acordo comercial
   return null;
 }
 

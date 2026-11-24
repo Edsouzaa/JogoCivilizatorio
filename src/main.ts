@@ -1,6 +1,7 @@
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, CLIMATES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
+  proposePact, cancelPact, hasPact,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
@@ -213,6 +214,8 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "disband" && selectedDiv) { disband(world, eco, selectedDiv); selectedDiv = null; return updateUI(); }
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
+  if (d.pact && active) return act(proposePact(eco, active, Number(d.pact)));
+  if (d.unpact && active) { cancelPact(eco, active, Number(d.unpact)); return updateUI(); }
   if (d.act === "save") doSave();
   if (d.act === "load") fileInput.click();
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
@@ -256,7 +259,7 @@ function updateUI() {
 function headerHtml() {
   if (!active) return "<i>Clique num país para controlá-lo.</i>";
   const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics;
-  const net = c.income - c.upkeep - c.interest;
+  const net = c.income + c.tariffs - c.upkeep - c.interest;
   return `<h3 style="color:rgb(${meta.color})">${meta.name} <small style="color:#aaa">(você) · Era ${ERAS[c.research.era]}</small></h3>` +
     `<div class="stats">` +
     `<span title="População">👥 ${fmt(c.pop)}</span>` +
@@ -281,8 +284,10 @@ function economyHtml() {
   const c = eco.countries[active - 1];
   return `<canvas id="gdp" width="300" height="70" style="width:100%;background:#111"></canvas>` +
     `<table><tr><td>Impostos (${pct(c.tax)})</td><td class="down">+${fmt(c.income)}</td></tr>` +
+    `<tr><td>Tarifas (comércio exterior)</td><td class="down">+${fmt(c.tariffs)}</td></tr>` +
     `<tr><td>Manutenção</td><td class="up">−${fmt(c.upkeep)}</td></tr><tr><td>Juros</td><td class="up">−${fmt(c.interest)}</td></tr>` +
-    `<tr><td><b>Saldo por semana</b></td><td><b>${signed(c.income - c.upkeep - c.interest)}</b></td></tr></table>` +
+    `<tr><td><b>Saldo por semana</b></td><td><b>${signed(c.income + c.tariffs - c.upkeep - c.interest)}</b></td></tr></table>` +
+    pactsHtml() +
     warsHtml() +
     `<br><button data-act="settlers" title="Cria um grupo de colonos na capital">Treinar colonos (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>`;
 }
@@ -317,6 +322,13 @@ function divisionHtml() {
   }
   return `<div class="unit"><b>⚔ Divisão ${d.id}</b> · ${t}` +
     `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button></div>`;
+}
+
+function pactsHtml() {
+  const c = eco.countries[active - 1];
+  const partners = world.countries.map((_, k) => k + 1).filter((b) => hasPact(eco, active, b));
+  return `<div>Comércio exterior: exporta ${fmt(c.exports)} · importa ${fmt(c.imports)} por semana` +
+    (partners.length ? `<br>Acordos: ${partners.map((b) => `${world.countries[b - 1].name} <button data-unpact="${b}">✕</button>`).join(" ")}` : "<br><small>Sem acordos: clique num hex de outro país para propor.</small>") + "</div>";
 }
 
 function warsHtml() {
@@ -383,7 +395,10 @@ function hexHtml() {
   if (eco.urban[i]) h += " · <b>urbano</b>";
   if (world.owner[i] !== active || !active) {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
-    if (active && world.owner[i] && !atWar(eco, active, world.owner[i])) h += ` <button data-act="war">Declarar guerra</button>`;
+    if (active && world.owner[i] && !atWar(eco, active, world.owner[i])) {
+      h += hasPact(eco, active, world.owner[i]) ? ` <button data-unpact="${world.owner[i]}">Cancelar acordo</button>` : ` <button data-pact="${world.owner[i]}">Propor acordo comercial</button>`;
+      h += ` <button data-act="war">Declarar guerra</button>`;
+    }
     if (eco.occupier[i]) h += `<br>Ocupado por ${world.countries[eco.occupier[i] - 1].name}`;
     return h + (message ? `<br><span class="bad">${message}</span>` : "");
   }

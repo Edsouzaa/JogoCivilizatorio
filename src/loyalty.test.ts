@@ -16,7 +16,7 @@ assert.ok(p.loyalty[P["Camponeses"]] < POP_RULES.loyaltyStart && p.loyalty[P["Cl
 let radicals = 0;
 for (let k = 0; k < 200; k++) radicals = updateLoyalty(p, 0.5);
 assert.ok(Math.abs(radicals - 0.9) < 1e-9, `radicais ${radicals}`);
-assert.ok(averageLoyalty(p) < 30);
+assert.ok(averageLoyalty(p) < 35) // 90% radicais puxam a média para baixo;
 
 // migração: do país de QV baixa para o de QV alta, sem criar nem perder gente
 const w = generateWorld(300, 150, 1, 3), e = createEconomy(w);

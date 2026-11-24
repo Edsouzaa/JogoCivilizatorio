@@ -54,6 +54,7 @@ Ver docs/politica.md.
 - **Efeitos hoje:** acadêmicos aumentam a pesquisa. O peso político por classe já é calculado, para os grupos políticos.
 - **Lealdade (0 a 100), por tipo de POP:** anda 5% por semana em direção a um alvo: 50 + 2 × (QV − 25) + 40 × (legitimidade − 0,5). Abaixo de 30, o POP é **radical**.
 - **Radicais:** cada 10% de radicais tira 3% da produção e 3 pontos de legitimidade.
+- O alvo de lealdade é 50 + (QV − 25) + 40 × (legitimidade − 0,5). A penalidade de **rival** (grupo de fora com mais apoio popular que o governo) só vale no **partido único**.
 - **Migração entre países (mensal):** a população rural vai para as cidades do país onde a classe baixa tem a melhor QV, se a diferença passar de 5 pontos (até 0,3% por mês). A população total se conserva. Por enquanto vale qualquer distância.
 - A fazer: escravidão/servidão por lei, soldados vindos do exército, dependentes, migração só para vizinhos.
 
@@ -97,6 +98,13 @@ Todo país que não é o do jogador decide uma vez por mês:
 - O arquivo é JSON compactado com gzip (cerca de 1,3 MB no mapa de 1 milhão de hexes; salvar leva ~1,5 s e carregar ~0,3 s).
 - Ao carregar, o jogo confere se o arquivo é um save, a versão do formato e os tamanhos; se o save for de outro tamanho de mapa, avisa qual endereço abrir (`?w=…&h=…`).
 - A fazer: salvamento automático e lista de saves dentro do jogo.
+
+## Comércio exterior (acordos comerciais)
+
+- Dois países em paz fecham um **acordo comercial** (botão no hex do outro país; a IA propõe aos vizinhos às vezes). Guerra entre eles cancela o acordo.
+- No acordo, as **cidades de fronteira** (a até 25 hexes de uma cidade do parceiro; portos fluviais alcançam o dobro) trocam sobra por falta, como o comércio interno, mas só **25% da sobra por semana**.
+- Quem importa cobra **10% de tarifa** sobre o valor importado, que entra no tesouro (linha "Tarifas" na aba Economia).
+- A fazer: rotas e nós comerciais (mar e rios), tarifas por lei, embargos.
 
 ## O que fica fora da primeira versão jogável
 

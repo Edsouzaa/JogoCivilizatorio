@@ -111,8 +111,8 @@ export function distributeIncome(p: Pops, gdp: number, subsistenceValue: number,
 /** Peso político total por classe (base para os grupos políticos). */
 export const politicalWeight = (p: Pops) => CLASSES.map((_, c) => POP_TYPES.reduce((s, t, k) => s + (t.cls === c ? p.count[k] * t.weight : 0), 0));
 
-/** Alvo de lealdade (0–100): QV 25 e legitimidade 0,5 dão 50; cada ponto de QV vale 2, cada 10% de legitimidade vale 4. */
-export const loyaltyTarget = (qol: number, legitimacy: number) => Math.min(100, Math.max(0, 50 + (qol - 25) * 2 + (legitimacy - 0.5) * 40));
+/** Alvo de lealdade (0–100): QV 25 e legitimidade 0,5 dão 50; cada ponto de QV vale 1, cada 10% de legitimidade vale 4. */
+export const loyaltyTarget = (qol: number, legitimacy: number) => Math.min(100, Math.max(0, 50 + (qol - 25) + (legitimacy - 0.5) * 40));
 
 /** Anda a lealdade de cada tipo em direção ao alvo. Retorna a fração da população que é radical. */
 export function updateLoyalty(p: Pops, legitimacy: number) {
