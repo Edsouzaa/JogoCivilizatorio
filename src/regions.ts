@@ -3,6 +3,9 @@
 import { across, T, type World } from "./world.ts";
 import { hexCenter, SQRT3 } from "./hex.ts";
 
+/** Zonas menores que isto (lagos) não ganham nó no mapa. */
+export const MIN_NODE_HEXES = 20;
+
 export type SeaNodes = { hex: number[]; links: [number, number][] }; // hex[z] = hex do nó da zona z (−1 se não existe)
 
 /** Nó de cada zona: o hex da zona mais perto do centro dela (média circular nas colunas, o mapa dá a volta). */
@@ -31,7 +34,8 @@ export function seaNodes(w: World): SeaNodes {
     const d = dc * dc + (((i / W) | 0) - cr[z]) ** 2;
     if (d < best[z]) { best[z] = d; hex[z] = i; }
   }
-  return { hex, links: [...links].map((k) => [Math.floor(k / 65536), k % 65536] as [number, number]) };
+  for (let z = 1; z <= Z; z++) if (n[z] < MIN_NODE_HEXES) hex[z] = -1; // lago pequeno: sem nó
+  return { hex, links: [...links].map((k) => [Math.floor(k / 65536), k % 65536] as [number, number]).filter(([a, b]) => hex[a] >= 0 && hex[b] >= 0) };
 }
 
 // cantos do hex pointy-top de raio 1; a borda k vai do canto k ao k+1 (ver `across` em world.ts)

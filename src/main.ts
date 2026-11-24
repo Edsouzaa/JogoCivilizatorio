@@ -819,7 +819,8 @@ function highlight() {
   if (selected < 0) return null;
   if (world.seaZone[selected] && world.terrain[selected] === T.OCEAN) {
     const z = world.seaZone[selected], hexes = zoneHexes(world, z);
-    const [lx, ly] = hexCenter(nodesOf().hex[z] % W, (nodesOf().hex[z] / W) | 0);
+    const nh = nodesOf().hex[z] >= 0 ? nodesOf().hex[z] : selected; // lago sem nó: escreve onde clicou
+    const [lx, ly] = hexCenter(nh % W, (nh / W) | 0);
     hl = { key, segs: outline(world, hexes, (j) => world.seaZone[j] === z && world.terrain[j] === T.OCEAN), label: `Zona marítima ${z}`, lx, ly, zone: z };
   } else {
     const st = eco.market[selected] ? eco.cities[eco.market[selected] - 1].state : undefined;

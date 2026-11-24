@@ -226,9 +226,9 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
   // Países: uma capital em terra fértil, com território de raio START_RADIUS. O resto do mundo começa livre.
   const owner = new Uint16Array(N), countries: World["countries"] = [];
   const w: World = { W, H, seed, terrain, resource, resource2, reserve, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
+  generateRivers(w, elev, hills, rand);
   generateSeaZones(w);
   generateContinents(w);
-  generateRivers(w, elev, hills, rand);
   for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água
   const target = Math.min(nCountries ?? Math.max(4, Math.round(landCount / 10000)), 65535); // 1 tribo a cada 10.000 hexes de terra
   for (let tries = 0; countries.length < target && tries < 2000000; tries++) {
@@ -334,6 +334,8 @@ function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () 
     let h = src, k = 0; // começa no canto de cima do hex de origem
     const path: [number, number][] = []; // bordas do caminho (hex, k)
     const seen = new Set<number>([key(h, k)]);
+    const edgesOn = new Map<number, number>(); // bordas do caminho por hex (3+ = rio dando voltas num hex)
+    const useEdge = (x: number) => (edgesOn.get(x) ?? 0) < 2;
     let reachedSea = false;
     for (let step = 0; step < 300; step++) {
       if (touchesSea(h, k)) { reachedSea = true; break; }
@@ -344,17 +346,26 @@ function generateRivers(w: World, elev: Float32Array, minElev: number, rand: () 
       let best: [number, number, number, number] | null = null, bestE = Infinity;
       for (const m of moves) {
         if (seen.has(key(m[0], m[1]))) continue;
+        const other = across(W, H, m[2], m[3]);
+        if (!useEdge(m[2]) || (other >= 0 && !useEdge(other))) continue; // evita espiral
         const ce = cornerElev(m[0], m[1]);
         if (ce < bestE) { bestE = ce; best = m; }
       }
-      if (!best || bestE > cornerElev(h, k) + 0.004) break; // bacia: vira lago e para
+      if (!best || bestE > cornerElev(h, k) + 0.0015) break; // pouca subida tolerada (planícies); mais que isso: bacia, vira lago
       path.push([best[2], best[3]]);
+      for (const x of [best[2], across(W, H, best[2], best[3])]) if (x >= 0) edgesOn.set(x, (edgesOn.get(x) ?? 0) + 1);
       const kk = key(best[0], best[1]);
       seen.add(kk);
       h = best[0]; k = best[1];
       if (riverCorner.has(kk)) { reachedSea = true; break; } // juntou com outro rio
     }
     if (path.length < 4) continue; // filete: descarta
+    if (!reachedSea && path.length >= 8 && rand() < 0.25) { // terminou numa bacia: lago (vira água; os mares fechados viram zona própria)
+      for (const x of hexesInRadius(h, 1, W, H)) if (isLand(terrain[x])) { // lago de ~7 hexes em volta do fim
+        terrain[x] = T.OCEAN; w.pop[x] = 0; w.resource[x] = 0; w.resource2[x] = 0; w.reserve[x] = Infinity; w.landCount--;
+      }
+      reachedSea = true; // o rio deságua no lago: o trecho de baixo pode ser navegável
+    }
     // rio comprido que chega ao mar ou a outro rio: o trecho de baixo é navegável
     path.forEach(([ph, pk], idx) => mark(ph, pk, reachedSea && path.length >= 14 && idx >= path.length * 0.4));
     for (const [ph, pk] of path) { riverCorner.add(key(ph, pk)); riverCorner.add(key(ph, (pk + 1) % 6)); }

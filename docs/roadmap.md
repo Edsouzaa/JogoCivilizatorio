@@ -45,6 +45,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Portos por cidade (no mar ou rio navegável), nível máximo 1 + era/2 (até 5), custo 120 × nível: +25% de comércio por nível e alcance do comércio exterior dobrado.
 
+- Rios: não contornam mais o mesmo hex (espirais caíram ~45%) e toleram menos subida; parte dos que terminam numa bacia vira um lago de ~7 hexes (água, com zona marítima própria; lago pequeno não ganha nó no mapa).
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -55,7 +57,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 3. **Infraestrutura**
    - Ferrovias (gastam carvão e locomotivas).
 4. **Rios**
-   - Sem espirais e com mais lagos.
    - Rios navegáveis largos, ligados a um nó de mar, com nome (votação no multiplayer).
    - Cidades e portos na margem.
    - Disputa de navegação.
