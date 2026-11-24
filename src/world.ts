@@ -1,4 +1,5 @@
 import { hexesInRadius, forNeighbors } from "./hex.ts";
+import { makeName, languageAt } from "./names.ts";
 
 export const TERRAINS = [
   { name: "Oceano", color: [28, 52, 96], fertility: 0 },
@@ -63,7 +64,9 @@ export type World = {
   river: Uint8Array;     // bits 0–5: rio na borda k do hex (ver `across`)
   navigable: Uint8Array; // bits 0–5: trecho navegável (futuro: navios)
   seaZone: Uint16Array;  // zona marítima do hex de oceano (1..n); 0 = terra/gelo
-  countries: { name: string; color: [number, number, number]; capital: number; flag?: Flag }[];
+  countries: { name: string; color: [number, number, number]; capital: number; flag?: Flag; lang?: number }[];
+  continent?: Uint8Array;                        // continente de cada hex de terra (0 = ilha pequena / mar)
+  continents?: { name: string; hex: number }[];  // índice = id − 1; hex = onde escrever o nome
   landCount: number;
 };
 
@@ -128,6 +131,23 @@ export function deepOcean(w: World) {
   for (let i = 0; i < N; i++) d[i] = dist[i] === 255 ? 1 : 0;
   deepCache.set(w, d);
   return d;
+}
+
+/** Continentes: terras ligadas com pelo menos CONTINENT_MIN hexes, cada uma com nome. */
+export const CONTINENT_MIN = 800;
+export function generateContinents(w: World) {
+  const { W, H } = w, N = W * H, id = new Uint8Array(N), seen = new Uint8Array(N);
+  w.continents = [];
+  for (let s = 0; s < N; s++) {
+    if (seen[s] || !isLand(w.terrain[s])) continue;
+    const part = [s]; seen[s] = 1;
+    for (let q = 0; q < part.length; q++) forNeighbors(part[q] % W, (part[q] / W) | 0, W, H, (j) => { if (!seen[j] && isLand(w.terrain[j])) { seen[j] = 1; part.push(j); } });
+    if (part.length < CONTINENT_MIN || w.continents.length >= 255) continue;
+    const k = w.continents.length + 1;
+    for (const j of part) id[j] = k;
+    w.continents.push({ name: makeName(languageAt(s % W, (s / W) | 0, W, H, w.seed) + 3, w.seed * 13 + k), hex: part[part.length >> 1] });
+  }
+  w.continent = id;
 }
 
 /** A jazida do hex acabou: vira o recurso comum do terreno. */
@@ -198,6 +218,7 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
   const owner = new Uint16Array(N), countries: World["countries"] = [];
   const w: World = { W, H, seed, terrain, resource, resource2, reserve, owner, pop, climate, countries, landCount, river: new Uint8Array(N), navigable: new Uint8Array(N), seaZone: new Uint16Array(N) };
   generateSeaZones(w);
+  generateContinents(w);
   generateRivers(w, elev, hills, rand);
   for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água
   const target = Math.min(nCountries ?? Math.max(4, Math.round(landCount / 10000)), 65535); // 1 tribo a cada 10.000 hexes de terra
@@ -207,7 +228,8 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
     const area = hexesInRadius(i, START_RADIUS + 4, W, H);
     if (area.some((j) => owner[j])) continue; // longe de outros países
     const id = countries.length + 1;
-    countries.push({ name: `País ${id}`, capital: i, color: [60 + rand() * 180, 60 + rand() * 180, 60 + rand() * 180].map(Math.round) as [number, number, number] });
+    const lang = languageAt(i % W, (i / W) | 0, W, H, seed);
+    countries.push({ name: makeName(lang, seed * 31 + id), lang, capital: i, color: [60 + rand() * 180, 60 + rand() * 180, 60 + rand() * 180].map(Math.round) as [number, number, number] });
     claim(w, id, i, START_RADIUS); // já agora, para o próximo país enxergar que aqui tem dono
   }
   return w;

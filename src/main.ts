@@ -1,7 +1,7 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, type World } from "./world.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
-  proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost,
+  proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available } from "./tech.ts";
@@ -301,7 +301,7 @@ const cityFlag = (k: number) => eco.cities[k].flag ?? flagOf(eco.cities[k].count
 const stateFlag = (id: number) => { const s = eco.states.find((x) => x.id === id)!; return s.flag ?? flagOf(s.country); };
 /** Fundar cidade: pede nome e bandeira antes (a bandeira começa sendo a do país). */
 function askFound(unit: number) {
-  openNamer("🏙 Nova cidade", `Cidade ${eco.cities.length + 1}`, flagOf(active), () => cmd({ t: "found", unit, name: idIn("name").value, flag: idFlag() }));
+  openNamer("🏙 Nova cidade", cityName(world, eco, active), flagOf(active), () => cmd({ t: "found", unit, name: idIn("name").value, flag: idFlag() }));
 }
 idBox.addEventListener("input", idPreview);
 idBox.addEventListener("keydown", (ev) => { if (ev.key === "Enter") idIn("ok").click(); if (ev.key === "Escape") idIn("cancel").click(); });
@@ -418,6 +418,11 @@ document.addEventListener("pointerdown", (e) => {
   if (d.build) return doBuild(Number(d.build));
   if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
   if (d.act === "found" && selectedDiv) return askFound(selectedDiv);
+  if (d.continent) {
+    const name = prompt("Nome do continente", world.continents![+d.continent - 1].name);
+    if (name) cmd({ t: "continent", id: +d.continent, name });
+    return;
+  }
   if (d.urbanize) return cmd({ t: "urbanize", city: Number(d.urbanize), hex: selected });
   if (d.groupKind) { group = eco.divisions.filter((x) => group.includes(x.id) && x.kind === d.groupKind).map((x) => x.id); selectedDiv = group[0] ?? null; return updateUI(); }
   if (d.act === "identity" && active) return openIdentity();
@@ -672,6 +677,8 @@ function hexHtml() {
   let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]}${world.resource2[i] ? ` + ${RESOURCES[world.resource2[i]]}` : ""} · pop ${fmt(world.pop[i])}`;
   if (world.reserve[i] !== Infinity) h += ` · jazida para ~${Math.round(world.reserve[i] / 52)} anos (com 1 nível)`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
+  const ct = world.continent?.[i];
+  if (ct) h += ` · continente <b>${world.continents![ct - 1].name}</b> <button data-continent="${ct}" title="Renomear continente">✏</button>`;
   h += ` · cabem ${fmt(popCap(world, eco, i))}` + (world.owner[i] ? ` · controle ${pct(eco.control[i])}` : "");
   if (active && world.owner[i] === active && !eco.urban[i] && isLand(world.terrain[i])) { // comprar como centro urbano da cidade vizinha
     const k = eco.cities.findIndex((cc) => cc.country === active && cc.urban.some((u) => hexDistance(u % W, (u / W) | 0, i % W, (i / W) | 0, W) === 1));
@@ -818,6 +825,13 @@ function drawSecondResources() {
 }
 function drawRegions() {
   drawSecondResources();
+  if (!world.continents) generateContinents(world); // save de antes dos continentes
+  if (cam.zoom < 2.5) for (const k of world.continents!) { // nomes dos continentes, de longe
+    const [x, y] = worldToScreen(...hexCenter(k.hex % W, (k.hex / W) | 0));
+    units.font = "italic bold 18px serif"; units.textAlign = "center"; units.textBaseline = "middle";
+    units.strokeStyle = "#0009"; units.lineWidth = 4; units.strokeText(k.name.toUpperCase(), x, y);
+    units.fillStyle = "#f4ecd0"; units.fillText(k.name.toUpperCase(), x, y);
+  }
   const n = nodesOf(), h = highlight();
   if (h) { // borda brilhando: traço largo translúcido + traço fino
     for (const [width, color] of [[7, "#ffd76a55"], [2, "#ffe9a0"]] as const) {

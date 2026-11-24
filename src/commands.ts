@@ -34,6 +34,7 @@ export type Cmd =
   | { t: "stateTax"; state: number; law: string | null }
   | { t: "identity"; name: string; color: [number, number, number]; flag: Flag } // nome, cor e bandeira do país
   | { t: "rename"; kind: "city" | "state"; id: number; name: string; flag?: Flag }
+  | { t: "continent"; id: number; name: string } // renomear continente
   | { t: "claim" }   // jogador assume o país (sai da IA)
   | { t: "release" }; // jogador sai: o país volta para a IA
 
@@ -103,6 +104,12 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       if (!target) return "Não é seu";
       target.name = name;
       if (validFlag(c.flag)) target.flag = { ...c.flag, colors: [...c.flag.colors] };
+      return null;
+    }
+    case "continent": {
+      const name = cleanName(c.name), k = w.continents?.[c.id - 1];
+      if (!name || !k) return "Continente inválido";
+      k.name = name;
       return null;
     }
     case "claim": if (!e.humans.includes(country)) e.humans.push(country); return null;

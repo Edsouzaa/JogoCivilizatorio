@@ -30,6 +30,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Oceano profundo (mar a mais de 4 hexes da terra): sem Navegação, frota e exército embarcado não entram. Aparece ao passar o mouse.
 
+- Nomes gerados por 10 "línguas" (latina, germânica, eslava, árabe, sínica, banto, náuatle, tupi, nórdica, persa), por região do mapa: tribos e cidades nascem com nome. Continentes (terras com 800+ hexes) têm nome no mapa de longe e se renomeiam no ✏.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -69,7 +71,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
     - Esferas de influência e prestígio.
 13. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
-14. **Continentes com nome**: no solo o jogador altera; no multiplayer há votação.
+14. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
 15. **Personagens**
     - Ficha, atributos e retrato gerado.
     - Comandantes e generais.

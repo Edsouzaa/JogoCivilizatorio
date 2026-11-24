@@ -5,6 +5,7 @@ import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClass
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 import type { Flag } from "./flags.ts";
+import { makeName } from "./names.ts";
 import { updateControl, CONTROL } from "./control.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
@@ -247,7 +248,7 @@ export function createEconomy(w: World): Economy {
       manpower: 0, gdpHistory: [],
       research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, exports: 0, imports: 0, tariffs: 0, infamy: 0, bonus: new Float64Array(NB), researchWeek: 0,
     })),
-    cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
+    cities: w.countries.map((c, k) => ({ name: c.lang === undefined ? `Capital ${k + 1}` : makeName(c.lang, w.seed * 53 + k), country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
     divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), states: [], nextState: 1, humans: [], aiWarStart: {}, occupier: new Uint16Array(N), exhausted: [], control: new Float32Array(N),
   };
@@ -335,7 +336,7 @@ export function foundCity(w: World, e: Economy, unit: number, later = false): st
   e.divisions = e.divisions.filter((d) => d !== s);
   if (!w.owner[i]) w.owner[i] = country;
   claim(w, country, i, RULES.settleClaimRadius);
-  e.cities.push({ name: `Cidade ${e.cities.length + 1}`, country, hex: i, size: 1, urban: [], market: newMarket(), port: false });
+  e.cities.push({ name: cityName(w, e, country), country, hex: i, size: 1, urban: [], market: newMarket(), port: false });
   if (!later) refresh(w, e);
   return null;
 }
@@ -516,6 +517,12 @@ export function contactsOf(w: World, e: Economy) {
   for (const k of e.pacts) { const [a, b] = k.split("-").map(Number); sets[a - 1].add(b); sets[b - 1].add(a); }
   return sets.map((s) => [...s].sort((x, y) => x - y));
 }
+
+/** Nome para a próxima cidade do país, na língua dele. */
+export const cityName = (w: World, e: Economy, country: number) => {
+  const lang = w.countries[country - 1].lang;
+  return lang === undefined ? `Cidade ${e.cities.length + 1}` : makeName(lang, w.seed * 53 + e.cities.length * 7 + country);
+};
 
 /** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
 export function tick(w: World, e: Economy) {
