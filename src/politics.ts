@@ -182,11 +182,11 @@ export function proposeLaw(p: Politics, category: string, name: string, countryE
  * Uma semana de votação. Política barra no parlamento (apoio ≤ 0 = travada); o povo barra nas ruas
  * (protesto = metade da velocidade; revolta na fase de disputa = perde legitimidade). `rand` sorteia os eventos de fase.
  */
-export function advanceLaw(p: Politics, rand: () => number = Math.random): string | null {
+export function advanceLaw(p: Politics, rand: () => number = Math.random, popularBonus = 0): string | null {
   if (!p.enacting) return null;
   const law = LAWS[p.enacting.category].find((l) => l.name === p.enacting!.law)!;
   p.support = lawSupport(p, law);
-  p.popularSupport = lawSupport(p, law, true);
+  p.popularSupport = lawSupport(p, law, true) + popularBonus; // incentivo "Impor ideias"
   if (p.support <= 0) return null; // travada no parlamento até o apoio mudar
   const before = lawPhase(p.enacting.progress);
   if (p.popularSupport < POLITICS_RULES.revoltSupport && before === 1) p.legitimacy = Math.max(0, p.legitimacy - POLITICS_RULES.revoltLegitimacy);

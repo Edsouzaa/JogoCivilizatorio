@@ -6,6 +6,7 @@ import {
 import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disband } from "./war.ts";
 import { proposeLaw, cancelLaw } from "./politics.ts";
 import { validFlag, type Flag } from "./flags.ts";
+import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
 import { available } from "./tech.ts";
 import type { World } from "./world.ts";
@@ -35,6 +36,7 @@ export type Cmd =
   | { t: "identity"; name: string; color: [number, number, number]; flag: Flag } // nome, cor e bandeira do país
   | { t: "rename"; kind: "city" | "state"; id: number; name: string; flag?: Flag }
   | { t: "continent"; id: number; name: string } // renomear continente
+  | { t: "incentive"; cities: number[]; kind: IncentiveKind; off?: boolean } // liga/desliga incentivo
   | { t: "claim" }   // jogador assume o país (sai da IA)
   | { t: "release" }; // jogador sai: o país volta para a IA
 
@@ -105,6 +107,11 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       target.name = name;
       if (validFlag(c.flag)) target.flag = { ...c.flag, colors: [...c.flag.colors] };
       return null;
+    }
+    case "incentive": {
+      if (!Array.isArray(c.cities) || !c.cities.every((k) => ownCity(k)) || !(c.kind in INCENTIVES)) return "Incentivo inválido";
+      if (c.off) { for (const k of c.cities) removeIncentive(e, country, k, c.kind); return null; }
+      return addIncentive(e, country, c.cities, c.kind);
     }
     case "continent": {
       const name = cleanName(c.name), k = w.continents?.[c.id - 1];

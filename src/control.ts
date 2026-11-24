@@ -4,6 +4,8 @@
 import { hexDistance } from "./hex.ts";
 import type { World } from "./world.ts";
 import type { Economy } from "./economy.ts";
+import { hasIncentive } from "./admin.ts";
+const INTEGRATION = 0.25; // incentivo "Integração": + controle máximo
 
 export const CONTROL = {
   rangeBase: 6,      // a até tantos hexes da sede o controle máximo ainda é > 0 (mais por era)...
@@ -36,7 +38,8 @@ export function updateControl(w: World, e: Economy, start = false) {
   for (const i of e.owned) {
     const c = w.owner[i];
     if (!cache.has(c)) cache.set(c, seats(w, e, c));
-    const max = e.occupier[i] ? 0 : maxControl(w, e, i, cache.get(c)!);
+    const integ = e.market[i] && hasIncentive(e, e.market[i] - 1, "Integração") ? INTEGRATION : 0;
+    const max = e.occupier[i] ? 0 : Math.min(1, maxControl(w, e, i, cache.get(c)!) + integ);
     e.control[i] = start ? max : e.control[i] > max ? max : Math.min(max, e.control[i] + CONTROL.risePerMonth);
   }
 }

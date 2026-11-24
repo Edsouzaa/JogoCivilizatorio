@@ -45,7 +45,7 @@ export const TECHS: Tech[] = [
   { name: "Armas de bronze", era: 1, cost: 0, requires: ["Metalurgia do bronze"], unlocks: ["Armeiro"] },
   { name: "Trabalho do ferro", era: 1, cost: 0, requires: ["Metalurgia do bronze"], unlocks: ["Ferraria"], bonus: [["Mina", 0.25]] },
   { name: "Estradas", era: 1, cost: 0, requires: [], unlocks: ["Trilhas de transporte"], bonus: [["Serraria", 0.25]] },
-  { name: "Escrita", era: 1, cost: 0, requires: [], research: 0.25 },
+  { name: "Escrita", era: 1, cost: 0, requires: [], research: 0.25, unlocks: ["Oficina de papel", "Centro administrativo"] },
   { name: "Galés", era: 1, cost: 0, requires: ["Metalurgia do bronze"], trade: 0.05 }, // libera frotas (war.ts NAVY.tech)
   // Medieval
   { name: "Feudalismo", era: 2, cost: 0, requires: [], bonus: [["Fazenda", 0.2]], manpower: 0.05 },

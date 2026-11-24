@@ -48,13 +48,13 @@ export const POP_RULES = {
   radicalBelow: 30,      // lealdade abaixo disto = radical
 };
 
-type Kind = "farm" | "hunt" | "labor" | "industry";
+type Kind = "farm" | "hunt" | "labor" | "industry" | "admin";
 const KIND: Record<string, Kind> = {
   "Fazenda": "farm", "Irrigação": "farm", "Pasto": "farm", "Estábulo": "farm",
   "Acampamento de caça": "hunt",
   "Serraria": "labor", "Trilhas de transporte": "labor", "Mina": "labor", "Galerias escoradas": "labor", "Barreiro": "labor", "Poço": "labor",
   "Fundição de bronze": "industry", "Tecelagem": "industry", "Ferraria": "industry", "Armeiro": "industry",
-  "Siderúrgica": "industry", "Fábrica têxtil": "industry", "Arsenal": "industry",
+  "Siderúrgica": "industry", "Fábrica têxtil": "industry", "Arsenal": "industry", "Oficina de papel": "industry", "Centro administrativo": "admin",
 };
 
 /** Dono das construções na era: chefes tribais → aristocratas → capitalistas (indústria). */
@@ -69,6 +69,7 @@ export function jobsFor(building: string, e: number): [number, number][] {
   const tribal = e < CLASSICAL;
   if (kind === "hunt") return [[P[tribal ? "Caçadores-coletores" : "Trabalhadores"], 0.95], owner];
   if (kind === "farm") return tribal ? [[P["Camponeses"], 0.95], owner] : [[P["Fazendeiros"], 0.45], [P["Camponeses"], 0.5], owner];
+  if (kind === "admin" && !tribal) return [[P["Burocratas"], 0.55], [P["Escriturários"], 0.4], [P["Aristocratas"], 0.05]]; // o Estado é o dono
   if (kind === "labor") return [[P[tribal ? "Camponeses" : "Trabalhadores"], 0.95], owner];
   if (tribal) return [[P["Camponeses"], 0.95], owner];
   if (e >= REVOLUTIONS) return [[P["Operários especializados"], 0.6], [P["Trabalhadores"], 0.2], [P["Engenheiros"], 0.05], [P["Comerciantes"], 0.1], owner];

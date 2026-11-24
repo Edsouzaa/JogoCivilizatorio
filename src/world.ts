@@ -135,6 +135,15 @@ export function deepOcean(w: World) {
 
 /** Continentes: terras ligadas com pelo menos CONTINENT_MIN hexes, cada uma com nome. */
 export const CONTINENT_MIN = 800;
+/** Hex da lista mais perto do centro dela (média circular nas colunas: o mapa dá a volta). */
+function centerOf(part: number[], W: number) {
+  let sx = 0, sy = 0, sr = 0;
+  for (const i of part) { const a = (2 * Math.PI * (i % W)) / W; sx += Math.cos(a); sy += Math.sin(a); sr += (i / W) | 0; }
+  const cc = ((Math.atan2(sy, sx) / (2 * Math.PI)) * W + W) % W, cr = sr / part.length;
+  let best = part[0], bd = Infinity;
+  for (const i of part) { let dc = Math.abs((i % W) - cc); dc = Math.min(dc, W - dc); const d = dc * dc + (((i / W) | 0) - cr) ** 2; if (d < bd) { bd = d; best = i; } }
+  return best;
+}
 export function generateContinents(w: World) {
   const { W, H } = w, N = W * H, id = new Uint8Array(N), seen = new Uint8Array(N);
   w.continents = [];
@@ -145,7 +154,7 @@ export function generateContinents(w: World) {
     if (part.length < CONTINENT_MIN || w.continents.length >= 255) continue;
     const k = w.continents.length + 1;
     for (const j of part) id[j] = k;
-    w.continents.push({ name: makeName(languageAt(s % W, (s / W) | 0, W, H, w.seed) + 3, w.seed * 13 + k), hex: part[part.length >> 1] });
+    w.continents.push({ name: makeName(languageAt(s % W, (s / W) | 0, W, H, w.seed) + 3, w.seed * 13 + k), hex: centerOf(part, W) });
   }
   w.continent = id;
 }

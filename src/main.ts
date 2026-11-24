@@ -8,6 +8,7 @@ import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
+import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, warSupport, WAR, NAVY, AIR } from "./war.ts";
@@ -424,6 +425,10 @@ document.addEventListener("pointerdown", (e) => {
     if (name) cmd({ t: "continent", id: +d.continent, name });
     return;
   }
+  if (d.incentive) {
+    const [kind, ks, mode] = d.incentive.split("|");
+    return cmd({ t: "incentive", kind: kind as IncentiveKind, cities: ks.split(",").map(Number), off: mode === "off" });
+  }
   if (d.urbanize) return cmd({ t: "urbanize", city: Number(d.urbanize), hex: selected });
   if (d.groupKind) { group = eco.divisions.filter((x) => group.includes(x.id) && x.kind === d.groupKind).map((x) => x.id); selectedDiv = group[0] ?? null; return updateUI(); }
   if (d.act === "identity" && active) return openIdentity();
@@ -512,6 +517,7 @@ function headerHtml() {
     `<div class="stats">` +
     `<span title="População">👥 ${fmt(c.pop)}</span>` +
     `<span title="PIB anual">📈 ${fmt(c.gdpWeek * 52)}</span>` +
+    `<span title="Pontos administrativos (centros administrativos + papel): pagam os incentivos">📜 ${Math.floor(c.admin ?? 0)}/${adminCap(eco, active)} <small>${signed(c.adminWeek ?? 0)}</small></span> ` +
     `<span title="Controle médio do território (pela população): imposto, produção e recrutas">🏛 ${pct(c.control ?? 1)}</span> ` +
     `<span title="Tesouro e saldo por semana">💰 ${fmt(c.treasury)} <small class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}/sem</small></span>` +
     `<span title="Dívida">🏦 <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span></span>` +
@@ -739,6 +745,14 @@ function hexHtml() {
     if (lock && !st) h += `<br><small>🗺 ${lock}</small>`;
   }
   if (city) { const k = eco.cities.indexOf(city); if (eco.famine?.[k]) h += `<br><span class="bad">🍞 Fome em ${city.name}</span>`; if ((eco.plague?.[k] ?? 0) > 0) h += `<br><span class="bad">☠ Peste em ${city.name} (${eco.plague![k]} semanas)</span>`; }
+  if (city && city.country === active) {
+    const k = eco.cities.indexOf(city), stateCities = city.state !== undefined ? eco.cities.map((x, j) => (x.state === city.state ? j : -1)).filter((j) => j >= 0) : [];
+    h += "<br><b>📜 Incentivos</b> " + (Object.keys(INCENTIVES) as IncentiveKind[]).map((kind) => {
+      const on = hasIncentive(eco, k, kind), def = INCENTIVES[kind];
+      return `<br><button data-incentive="${kind}|${k}|${on ? "off" : "on"}" title="${def.desc}" class="${on ? "on" : ""}">${on ? "✓ " : ""}${kind}</button> <small>${def.cost} + ${def.upkeep}/sem</small>` +
+        (!on && stateCities.length > 1 ? ` <button data-incentive="${kind}|${stateCities.join(",")}|on" title="Em todas as cidades do estado">no estado (${def.cost * stateCities.length})</button>` : "");
+    }).join("");
+  }
   if (city?.blockaded) h += `<br><span class="bad">⚓ ${city.name} bloqueada por frota inimiga: sem comércio exterior</span>`;
   if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {

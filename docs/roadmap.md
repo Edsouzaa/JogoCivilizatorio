@@ -38,53 +38,53 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Leis em 3 fases (Proposta, Disputa, Aprovação). O Poder Político barra no parlamento (apoio ≤ 0 trava); o Poder Popular barra nas ruas: protestos (apoio < −20%) cortam a velocidade pela metade e revolta (< −40%) na fase de disputa tira legitimidade toda semana. Na troca de fase pode sair um evento (discurso, escândalo, concessões...), avisado nas notificações.
 
+- Pontos administrativos: bem novo Papel (Oficina de papel: madeira → papel) e Centro administrativo (queima papel, gera 2 pontos/nível; empregos de Burocratas e Escriturários), liberados pela Escrita. Estoque com teto 100 × (era + 1). 📜 no painel do país.
+- Incentivos por cidade ou estado inteiro, pagos com pontos (criação + manutenção semanal; sem pontos, todos caem): Isenção fiscal (sem imposto, +15% produção), Alívio emergencial (ninguém morre de fome), Integração (+25% controle máximo), Impor ideias (+10% de apoio popular à lei em votação, até +30%). Save passa para a versão 5 (saves antigos não abrem: mudou a lista de bens).
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
-2. **Controle (resto)**
-   - Pontos administrativos gerados por centros administrativos, que consomem papel.
-3. **Mercados**
+2. **Mercados**
    - Mercado nacional como soma dos metropolitanos.
    - Cada hex compra da cidade mais barata, não só da mais próxima.
    - Centros comerciais e mercado mundial (Vic3 1.9) no lugar do comércio por pactos.
-4. **Infraestrutura**
+3. **Infraestrutura**
    - Estradas em níveis (−10% no custo terrestre por nível).
    - Ferrovias (gastam carvão e locomotivas).
    - Portos com nível limitado pela era.
-5. **Rios**
+4. **Rios**
    - Sem espirais e com mais lagos.
    - Rios navegáveis largos, ligados a um nó de mar, com nome (votação no multiplayer).
    - Cidades e portos na margem.
    - Disputa de navegação.
-6. **Guerra**
+5. **Guerra**
     - Hexes ocupados listrados na cor do ocupante.
     - Exploração por unidades terrestres e aéreas.
-7. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
-8. **População**
+6. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
+7. **População**
     - Cultura, língua e religião por POP, independentes entre si.
     - Assimilação e conversão.
-9. **Eventos**
+8. **Eventos**
     - Eventos aleatórios com escolha (pausa todos, 2 min).
-10. **Leis**
-    - Incentivos por estado ou cidade, pagos com pontos administrativos.
-11. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
-12. **Diplomacia**
+9. **Leis**
+10. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
+11. **Diplomacia**
     - Relação, confiança e influência.
     - Tratados com manutenção em pontos administrativos.
     - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
     - Esferas de influência e prestígio.
-13. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
-14. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
-15. **Personagens**
+12. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
+13. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
+14. **Personagens**
     - Ficha, atributos e retrato gerado.
     - Comandantes e generais.
     - Livro de história exportável em PDF.
-16. **Militar completo**
+15. **Militar completo**
     - Categorias de unidade por era e comandantes por domínio.
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
-17. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
-18. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
+16. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
+17. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
 
 ## Fora por enquanto
 

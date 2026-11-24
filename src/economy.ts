@@ -7,9 +7,10 @@ import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 import type { Flag } from "./flags.ts";
 import { makeName } from "./names.ts";
 import { updateControl, CONTROL } from "./control.ts";
+import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
-export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas"];
+export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas", "Papel"];
 const g = (n: string) => { const k = GOODS.indexOf(n); if (k < 0) throw new Error(`bem desconhecido: ${n}`); return k; };
 const NG = GOODS.length;
 
@@ -17,7 +18,7 @@ const BASE: Record<string, number> = {
   "Grãos": 10, "Frutas e vegetais": 10, "Carne e caça": 14, "Peles": 18, "Madeira": 12, "Pedra": 10, "Fibras": 12,
   "Argila": 8, "Sal": 15, "Cobre": 30, "Estanho": 35, "Ferro": 30, "Ouro": 120, "Prata": 80, "Pedras preciosas": 150,
   "Especiarias": 60, "Cavalos": 50, "Gado": 30, "Carvão mineral": 20, "Enxofre": 25, "Petróleo": 40,
-  "Bronze": 60, "Tecidos": 35, "Ferramentas": 55, "Armas": 90,
+  "Bronze": 60, "Tecidos": 35, "Ferramentas": 55, "Armas": 90, "Papel": 30,
 };
 export const BASE_PRICE = GOODS.map((n) => BASE[n] ?? 0);
 
@@ -34,7 +35,7 @@ type Building = {
   name: string; workers: number;
   for: number[];                 // recursos do hex onde pode ser construída (vazio = qualquer, se industrial)
   boosts?: number; mult?: number; // melhoria: multiplica a extratora `boosts`
-  industry?: { inputs: [number, number][]; outputs: [number, number][] }; // só em hex urbano
+  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number }; // só em hex urbano; admin = pontos administrativos por nível
 };
 /**
  * Construções. Extratora: produz o recurso do hex. Melhoria: multiplica uma extratora.
@@ -60,6 +61,8 @@ add({ name: "Fundição de bronze", for: [], workers: 40, industry: { inputs: [[
 add({ name: "Tecelagem", for: [], workers: 30, industry: { inputs: [[g("Fibras"), 2]], outputs: [[g("Tecidos"), 2]] } });
 add({ name: "Ferraria", for: [], workers: 35, industry: { inputs: [[g("Ferro"), 1], [g("Madeira"), 1]], outputs: [[g("Ferramentas"), 2]] } });
 add({ name: "Armeiro", for: [], workers: 35, industry: { inputs: [[g("Bronze"), 1], [g("Madeira"), 1]], outputs: [[g("Armas"), 1]] } });
+add({ name: "Oficina de papel", for: [], workers: 25, industry: { inputs: [[g("Madeira"), 2]], outputs: [[g("Papel"), 2]] } });
+add({ name: "Centro administrativo", for: [], workers: 30, industry: { inputs: [[g("Papel"), 1]], outputs: [], admin: ADMIN.perLevel } });
 // Revolução Industrial: fábricas grandes, mais produção por trabalhador
 add({ name: "Siderúrgica", for: [], workers: 60, industry: { inputs: [[g("Ferro"), 1], [g("Carvão mineral"), 1]], outputs: [[g("Ferramentas"), 4]] } });
 add({ name: "Fábrica têxtil", for: [], workers: 50, industry: { inputs: [[g("Fibras"), 2]], outputs: [[g("Tecidos"), 5]] } });
@@ -157,6 +160,8 @@ export type Country = {
   subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
+  admin?: number;       // pontos administrativos guardados (admin.ts)
+  adminWeek?: number;   // produzidos na última semana
   literacy?: number;    // 0..1: fração dos letrados (sabem ler, escrever e contar); acelera a pesquisa
   control?: number;     // controle médio (pela população) na última semana
   drive: number;        // 0,3–1: vontade de sair da era tribal (tribos isoladas ficam paradas mais tempo)
@@ -198,6 +203,7 @@ export type Economy = {
   warStats?: Record<string, WarStats>; // por guerra ("a-b"): baixas, custo, desde quando
   control: Float32Array; // 0..1: quanto o governo administra o hex (control.ts)
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
+  incentives?: Incentive[]; // incentivos ativos (admin.ts)
   famine?: boolean[];    // por cidade: passando fome (events.ts)
   plague?: number[];     // por cidade: semanas de peste que restam
   news?: { kind: "fome" | "peste"; city: number }[]; // começaram nesta semana (para avisar)
@@ -538,7 +544,7 @@ export function tick(w: World, e: Economy) {
   if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); }
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
-  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); }
+  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); c.adminWeek = 0; }
 
   for (const i of e.owned) {
     const k = e.market[i];
@@ -582,7 +588,7 @@ export function tick(w: World, e: Economy) {
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals);
-    const natural = (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // pouco controle: parte some no caminho
+    const natural = (hasIncentive(e, k - 1, "Isenção fiscal") ? 1.15 : 1) * (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // pouco controle: parte some no caminho
     for (const [g, q] of out) m.supply[g] += q * mult * staffing * penalty * natural;
     if (mined && w.reserve[i] !== Infinity) { // jazida: cada semana de extração gasta a reserva
       w.reserve[i] -= (mined / RULES.outputPerLevel) * staffing;
@@ -616,6 +622,8 @@ export function tick(w: World, e: Economy) {
       for (const [gi, q] of inputs) { m.demand[gi] += q * thr; eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / (q * thr)); }
       for (const [gi, q] of inputs) m.used[gi] += q * thr * eff;
       for (const [go, q] of outputs) m.supply[go] += q * thr * eff;
+      const adm = BUILDINGS[b].industry!.admin;
+      if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * thr * eff; }
     }
   });
   trade(e, (m, gi) => m.pop * POP_DEMAND[gi]); // produtos prontos circulam
@@ -639,7 +647,8 @@ export function tick(w: World, e: Economy) {
       const m = city.market;
       let g = 0;
       for (let gi = 1; gi < NG; gi++) g += m.supply[gi] * BASE_PRICE[gi] * m.price[gi];
-      gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
+      const exempt = hasIncentive(e, k, "Isenção fiscal") ? 0 : 1;
+      gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
     });
     c.gdpWeek = gdp;
     c.tax = gdp ? nominal / gdp : lawOf(c.politics, "Impostos").tax!; // imposto médio
@@ -663,7 +672,8 @@ export function tick(w: World, e: Economy) {
     c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest"));
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
-    advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci));
+    const ideas = Math.min(0.3, 0.1 * (e.incentives ?? []).filter((x) => x.kind === "Impor ideias" && e.cities[x.city]?.country === ci + 1).length);
+    advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci), ideas);
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
     const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01);
     c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);
@@ -685,6 +695,7 @@ export function tick(w: World, e: Economy) {
 
   if (e.week % 4 === 0) migrate(w, e);
 
+  stepAdmin(e);
   e.week++;
 }
 

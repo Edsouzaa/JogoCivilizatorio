@@ -3,7 +3,7 @@
 import type { World } from "./world.ts";
 import type { Economy } from "./economy.ts";
 
-export const SAVE_VERSION = 4; // 2: zonas marítimas e frotas; 3: estados; 4: multiplayer (humanos, guerras da IA)
+export const SAVE_VERSION = 5; // 2: zonas marítimas e frotas; 3: estados; 4: multiplayer (humanos, guerras da IA); 5: Papel (mais um bem)
 const MAGIC = "jogo-civilizatorio";
 
 export type SaveData = {
