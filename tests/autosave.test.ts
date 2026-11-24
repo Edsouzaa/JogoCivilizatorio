@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { nextSlot, autosaveClock, type AutosaveMeta } from "./autosave.ts";
+import { nextSlot, autosaveClock, type AutosaveMeta } from "../src/autosave.ts";
 
 // vagas: primeiro as vazias, depois a mais antiga
 const m = (slot: number, savedAt: number): AutosaveMeta => ({ slot, savedAt, label: "", size: 0 });

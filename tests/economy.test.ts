@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import {
   priceFactor, createEconomy, tick, build, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
   BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius, settlersOf,
-} from "./economy.ts";
-import { generateWorld, isLand, claim } from "./world.ts";
-import { forNeighbors } from "./hex.ts";
+} from "../src/economy.ts";
+import { generateWorld, isLand, claim } from "../src/world.ts";
+import { forNeighbors } from "../src/hex.ts";
 
 assert.equal(priceFactor(10, 10), 1);
 assert.equal(priceFactor(0, 100), MAX_PRICE);   // só demanda: +75%

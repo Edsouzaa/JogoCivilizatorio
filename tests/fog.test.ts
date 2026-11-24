@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { updateFog, buildInfo, FOG } from "./fog.ts";
-import { createEconomy } from "./economy.ts";
-import { generateWorld } from "./world.ts";
-import { hexDistance } from "./hex.ts";
+import { updateFog, buildInfo, FOG } from "../src/fog.ts";
+import { createEconomy } from "../src/economy.ts";
+import { generateWorld } from "../src/world.ts";
+import { hexDistance } from "../src/hex.ts";
 
 const w = generateWorld(300, 150, 1, 4), e = createEconomy(w);
 const N = w.W * w.H, explored = new Uint8Array(N), visible = new Uint8Array(N);
@@ -39,8 +39,8 @@ console.log("fog ok");
 
 // fronteiras: borda entre país e não-país (ou outro país) marcada dos dois lados; interior sem linha
 {
-  const { buildBorders } = await import("./fog.ts");
-  const { across } = await import("./world.ts");
+  const { buildBorders } = await import("../src/fog.ts");
+  const { across } = await import("../src/world.ts");
   const b = buildBorders(w, e, new Uint8Array(N * 4));
   let edges = 0;
   for (const i of e.owned) for (let k = 0; k < 6; k++) {

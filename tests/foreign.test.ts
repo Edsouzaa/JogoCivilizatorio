@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { createEconomy, tick, proposePact, hasPact, cancelPact, RULES, GOODS, BUILDINGS } from "./economy.ts";
-import { declareWar } from "./war.ts";
-import { generateWorld } from "./world.ts";
+import { createEconomy, tick, proposePact, hasPact, cancelPact, RULES, GOODS, BUILDINGS } from "../src/economy.ts";
+import { declareWar } from "../src/war.ts";
+import { generateWorld } from "../src/world.ts";
 
 const w = generateWorld(300, 150, 1, 4), e = createEconomy(w);
 RULES.foreignRange = 10000; // no teste, qualquer distância serve

@@ -5,7 +5,7 @@ import { join } from "node:path";
 // saves da sala vão para uma pasta temporária (definida antes de carregar o servidor)
 const saveDir = mkdtempSync(join(tmpdir(), "jogo-salas-"));
 process.env.SAVE_DIR = saveDir;
-const { startServer } = await import("./server.ts");
+const { startServer } = await import("../server/server.ts");
 import { loadGame } from "../src/save.ts";
 import { advanceWeek, checksum } from "../src/sim.ts";
 import { applyCommand } from "../src/commands.ts";

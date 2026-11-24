@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { generateWorld, across, snowAt, C, T } from "./world.ts";
-import { hexCenter } from "./hex.ts";
+import { generateWorld, across, snowAt, C, T } from "../src/world.ts";
+import { hexCenter } from "../src/hex.ts";
 
 const w = generateWorld(400, 200, 7, 0);
 const { W, H } = w;

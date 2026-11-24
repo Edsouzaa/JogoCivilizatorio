@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "node src/hex.test.ts && node src/world.test.ts && node src/tech.test.ts && node src/pops.test.ts && node src/politics.test.ts && node src/loyalty.test.ts && node src/war.test.ts && node src/fog.test.ts && node src/ai.test.ts && node src/save.test.ts && node src/foreign.test.ts && node src/infamy.test.ts && node src/navy.test.ts && node src/air.test.ts && node src/states.test.ts && node src/autosave.test.ts && node src/sim.test.ts && node src/economy.test.ts && node server/server.test.ts",
+    "test": "node tests/hex.test.ts && node tests/world.test.ts && node tests/tech.test.ts && node tests/pops.test.ts && node tests/politics.test.ts && node tests/loyalty.test.ts && node tests/war.test.ts && node tests/fog.test.ts && node tests/ai.test.ts && node tests/save.test.ts && node tests/foreign.test.ts && node tests/infamy.test.ts && node tests/navy.test.ts && node tests/air.test.ts && node tests/states.test.ts && node tests/autosave.test.ts && node tests/sim.test.ts && node tests/economy.test.ts && node tests/server.test.ts",
     "biomas": "node scripts/gerar-biomas.ts",
     "server": "node server/server.ts"
   },

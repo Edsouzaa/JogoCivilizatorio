@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { runAI, siteScore, bestSite } from "./ai.ts";
-import { createEconomy, tick } from "./economy.ts";
-import { stepWar } from "./war.ts";
-import { generateWorld } from "./world.ts";
+import { runAI, siteScore, bestSite } from "../src/ai.ts";
+import { createEconomy, tick } from "../src/economy.ts";
+import { stepWar } from "../src/war.ts";
+import { generateWorld } from "../src/world.ts";
 
 const w = generateWorld(300, 150, 2, 4), e = createEconomy(w);
 for (const c of e.countries) c.treasury = 2000; // começa com algum dinheiro para a IA ter o que decidir

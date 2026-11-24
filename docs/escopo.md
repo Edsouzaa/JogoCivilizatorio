@@ -6,25 +6,35 @@
 - Uma partida dura de 7 a 12 horas, conforme a era em que começa e termina.
 - Tempo real. Qualquer jogador pode pausar; os outros despausam por votação, ou quem pausou despausa.
 
-## Tempo por era (na velocidade média)
+## Tempo por era (na velocidade máxima, 30×)
 
-Eras (docs/game-desing.md): Tribal → Clássica → Medieval → Colonial → Revoluções → Imperialismo → Guerras → Multipolar → Atual.
+O jogo começa em **600 a.C.** O ritmo segue a era do país mais avançado.
 
-| Era | Ritmo | Observação |
+| Era | Datas | Ritmo na velocidade máxima |
 |---|---|---|
-| Tribal | 1 semana = 1 s | Sem dinheiro (a definir: hoje o protótipo já tem dinheiro desde o início) |
-| Clássica, Medieval, Colonial | cada uma mais lenta que a anterior (valores a definir) | |
-| Revoluções em diante (Imperialismo, Guerras, Multipolar, Atual) | o dia tem 4 fases (madrugada, manhã, tarde, noite); 1 fase = 0,2 s | 1 dia = 0,8 s |
+| Tribal | 600 a.C. – 400 a.C. | 1 semana = 0,1 s |
+| Clássica | 400 a.C. – 400 d.C. | 1 semana = 0,2 s |
+| Medieval | 400 – 1300 | 1 semana = 0,2 s |
+| Renascença | 1300 – 1500 | 1 semana = 0,2 s |
+| Descobertas | 1500 – 1750 | 1 semana = 0,2 s |
+| Revoluções | 1750 – 1830 | 1 semana = 0,2 s |
+| Industrialização | 1830 – 1910 | dia com 3 fases (noite, manhã, tarde) de 0,2 s |
+| Grandes Guerras | 1910 – 1950 | fases de 0,3 s |
+| Multipolar | 1950 – 2000 | fases de 0,3 s |
+| Moderna | 2000 em diante | fases de 0,3 s |
 
-As velocidades do protótipo são: muito lenta 0,25×, lenta 0,5×, **média 1×**, rápida 2× e muito rápida 4×, sobre o ritmo da era.
-No protótipo a Clássica vai a 0,5 semana/s, a Medieval a 0,35 e a Colonial a 0,25 (valores provisórios). O ritmo segue a era do país mais avançado.
+Velocidades: 0,5×, **1×**, 3×, 10× e 30× (máxima).
+
+**Pesquisa:** os pontos por semana seguem a tabela de ganho esperado (tribal ~3,5, clássica ~11, … moderna ~6.750). O custo das tecnologias é calculado para que **cada era dure o seu intervalo de datas** (src/tech.ts, ERA_YEARS e ERA_RESEARCH). Dentro de uma era, as primeiras custam metade da média e as últimas 1,7×. Isso dá custos maiores que os da tabela de custos: a tabela original faria a era tribal acabar em ~2 anos de jogo.
+
+**Tribos:** 1 a cada 1.000 hexes de terra (~350 no mapa padrão). Na era tribal cada uma tem uma *vontade* de 30% a 100% que freia a pesquisa. Cada acordo comercial soma 15%, o que ajuda mas não garante a saída da era.
 
 ## Tecnologias (src/tech.ts)
 
-- Cada país pesquisa uma tecnologia por vez: 1 ponto por semana + 1 a cada 1.000 pessoas. Se o jogador não escolher, o país pega a mais barata.
+- Cada país pesquisa uma tecnologia por vez: (1 ponto + 1 a cada 1.000 pessoas) × escala da era. Se o jogador não escolher, o país pega a mais barata.
 - Tecnologias **liberam construções** (as melhorias e as indústrias começam bloqueadas) e dão **bônus de produção**.
 - O país passa para a próxima era quando conhece **todas** as tecnologias da era atual.
-- Todas as 9 eras têm 5 tecnologias (Tribal e Clássica com as originais; Medieval: Feudalismo, Moinhos, Arado pesado, Universidades, Castelos; Colonial: Navegação, Imprensa, Pólvora, Bancos, Mineração profunda; Revoluções: Máquina a vapor, Ferrovias, Iluminismo, Conscrição, Agricultura científica; Imperialismo: Eletricidade, Química industrial, Metralhadora, Telégrafo, Medicina moderna; Guerras: Motor a combustão, Blindados, Produção em massa, Rádio, Aviação; Multipolar: Computadores, Energia nuclear, Revolução verde, Contêineres, Mísseis; Atual: Internet, Automação, Energias renováveis, Biotecnologia, Drones).
+- 10 eras: Renascença (Navegação, Imprensa, Mineração profunda) e Descobertas (Pólvora, Bancos, Companhias comerciais) substituem a antiga Colonial; Industrialização = antigo Imperialismo, Grandes Guerras = Guerras, Moderna = Atual.
 - Efeitos: liberar construções, bônus de produção, pesquisa, **comércio** (mais troca entre cidades e com parceiros), **exército** (força de combate), **manpower** e **agitação** (Imprensa, Iluminismo, Conscrição, Energia nuclear, Internet e Automação baixam a lealdade; Medicina moderna, Rádio e Biotecnologia sobem).
 - Máquina a vapor libera Siderúrgica e Fábrica têxtil; Metralhadora libera o Arsenal. Da era das Revoluções em diante as fábricas empregam Operários especializados e Engenheiros, e os donos são Capitalistas.
 - A fazer: tecnologias que liberam unidades novas (navios, aviões).

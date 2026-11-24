@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { createEconomy, tick } from "./economy.ts";
-import { recruit, orderMove, declareWar, stepWar, warScore, makePeace, atWar, controller, settlerDistance, nextStep, WAR } from "./war.ts";
-import { RULES } from "./economy.ts";
-import { forNeighbors } from "./hex.ts";
-import { generateWorld, isLand } from "./world.ts";
-import { P } from "./pops.ts";
+import { createEconomy, tick } from "../src/economy.ts";
+import { recruit, orderMove, declareWar, stepWar, warScore, makePeace, atWar, controller, settlerDistance, nextStep, WAR } from "../src/war.ts";
+import { RULES } from "../src/economy.ts";
+import { forNeighbors } from "../src/hex.ts";
+import { generateWorld, isLand } from "../src/world.ts";
+import { P } from "../src/pops.ts";
 
 const w = generateWorld(300, 150, 1, 4), e = createEconomy(w);
 tick(w, e);

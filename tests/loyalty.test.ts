@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { newPops, updateLoyalty, loyaltyTarget, averageLoyalty, P, POP_RULES } from "./pops.ts";
-import { createEconomy, tick, migrate } from "./economy.ts";
-import { generateWorld } from "./world.ts";
+import { newPops, updateLoyalty, loyaltyTarget, averageLoyalty, P, POP_RULES } from "../src/pops.ts";
+import { createEconomy, tick, migrate } from "../src/economy.ts";
+import { generateWorld } from "../src/world.ts";
 
 // alvo: QV 25 e legitimidade 0,5 = 50; QV e legitimidade altas sobem, baixas descem
 assert.equal(loyaltyTarget(25, 0.5), 50);

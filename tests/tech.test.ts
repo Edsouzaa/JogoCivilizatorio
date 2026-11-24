@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { newResearch, research, available, researchMult, techSum, TECHS, ERAS, ERA_WEEKS_PER_SECOND } from "./tech.ts";
+import { newResearch, research, available, researchMult, techSum, TECHS, ERAS, ERA_WEEKS_PER_SECOND } from "../src/tech.ts";
 
 // toda exigência aponta para uma tecnologia que existe, e de era igual ou anterior
 for (const t of TECHS) for (const q of t.requires) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { hexCenter, pixelToHex, forNeighbors, hexDistance, hexesInRadius, wrapCol, SQRT3 } from "./hex.ts";
+import { hexCenter, pixelToHex, forNeighbors, hexDistance, hexesInRadius, wrapCol, SQRT3 } from "../src/hex.ts";
 
 for (let i = 0; i < 5000; i++) {
   const col = Math.floor(Math.random() * 200), row = Math.floor(Math.random() * 200);

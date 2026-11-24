@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { createEconomy, tick, proposePact, hasPact, INFAMY } from "./economy.ts";
-import { declareWar, makePeace } from "./war.ts";
-import { TECHS } from "./tech.ts";
-import { generateWorld } from "./world.ts";
+import { createEconomy, tick, proposePact, hasPact, INFAMY } from "../src/economy.ts";
+import { declareWar, makePeace } from "../src/war.ts";
+import { TECHS } from "../src/tech.ts";
+import { generateWorld } from "../src/world.ts";
 
 const w = generateWorld(300, 150, 1, 4), e = createEconomy(w);
 const [a, b, c] = e.countries;

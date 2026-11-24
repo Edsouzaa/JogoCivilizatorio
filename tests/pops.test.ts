@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { jobsFor, distributeIncome, newPops, politicalWeight, P, POP_TYPES, POP_RULES } from "./pops.ts";
-import { BUILDINGS, createEconomy, tick } from "./economy.ts";
-import { ERAS } from "./tech.ts";
-import { generateWorld } from "./world.ts";
+import { jobsFor, distributeIncome, newPops, politicalWeight, P, POP_TYPES, POP_RULES } from "../src/pops.ts";
+import { BUILDINGS, createEconomy, tick } from "../src/economy.ts";
+import { ERAS } from "../src/tech.ts";
+import { generateWorld } from "../src/world.ts";
 
 // empregos de toda construção, em toda era, somam 1 e só usam tipos que já existem na era
 ERAS.forEach((_, era) => BUILDINGS.forEach((b) => {

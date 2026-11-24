@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { createEconomy, tick, foundCity } from "./economy.ts";
-import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, cityTax, adminBonus, updateStates, STATES } from "./states.ts";
-import { declareWar, airRegion } from "./war.ts";
-import { buildBorders } from "./fog.ts";
-import { across } from "./world.ts";
-import { generateWorld, isLand } from "./world.ts";
-import { hexDistance } from "./hex.ts";
+import { createEconomy, tick, foundCity } from "../src/economy.ts";
+import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, cityTax, adminBonus, updateStates, STATES } from "../src/states.ts";
+import { declareWar, airRegion } from "../src/war.ts";
+import { buildBorders } from "../src/fog.ts";
+import { across } from "../src/world.ts";
+import { generateWorld, isLand } from "../src/world.ts";
+import { hexDistance } from "../src/hex.ts";
 
 const w = generateWorld(300, 150, 1, 4), e = createEconomy(w);
 const A = 1, c = e.countries[A - 1];

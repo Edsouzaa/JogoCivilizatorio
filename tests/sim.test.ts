@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { advanceWeek, checksum } from "./sim.ts";
-import { applyCommand, type Cmd } from "./commands.ts";
-import { createEconomy } from "./economy.ts";
-import { generateWorld } from "./world.ts";
-import { saveGame, loadGame } from "./save.ts";
+import { advanceWeek, checksum } from "../src/sim.ts";
+import { applyCommand, type Cmd } from "../src/commands.ts";
+import { createEconomy } from "../src/economy.ts";
+import { generateWorld } from "../src/world.ts";
+import { saveGame, loadGame } from "../src/save.ts";
 
 const make = () => { const w = generateWorld(300, 150, 9, 4); return { w, e: createEconomy(w) }; };
 const a = make(), b = make();

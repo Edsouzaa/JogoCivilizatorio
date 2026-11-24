@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { createEconomy, tick } from "./economy.ts";
-import { buildAir, orderMove, stepWar, declareWar, recruit, airSuperiority, airRegion, AIR, WAR } from "./war.ts";
-import { generateWorld, isLand } from "./world.ts";
-import { forNeighbors, hexDistance } from "./hex.ts";
+import { createEconomy, tick } from "../src/economy.ts";
+import { buildAir, orderMove, stepWar, declareWar, recruit, airSuperiority, airRegion, AIR, WAR } from "../src/war.ts";
+import { generateWorld, isLand } from "../src/world.ts";
+import { forNeighbors, hexDistance } from "../src/hex.ts";
 
 const w = generateWorld(300, 150, 1, 4), e = createEconomy(w);
 for (const c of e.countries) { c.manpower = 1e4; c.treasury = 1e5; }

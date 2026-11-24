@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { createEconomy, foundCity, type Economy } from "./economy.ts";
-import { buildFleet, orderMove, stepWar, declareWar, recruit, coastOf, homePort, NAVY } from "./war.ts";
-import { generateWorld, T, type World } from "./world.ts";
-import { hexDistance } from "./hex.ts";
+import { createEconomy, foundCity, type Economy } from "../src/economy.ts";
+import { buildFleet, orderMove, stepWar, declareWar, recruit, coastOf, homePort, NAVY } from "../src/war.ts";
+import { generateWorld, T, type World } from "../src/world.ts";
+import { hexDistance } from "../src/hex.ts";
 
 const w: World = generateWorld(400, 200, 5, 20), e: Economy = createEconomy(w);
 // dois países com litoral: os colonos dos países 1 e 2 fundam uma cidade costeira

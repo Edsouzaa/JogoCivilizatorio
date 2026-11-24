@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { saveGame, loadGame } from "./save.ts";
-import { createEconomy, tick } from "./economy.ts";
-import { stepWar, recruit, declareWar } from "./war.ts";
-import { generateWorld } from "./world.ts";
+import { saveGame, loadGame } from "../src/save.ts";
+import { createEconomy, tick } from "../src/economy.ts";
+import { stepWar, recruit, declareWar } from "../src/war.ts";
+import { generateWorld } from "../src/world.ts";
 
 const w = generateWorld(300, 150, 4, 4), e = createEconomy(w);
 e.countries[0].manpower = 1000; e.countries[0].treasury = 1000;

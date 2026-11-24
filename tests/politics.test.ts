@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { newPolitics, updatePolitics, proposeLaw, advanceLaw, lawSupport, lawOf, GROUPS, LAWS, POLITICS_RULES } from "./politics.ts";
-import { newPops, P } from "./pops.ts";
-import { ERAS } from "./tech.ts";
+import { newPolitics, updatePolitics, proposeLaw, advanceLaw, lawSupport, lawOf, GROUPS, LAWS, POLITICS_RULES } from "../src/politics.ts";
+import { newPops, P } from "../src/pops.ts";
+import { ERAS } from "../src/tech.ts";
 
 const g = (name: string) => GROUPS.findIndex((x) => x.name === name);
 const CLASSICAL = ERAS.indexOf("Clássica"), WARS = ERAS.indexOf("Grandes Guerras");
