@@ -108,6 +108,19 @@
     .tcard.avail { border-color: var(--gold); cursor: pointer; } .tcard.avail:hover { background: #2a2a24; }
     .tcard.locked { opacity: .45; }
     .tcard.cur { box-shadow: inset 3px 0 0 var(--gold); }
+
+    /* evento: documento histórico com moldura discreta */
+    .doc { display: none; position: fixed; top: 18%; left: 50%; transform: translateX(-50%); width: 420px; z-index: 10; padding: 16px 18px;
+      background: linear-gradient(#26241f, #1f1d19); border: 1px solid var(--gold); outline: 1px solid #5a4d33; outline-offset: -6px; color: #ece4cf; }
+    .doc-head { display: flex; gap: 10px; align-items: center; }
+    .doc-head img { width: 42px; height: 28px; border: 1px solid #5a4d33; }
+    .doc-head h2 { border: 0; margin: 0; padding: 0; }
+    .doc-date { color: #b4a782; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+    .doc-art { display: flex; justify-content: center; padding: 12px 0; margin: 8px 0; border-top: 1px solid #4a4030; border-bottom: 1px solid #4a4030; color: var(--gold); }
+    .doc-text { font: 500 16px/1.4 var(--serif); }
+    .doc-k { color: #b4a782; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 4px; }
+    .doc-opt { display: block; width: 100%; margin: 4px 0; padding: 7px 10px; text-align: left; background: #2c2924; border-color: #5a4d33; }
+    .doc-opt small { color: #b4a782; }
   </style>
 </head>
 <body>

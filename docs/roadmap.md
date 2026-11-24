@@ -66,9 +66,11 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Interface: todos os emojis da interface viraram ícones de linha (39 tipos); notificações classificadas pelo ícone e mostradas como texto puro.
 
+- Interface, fase 3: camadas Cultura, Língua, Religião, Alfabetização e Infraestrutura; grupos de interesse em cartões (papel no governo, barras de poder político e apoio popular); evento como documento histórico (bandeira, data, país, ilustração, texto em serifa, opções com consequências).
+
 ## Próximos (nesta ordem)
 
-1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Política com cartões dos grupos; Militar operacional (frentes, logística); eventos com moldura de documento e imagem; camadas novas (cultura, religião, língua, alfabetização, infraestrutura); estilo que muda devagar por era; painéis redimensionáveis.
+1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Produção/Consumo com barras, Investimentos, Empresas, Finanças; página de detalhe de cada mercadoria; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
 2. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
 3. **Mercados**
    - Mercado nacional como soma dos metropolitanos.

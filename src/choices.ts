@@ -5,38 +5,39 @@ import { mulberry32, type World } from "./world.ts";
 import type { Economy } from "./economy.ts";
 
 export type Effects = { treasury?: number; legitimacy?: number; pop?: number; research?: number; admin?: number; infamy?: number };
-export type ChoiceEvent = { title: string; text: string; minEra?: number; options: { label: string; fx: Effects }[] };
+/** art = ícone da ilustração do evento (icons.ts). */
+export type ChoiceEvent = { title: string; text: string; art: string; minEra?: number; options: { label: string; fx: Effects }[] };
 
 export const CHOICES = { chanceMonth: 0.04, timeoutMs: 120_000 };
 
 /** Valores de dinheiro/pesquisa são frações (do tesouro e da pesquisa da semana × 10), para valer em qualquer era. */
 export const EVENT_LIST: ChoiceEvent[] = [
-  { title: "Colheita farta", text: "Os celeiros transbordam este ano.", options: [
+  { title: "Colheita farta", art: "bread", text: "Os celeiros transbordam este ano.", options: [
     { label: "Vender o excedente", fx: { treasury: 0.15 } },
     { label: "Fazer uma grande festa", fx: { legitimacy: 0.05 } },
   ] },
-  { title: "Profeta nas ruas", text: "Um pregador atrai multidões e critica o governo.", options: [
+  { title: "Profeta nas ruas", art: "speech", text: "Um pregador atrai multidões e critica o governo.", options: [
     { label: "Prendê-lo", fx: { legitimacy: -0.03, infamy: 1 } },
     { label: "Ouvi-lo em conselho", fx: { legitimacy: 0.02, treasury: -0.05 } },
     { label: "Ignorar", fx: { legitimacy: -0.05 } },
   ] },
-  { title: "Estrangeiro sábio", text: "Um viajante traz conhecimentos de terras distantes.", options: [
+  { title: "Estrangeiro sábio", art: "book", text: "Um viajante traz conhecimentos de terras distantes.", options: [
     { label: "Dar-lhe uma casa e alunos", fx: { research: 1, treasury: -0.05 } },
     { label: "Mandá-lo embora", fx: {} },
   ] },
-  { title: "Incêndio na cidade", text: "Um fogo destrói casas e armazéns.", options: [
+  { title: "Incêndio na cidade", art: "city", text: "Um fogo destrói casas e armazéns.", options: [
     { label: "Reconstruir com o tesouro", fx: { treasury: -0.15, legitimacy: 0.02 } },
     { label: "Cada um que se vire", fx: { pop: -0.02, legitimacy: -0.04 } },
   ] },
-  { title: "Bandidos nas estradas", text: "Caravanas são atacadas perto da fronteira.", options: [
+  { title: "Bandidos nas estradas", art: "road", text: "Caravanas são atacadas perto da fronteira.", options: [
     { label: "Mandar soldados", fx: { treasury: -0.08 } },
     { label: "Pagar proteção", fx: { treasury: -0.04, legitimacy: -0.02 } },
   ] },
-  { title: "Escrivães pedem aumento", text: "Os escrivães ameaçam parar.", minEra: 1, options: [
+  { title: "Escrivães pedem aumento", art: "admin", text: "Os escrivães ameaçam parar.", minEra: 1, options: [
     { label: "Pagar", fx: { treasury: -0.08, admin: 10 } },
     { label: "Recusar", fx: { admin: -15 } },
   ] },
-  { title: "Mina de ouro descoberta", text: "Mineiros acharam ouro nas colinas.", minEra: 1, options: [
+  { title: "Mina de ouro descoberta", art: "pick", text: "Mineiros acharam ouro nas colinas.", minEra: 1, options: [
     { label: "Do Estado", fx: { treasury: 0.2, legitimacy: -0.02 } },
     { label: "Dos mineiros", fx: { legitimacy: 0.04, treasury: 0.05 } },
   ] },

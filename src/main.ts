@@ -361,7 +361,7 @@ idIn("cancel").onclick = () => (idBox.style.display = "none");
 
 // ---------------- evento com escolha: janela no meio da tela, pausa o jogo, 2 minutos ----------------
 const evBox = document.createElement("div");
-evBox.style.cssText = "display:none;position:fixed;top:30%;left:50%;transform:translateX(-50%);width:360px;background:#1b1b26f2;border:1px solid #c9a86a;border-radius:8px;padding:14px;z-index:10;line-height:1.5";
+evBox.className = "doc"; // documento histórico (estilo no index.html)
 document.body.appendChild(evBox);
 let evShown = "", evSince = 0;
 function watchChoice() {
@@ -372,8 +372,10 @@ function watchChoice() {
     evShown = key; evSince = performance.now();
     if (!net && speed) togglePause();
     const def = EVENT_LIST[ev.id];
-    evBox.innerHTML = `<b style="font-size:16px"><i class=i-admin></i> ${def.title}</b><p>${def.text}</p>` +
-      def.options.map((o, k) => `<button data-choose="${k}" style="display:block;width:100%;margin:4px 0;padding:6px">${o.label}<br><small style="opacity:.7">${fxText(o.fx)}</small></button>`).join("") +
+    const meta = world.countries[active - 1];
+    evBox.innerHTML = `<div class="doc-head"><img src="${flagURL(flagOf(active))}" alt=""><div><div class="doc-date">${dateLabel(ev.week)} · ${meta.name}</div><h2>${def.title}</h2></div></div>` +
+      `<div class="doc-art">${icon(def.art, 56)}</div><p class="doc-text">${def.text}</p><div class="doc-k">Decisão</div>` +
+      def.options.map((o, k) => `<button class="doc-opt" data-choose="${k}">${o.label}<br><small>${fxText(o.fx)}</small></button>`).join("") +
       `<small id="ev-timer" style="opacity:.6"></small>`;
     hydrateIcons(evBox); evBox.style.display = "block";
     notify(`<i class=i-admin></i> ${def.title}`);
@@ -997,7 +999,12 @@ function lawEffect(l: Law, cat: string, p: Politics) {
 function politicsHtml(p: Politics, era: number) {
   const groups = GROUPS.map((g, k) => [g, k] as const).filter(([, k]) => p.political[k] > 0.005 || p.popular[k] > 0.005)
     .sort(([, a], [, b]) => p.political[b] - p.political[a])
-    .map(([g, k]) => `<tr><td>${p.government.includes(k) ? "<i class=i-politics></i> " : ""}${k === p.rival ? "<i class=i-warn></i> " : ""}${g.name}</td><td>${pct(p.political[k])}</td><td>${pct(p.popular[k])}</td></tr>`);
+    .map(([g, k]) => { // cartão do grupo: papel no governo e as duas barras de poder
+      const role = p.government.includes(k) ? '<span class="down">no governo</span>' : k === p.rival ? '<span class="bad">rival</span>' : '<span style="color:var(--dim)">oposição</span>';
+      const bar = (v: number, col: string) => `<div class="bar"><div style="background:${col};width:${Math.round(v * 100)}%"></div></div>`;
+      return `<div class="card"><div class="k">${role}</div><div class="serif" style="font-size:15px;font-weight:600">${g.name}</div>` +
+        `<small>Poder político ${pct(p.political[k])}</small>${bar(p.political[k], "var(--blue)")}<small>Apoio popular ${pct(p.popular[k])}</small>${bar(p.popular[k], "var(--gold)")}</div>`;
+    });
   const laws = Object.entries(LAWS).map(([cat, list]) => {
     const cur = lawOf(p, cat);
     const opts = list.filter((l) => l.name !== cur.name).map((l) => {
@@ -1024,7 +1031,7 @@ function politicsHtml(p: Politics, era: number) {
   const statesTable = `<b>Estados</b> <small>(${federal ? "Federação: cada estado escolhe o imposto" : `Centralizado: +${Math.round(STATES.adminPerState * 100)}% de arrecadação por estado`}; crie no hex de uma cidade)</small>` +
     (states.length ? `<table>${states.join("")}</table>` : "<br><small>Nenhum estado ainda.</small>");
   return voting +
-    `<table><tr><td><b>Grupo</b> <small>(<i class=i-politics></i> governo)</small></td><td><b title="decide leis e governo">Político</b></td><td><b title="dá legitimidade">Popular</b></td></tr>${groups.join("")}</table>` +
+    `<h3>Grupos de interesse</h3><div class="cards">${groups.join("")}</div><h3>Leis</h3>` +
     `<table class="laws">${laws.join("")}</table>` + statesTable;
 }
 
