@@ -82,6 +82,15 @@ Ver docs/politica.md.
 - **Paz:** a pontuação de guerra é a fração da população inimiga ocupada menos a fração própria ocupada. Quem estiver mais de 5 pontos na frente fica com os hexes que ocupou (menos a capital do perdedor); senão, paz branca.
 - A fazer: IA que move tropas, frentes automáticas, suprimentos, guerra aérea e naval, exigências de paz escolhidas pelo jogador.
 
+## IA dos países (src/ai.ts)
+
+Todo país que não é o do jogador decide uma vez por mês:
+- **Expansão:** manda os colonos para o melhor lugar livre a até 6 hexes das suas cidades (fértil, com rio e recursos, sem encostar em outro país) e funda a cidade ao chegar. Treina colonos enquanto tiver menos de 3 cidades (+2 por era) e dinheiro sobrando.
+- **Economia:** faz uma obra por mês onde o produto está mais caro no mercado local, respeitando tecnologia e mão de obra, sem gastar além de 1,5× o custo.
+- **Política:** propõe a lei com mais apoio, se o apoio passar de 25%.
+- **Exército:** uma divisão por cidade. Declara guerra raramente (1% ao mês) a vizinho a até 15 hexes com menos da metade do exército; em guerra manda as divisões paradas para a cidade inimiga mais perto; faz a paz quando a pontuação passa de 30 pontos para qualquer lado ou depois de 2 anos.
+- Hoje só o país ativo é humano; com multiplayer, todos os países com jogador ficam fora da IA.
+
 ## O que fica fora da primeira versão jogável
 
 A primeira versão jogável é: economia + cidades + política básica, em uma ou duas eras, single-player. O resto entra depois que isso estiver divertido.

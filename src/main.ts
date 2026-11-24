@@ -10,6 +10,7 @@ import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, WAR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo } from "./fog.ts";
+import { runAI } from "./ai.ts";
 import { snowAt } from "./world.ts";
 
 // 1600 × 640 = 1.024.000 hexágonos ≈ Terra com 500 km² por hex. Mude por ?w=&h= na URL para testar.
@@ -440,6 +441,8 @@ function frame(now: number) {
     const t = performance.now();
     tick(world, eco);
     stepWar(world, eco);
+    // shortcut: só o país ativo é humano; com multiplayer, todos os países com jogador ficam fora da IA
+    if (eco.week % 4 === 0) for (let k = 1; k <= eco.countries.length; k++) if (k !== active) runAI(world, eco, k);
     tickMs = performance.now() - t;
   }
   if (eco.version !== drawnVersion || (mode === 2 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou
