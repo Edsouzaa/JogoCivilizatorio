@@ -1,4 +1,4 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, type World } from "./world.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost,
@@ -475,7 +475,7 @@ function updateUI() {
   const hcity = inMap(hc, hr) ? cityOf(hi) : undefined;
   const hidden = inMap(hc, hr) && active > 0 && !explored.get(active)?.[hi];
   const info = hidden ? "Inexplorado" : inMap(hc, hr)
-    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.seaZone[hi] ? ` · zona marítima ${world.seaZone[hi]}` : ""}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]}${world.resource2[hi] ? ` + ${RESOURCES[world.resource2[hi]]}` : ""}${world.reserve[hi] !== Infinity ? ` (jazida ~${Math.round(world.reserve[hi] / 52)} anos)` : ""} · pop ${Math.round(world.pop[hi])}` +
+    ? `(${hc}, ${hr}) ${TERRAINS[world.terrain[hi]].name}${world.seaZone[hi] ? ` · zona marítima ${world.seaZone[hi]}${deepOcean(world)[hi] ? " · oceano profundo (precisa de Navegação)" : ""}` : ""}${world.river[hi] ? (world.navigable[hi] ? " · rio navegável" : " · rio") : ""}${snowAt(world, hi, eco.week) ? " · ❄ neve" : ""} · ${CLIMATES[world.climate[hi]]} · ${RESOURCES[world.resource[hi]]}${world.resource2[hi] ? ` + ${RESOURCES[world.resource2[hi]]}` : ""}${world.reserve[hi] !== Infinity ? ` (jazida ~${Math.round(world.reserve[hi] / 52)} anos)` : ""} · pop ${Math.round(world.pop[hi])}` +
       (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` + (mode === 6 ? ` (${eco.countries[world.owner[hi] - 1].research.known.size}/${TECHS.length} tecnologias)` : mode === 7 ? ` (satisfação ${Math.round(averageLoyalty(eco.countries[world.owner[hi] - 1].pops))}%)` : "") : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
     : "—";
   const help = "Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover unidade · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo · 1–4 = modo de mapa · R = mapa novo";

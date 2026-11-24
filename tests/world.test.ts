@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { generateWorld, across, snowAt, C, T } from "../src/world.ts";
-import { hexCenter } from "../src/hex.ts";
+import { generateWorld, across, snowAt, deepOcean, DEEP_OCEAN, C, T } from "../src/world.ts";
+import { hexCenter, hexesInRadius } from "../src/hex.ts";
 
 const w = generateWorld(400, 200, 7, 0);
 const { W, H } = w;
@@ -51,3 +51,17 @@ let two = 0;
 for (let i = 0; i < big.W * big.H; i++) if (big.resource2[i]) { two++; assert.notEqual(big.resource2[i], big.resource[i]); }
 assert.ok(two > 0, "nenhum hex com 2 produtos");
 console.log("world ok");
+
+// oceano profundo: longe da costa; o mar colado na terra nunca é profundo
+{
+  const deep = deepOcean(big);
+  let n = 0;
+  for (let i = 0; i < big.W * big.H; i++) {
+    if (!deep[i]) continue;
+    n++; assert.equal(big.terrain[i], T.OCEAN);
+    for (const j of hexesInRadius(i, DEEP_OCEAN, big.W, big.H)) assert.equal(big.terrain[j], T.OCEAN, "profundo perto da terra");
+    if (n > 200) break;
+  }
+  assert.ok(n > 0);
+}
+console.log("deep ok");

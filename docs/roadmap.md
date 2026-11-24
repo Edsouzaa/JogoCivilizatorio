@@ -28,6 +28,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Mapas: 6 Clima, 7 Tecnologia (azul = mais tecnologias) e 8 Satisfação (vermelho → verde), com o valor ao passar o mouse.
 
+- Oceano profundo (mar a mais de 4 hexes da terra): sem Navegação, frota e exército embarcado não entram. Aparece ao passar o mouse.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -67,18 +69,17 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Dependências (colônia, vassalo, fantoche, protetorado, tributário, satélite) com autonomia de 0 a 100.
     - Esferas de influência e prestígio.
 13. **IA com claims, desejos e planos**: personalidade, memória e avaliação de guerra.
-14. **Oceano profundo**: bloqueia navios de tecnologia baixa.
-15. **Continentes com nome**: no solo o jogador altera; no multiplayer há votação.
-16. **Personagens**
+14. **Continentes com nome**: no solo o jogador altera; no multiplayer há votação.
+15. **Personagens**
     - Ficha, atributos e retrato gerado.
     - Comandantes e generais.
     - Livro de história exportável em PDF.
-17. **Militar completo**
+16. **Militar completo**
     - Categorias de unidade por era e comandantes por domínio.
     - Operações conjuntas.
     - Logística por rede (terrestre, naval e alcance aéreo).
-18. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
-19. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
+17. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
+18. **Gráficos**: começar pelos que já têm dado (PIB, população, dívida, preços, receitas e despesas) e crescer junto com cada sistema.
 
 ## Fora por enquanto
 

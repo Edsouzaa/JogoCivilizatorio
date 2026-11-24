@@ -110,6 +110,26 @@ function percentile(v: Float32Array, frac: number) {
   return 0;
 }
 
+/** Oceano profundo: mar a mais de DEEP_OCEAN hexes da terra. Navio fraco não entra (war.ts). Calculado uma vez por mundo. */
+export const DEEP_OCEAN = 4;
+const deepCache = new WeakMap<World, Uint8Array>();
+export function deepOcean(w: World) {
+  let d = deepCache.get(w);
+  if (d) return d;
+  const N = w.W * w.H, dist = new Uint8Array(N).fill(255);
+  let queue: number[] = [];
+  for (let i = 0; i < N; i++) if (w.terrain[i] !== T.OCEAN) { dist[i] = 0; queue.push(i); }
+  for (let k = 1; k <= DEEP_OCEAN && queue.length; k++) {
+    const next: number[] = [];
+    for (const i of queue) forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { if (dist[j] === 255) { dist[j] = k; next.push(j); } });
+    queue = next;
+  }
+  d = new Uint8Array(N);
+  for (let i = 0; i < N; i++) d[i] = dist[i] === 255 ? 1 : 0;
+  deepCache.set(w, d);
+  return d;
+}
+
 /** A jazida do hex acabou: vira o recurso comum do terreno. */
 export function exhaust(w: World, i: number) { w.resource[i] = commonOf(w.terrain[i]); w.resource2[i] = 0; w.reserve[i] = Infinity; }
 

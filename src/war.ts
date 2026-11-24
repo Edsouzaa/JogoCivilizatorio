@@ -5,7 +5,7 @@ import { refresh, GOODS, RULES, INFAMY, type Economy, type Division } from "./ec
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
-import { T, TERRAINS, across, riverAt, snowAt, type World } from "./world.ts";
+import { T, TERRAINS, across, riverAt, snowAt, deepOcean, type World } from "./world.ts";
 
 export const WAR = {
   divisionSize: 25,    // soldados por divisão (saem do manpower); bando do tamanho das tribos do começo
@@ -31,6 +31,7 @@ export const NAVY = {
   upkeep: 0.5,      // dinheiro por semana por frota
   speed: 3,         // hexes de mar por semana (exército transportado anda junto)
   tech: "Galés",    // tecnologia que libera frotas
+  deepTech: "Navegação", // sem ela, nada entra em oceano profundo (world.ts deepOcean)
 };
 
 /**
@@ -90,7 +91,10 @@ export const hasFleetIn = (w: World, e: Economy, country: number, zone: number) 
 
 /** A unidade pode pisar no hex? Frota só no mar; exército no mar só com frota do país na zona (transporte). */
 function passable(w: World, e: Economy, d: Division, i: number) {
-  if (w.terrain[i] === T.OCEAN) return d.kind === "fleet" || (d.kind === "army" && hasFleetIn(w, e, d.country, w.seaZone[i]));
+  if (w.terrain[i] === T.OCEAN) {
+    if (deepOcean(w)[i] && !e.countries[d.country - 1].research.known.has(NAVY.deepTech)) return false; // galé não aguenta mar aberto
+    return d.kind === "fleet" || (d.kind === "army" && hasFleetIn(w, e, d.country, w.seaZone[i]));
+  }
   return d.kind !== "fleet" && MOVE_WEEKS[w.terrain[i]] !== Infinity;
 }
 
