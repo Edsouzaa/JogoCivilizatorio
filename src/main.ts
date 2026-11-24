@@ -229,7 +229,11 @@ function hexLayer(): ((i: number) => readonly number[] | null) | undefined {
     if (mode === 11) { const v = Math.min(1, (c.literacy ?? 0) / 0.6); return [40 + 60 * v, 60 + 100 * v, 90 + 150 * v]; } // azul: mais letrados
     const v = Math.min(1, ((k.road ?? 0) + (k.harbor ?? 0)) / 6); return [70 + 150 * v, 70 + 110 * v, 60 + 30 * v]; // dourado: mais estrada e porto
   });
-  return (i) => (eco.market[i] ? perCity[eco.market[i] - 1] : null);
+  if (mode === 13) return (i) => { // expansão: território, área de influência (claro) e cidades isoladas (vermelho)
+    if (world.owner[i]) { const k = eco.market[i]; return k && eco.cities[k - 1].isolated ? [200, 70, 60] : world.countries[world.owner[i] - 1].color; }
+    const f = eco.influence?.[i]; return f ? world.countries[f - 1].color.map((v) => (v + 70 * 2) / 3) : null;
+  };
+  return (i) => (world.owner[i] && eco.market[i] ? perCity[eco.market[i] - 1] : null);
 }
 function recolor() {
   const t = performance.now();
@@ -635,7 +639,7 @@ const MENU = [
 let menuCat: string | null = null; // item do menu lateral aberto (null = só o mapa)
 const LAYERS: [string, [number, string][]][] = [
   ["Geografia", [[0, "Terreno"], [5, "Clima"], [3, "Recursos"]]],
-  ["Território", [[1, "Político"], [4, "Controle"]]],
+  ["Território", [[1, "Político"], [4, "Controle"], [13, "Expansão"]]],
   ["Sociedade", [[2, "População"], [7, "Satisfação"], [8, "Cultura"], [9, "Língua"], [10, "Religião"], [11, "Alfabetização"]]],
   ["Economia", [[12, "Infraestrutura"]]],
   ["Ciência", [[6, "Tecnologia"]]],

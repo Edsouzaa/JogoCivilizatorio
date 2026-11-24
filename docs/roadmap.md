@@ -107,6 +107,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
   - Área de influência: hexes livres perto das cidades e postos, em tom claro da cor do país no mapa Político.
   - Continuidade territorial: cidade sem ligação por terra com a capital (nem porto/rio navegável) fica isolada, com controle máximo ×0,6.
 
+- IA na expansão: quando a capacidade de expansão está cheia, os colonos da IA viram posto avançado (em vez de esperar parados) e as próximas cidades partem também dos postos; posto avançado abastece colonos. Camada de mapa "Expansão": território, área de influência em tom claro e cidades isoladas em vermelho.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.

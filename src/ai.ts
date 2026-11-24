@@ -11,6 +11,7 @@ import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { relation, DIPLO } from "./diplomacy.ts";
 import { proposeSubject } from "./subjects.ts";
 import { personality, PERSONALITIES } from "./claims.ts";
+import { anchors, pathDistance, buildOutpost } from "./expansion.ts";
 import { bestUnit, bestCraft, SHIPS, PLANES } from "./units.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 
@@ -43,9 +44,8 @@ const dist = (w: World, a: number, b: number) => hexDistance(a % w.W, (a / w.W) 
 /** Melhor lugar para cidade nova: até settlerSupplyRange de uma cidade do país, longe o bastante das outras. */
 export function bestSite(w: World, e: Economy, country: number) {
   let best = -1, bestS = 0;
-  for (const c of e.cities) {
-    if (c.country !== country) continue;
-    for (const i of hexesInRadius(c.hex, RULES.settlerSupplyRange, w.W, w.H)) {
+  for (const a of anchors(e, country)) { // parte das cidades e dos postos avançados
+    for (const i of hexesInRadius(a, RULES.settlerSupplyRange, w.W, w.H)) {
       const s = siteScore(w, i);
       if (s <= bestS) continue; // nota primeiro: as checagens abaixo percorrem todas as cidades
       if (e.cities.some((k) => dist(w, k.hex, i) < RULES.minCityDistance)) continue;
@@ -62,7 +62,12 @@ export const clearFounded = () => { const f = founded; founded = false; return f
 
 function expand(w: World, e: Economy, country: number, era: number) {
   for (const d of e.divisions.filter((x): x is Division => x.kind === "settler" && x.country === country)) {
-    if (d.target === null && foundCity(w, e, d.id, true) === null) { founded = true; continue; } // chegou (ou já estava num bom lugar)
+    if (d.target === null) {
+      const err = foundCity(w, e, d.id, true);
+      if (err === null) { founded = true; continue; } // chegou (ou já estava num bom lugar)
+      // capacidade esgotada: em vez de esperar parado, vira posto avançado (base para a próxima cidade)
+      if (/Capacidade/.test(err) && pathDistance(w, e, country, d.hex) >= 3 && buildOutpost(w, e, d.id) === null) continue;
+    }
     if (d.target !== null || settlerDistance(w, e, d) > RULES.settlerSupplyRange) continue;
     const site = bestSite(w, e, country);
     if (site >= 0) orderMove(w, e, d.id, site);

@@ -5,6 +5,7 @@ import { refresh, dropHomeless, GOODS, RULES, INFAMY, type Economy, type Divisio
 import { DIPLO } from "./diplomacy.ts";
 import { warAllies } from "./subjects.ts";
 import { lostCity, hasClaimOn, CLAIM } from "./claims.ts";
+import { anchors } from "./expansion.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, note } from "./characters.ts";
 import { UNITS, unitOf, SHIPS, PLANES, craftOf } from "./units.ts";
 import { techSum } from "./tech.ts";
@@ -481,7 +482,7 @@ export function depotDistance(w: World, e: Economy, d: Division) {
 /** Distância (em hexes) dos colonos até a cidade mais próxima do país deles. */
 export function settlerDistance(w: World, e: Economy, d: Division) {
   let best = Infinity;
-  for (const k of e.cities) if (k.country === d.country) best = Math.min(best, hexDistance(d.hex % w.W, (d.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W));
+  for (const h of anchors(e, d.country)) best = Math.min(best, hexDistance(d.hex % w.W, (d.hex / w.W) | 0, h % w.W, (h / w.W) | 0, w.W)); // cidades e postos avançados
   return best;
 }
 
