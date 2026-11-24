@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "node src/hex.test.ts && node src/economy.test.ts"
+    "test": "node src/hex.test.ts && node src/economy.test.ts",
+    "biomas": "node scripts/gerar-biomas.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

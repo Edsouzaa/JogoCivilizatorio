@@ -1,41 +1,49 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, type World } from "./world.ts";
-import { createEconomy, tick, build, buildCost, buildingsFor, dateLabel, BASE_PRICE, BUILDINGS, RULES, type Economy } from "./economy.ts";
-import { pixelToHex, SQRT3 } from "./hex.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, type World } from "./world.ts";
+import {
+  createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
+  BASE_PRICE, BUILDINGS, GOODS, RULES, type Economy,
+} from "./economy.ts";
+import { pixelToHex, wrapCol, SQRT3 } from "./hex.ts";
 import { createRenderer } from "./render.ts";
 
 // 1600 × 640 = 1.024.000 hexágonos ≈ Terra com 500 km² por hex. Mude por ?w=&h= na URL para testar.
 const params = new URLSearchParams(location.search);
 const W = Number(params.get("w")) || 1600, H = Number(params.get("h")) || 640;
+const WORLD_W = SQRT3 * W; // largura do mundo em unidades do mapa (uma volta)
 
 const canvas = document.getElementById("map") as HTMLCanvasElement;
 const hud = document.getElementById("hud")!;
 const panel = document.getElementById("panel")!;
-const renderer = createRenderer(canvas, W, H);
+const renderer = createRenderer(canvas, W, H, BIOME_FILES.map((f) => `/biomas/${f}`));
 
-let world: World, eco: Economy, mode = 0, genMs = 0, colorMs = 0, tickMs = 0;
+let world: World, eco: Economy, mode = 0, genMs = 0, colorMs = 0, tickMs = 0, drawnVersion = -1;
 const rgba = new Uint8Array(W * H * 4);
-const cam = { x: (SQRT3 * W) / 2, y: (1.5 * H) / 2, zoom: 0 };
+const cam = { x: WORLD_W / 2, y: (1.5 * H) / 2, zoom: 0 };
 let hover: [number, number] = [-1, -1];
 let selected = -1; // índice do hex clicado
+let active = 0;    // país que o jogador está controlando (o último país clicado)
 let message = "";
 
-const SPEEDS = [0, 1, 4, 16, 52]; // semanas por segundo; 0 = pausado
-let speed = 1, lastSpeed = 1, acc = 0;
+// Semanas por segundo. "Média" = 1 semana/s (era tribal). Outras eras mudam isso depois (docs/escopo.md).
+const SPEEDS = [0, 0.25, 0.5, 1, 2, 4];
+const SPEED_NAMES = ["", "Muito lenta", "Lenta", "Média", "Rápida", "Muito rápida"];
+let speed = 3, lastSpeed = 3, acc = 0;
 
 function newWorld(seed: number) {
   let t = performance.now();
   world = generateWorld(W, H, seed);
   genMs = performance.now() - t;
   eco = createEconomy(world);
-  selected = -1;
-  setMode(mode);
+  selected = -1; active = 0; message = "";
+  recolor();
 }
-function setMode(m: number) {
-  mode = m;
+function recolor() {
   const t = performance.now();
-  renderer.upload(colorize(world, mode, rgba));
+  renderer.upload(colorize(world, mode, eco.urban, rgba));
   colorMs = performance.now() - t;
+  drawnVersion = eco.version;
 }
+function setMode(m: number) { mode = m; recolor(); }
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -43,19 +51,22 @@ function resize() {
   canvas.height = Math.round(canvas.clientHeight * dpr);
   if (!(cam.zoom > 0)) fit(); // aba carregada escondida tem tamanho 0 e deixa zoom = 0
 }
-function fit() { cam.x = (SQRT3 * W) / 2; cam.y = (1.5 * H) / 2; cam.zoom = Math.min(canvas.width / (SQRT3 * W), canvas.height / (1.5 * H)); }
+function fit() { cam.x = WORLD_W / 2; cam.y = (1.5 * H) / 2; cam.zoom = Math.min(canvas.width / WORLD_W, canvas.height / (1.5 * H)); }
 const toWorld = (sx: number, sy: number): [number, number] => {
   const dpr = window.devicePixelRatio || 1;
   return [(sx * dpr - canvas.width / 2) / cam.zoom + cam.x, (sy * dpr - canvas.height / 2) / cam.zoom + cam.y];
 };
+const hexAt = (sx: number, sy: number): [number, number] => { const [c, r] = pixelToHex(...toWorld(sx, sy)); return [wrapCol(c, W), r]; };
 const inMap = (c: number, r: number) => c >= 0 && r >= 0 && c < W && r < H;
+const cityOf = (i: number) => (eco.market[i] ? eco.cities[eco.market[i] - 1] : undefined);
 
 let drag: { x: number; y: number; moved: number } | null = null;
 canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, moved: 0 }; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener("pointerup", (e) => {
   if (drag && drag.moved < 5) { // clique sem arrastar = selecionar hex
-    const [c, r] = pixelToHex(...toWorld(e.clientX, e.clientY));
+    const [c, r] = hexAt(e.clientX, e.clientY);
     selected = inMap(c, r) ? r * W + c : -1;
+    if (selected >= 0 && world.owner[selected]) active = world.owner[selected];
     message = "";
     updateUI();
   }
@@ -66,9 +77,11 @@ canvas.addEventListener("pointermove", (e) => {
     const dpr = window.devicePixelRatio || 1;
     drag.moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y);
     cam.x -= ((e.clientX - drag.x) * dpr) / cam.zoom; cam.y -= ((e.clientY - drag.y) * dpr) / cam.zoom;
+    cam.x = ((cam.x % WORLD_W) + WORLD_W) % WORLD_W; // o mundo é redondo: andar para o lado dá a volta
+    cam.y = Math.min(1.5 * H, Math.max(0, cam.y));
     drag.x = e.clientX; drag.y = e.clientY;
   }
-  hover = pixelToHex(...toWorld(e.clientX, e.clientY));
+  hover = hexAt(e.clientX, e.clientY);
 });
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -79,10 +92,9 @@ canvas.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 function togglePause() { if (speed) { lastSpeed = speed; speed = 0; } else speed = lastSpeed; }
-function doBuild(b = buildingsFor(world.resource[selected])[0]) { // B sem escolha = extratora do hex
-  if (selected < 0 || b === undefined) return;
-  message = build(world, eco, selected, b) ?? "";
-  updateUI();
+function act(result: string | null) { message = result ?? ""; if (eco.version !== drawnVersion) recolor(); updateUI(); }
+function doBuild(b = buildingsFor(world.resource[selected], !!eco.urban[selected])[0]) { // B sem escolha = 1ª construção do hex
+  if (selected >= 0 && b !== undefined) act(build(world, eco, selected, b));
 }
 window.addEventListener("keydown", (e) => {
   const n = Number(e.key);
@@ -90,6 +102,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "r" || e.key === "R") newWorld((Math.random() * 2 ** 31) | 0);
   if (e.key === "f" || e.key === "F") fit();
   if (e.key === "b" || e.key === "B") doBuild();
+  if ((e.key === "c" || e.key === "C") && active && selected >= 0) act(foundCity(world, eco, selected, active));
   if (e.key === " ") { e.preventDefault(); togglePause(); }
   if (e.key === "+" || e.key === "=") speed = Math.min(SPEEDS.length - 1, speed + 1);
   if (e.key === "-") speed = Math.max(1, speed - 1);
@@ -98,12 +111,15 @@ window.addEventListener("keydown", (e) => {
 // pointerdown, não click: o HUD é redesenhado a cada 500 ms e um click pode cair entre o down e o up.
 document.addEventListener("pointerdown", (e) => {
   const d = (e.target as HTMLElement).dataset;
-  if (d.build) { doBuild(Number(d.build)); return; }
+  if (d.build) return doBuild(Number(d.build));
+  if (d.transfer) return act(transferSize(world, eco, eco.market[selected] - 1, Number(d.transfer)));
+  if (d.act === "found") return act(foundCity(world, eco, selected, active));
+  if (d.act === "settlers") return act(trainSettlers(world, eco, active));
   if (d.mode) setMode(Number(d.mode));
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
   if (d.speed) speed = Number(d.speed);
-  if (d.act) updateUI();
+  if (d.act || d.mode || d.speed) updateUI();
 });
 window.addEventListener("resize", resize);
 
@@ -111,50 +127,76 @@ const fmt = (v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(1)} mi` : v >= 1e3 ? 
 
 function updateUI() {
   const [hc, hr] = hover, hi = hr * W + hc;
+  const hcity = inMap(hc, hr) ? cityOf(hi) : undefined;
   const info = inMap(hc, hr)
     ? `Hex (${hc}, ${hr}) · ${TERRAINS[world.terrain[hi]].name} · ${RESOURCES[world.resource[hi]]} · pop ${Math.round(world.pop[hi])}` +
-      (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` : "")
+      (world.owner[hi] ? ` · ${world.countries[world.owner[hi] - 1].name}` : "") + (hcity ? ` · mercado de ${hcity.name}` : "")
     : "—";
   hud.innerHTML =
     MAP_MODES.map((n, k) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}">${k + 1} ${n}</button>`).join(" ") +
     ` <button data-act="new">R Novo mapa</button>` +
     `<br><b>${dateLabel(eco.week)}</b> <button data-act="pause">${speed ? "⏸ Pausar" : "▶ Continuar"}</button> ` +
-    SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}">${s}×</button>`).join(" ") +
-    `<br>${(W * H).toLocaleString("pt-BR")} hexágonos · ${world.landCount.toLocaleString("pt-BR")} em terra · seed ${world.seed}` +
+    SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${s} semana(s)/s">${SPEED_NAMES[k + 1]}</button>`).join(" ") +
+    `<br>${(W * H).toLocaleString("pt-BR")} hexágonos · ${world.landCount.toLocaleString("pt-BR")} em terra · ${eco.cities.length} cidades · seed ${world.seed}` +
     `<br>${fps.toFixed(0)} FPS · pior frame ${worst.toFixed(1)} ms · gerar ${genMs.toFixed(0)} ms · colorir ${colorMs.toFixed(0)} ms · semana ${tickMs.toFixed(1)} ms` +
-    `<br>${info}<br><small>Arraste = mover · roda = zoom · clique = selecionar · B = construir · Espaço = pausar · +/− = velocidade · F = ver tudo</small>`;
+    `<br>${info}<br><small>Arraste = mover · roda = zoom · clique = selecionar · B = construir · C = fundar cidade · Espaço = pausar · +/− = velocidade · F = ver tudo</small>`;
+  panel.innerHTML = selected >= 0 ? countryHtml() + hexHtml() + marketHtml() : "";
+  const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
+  if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
+}
 
-  const owner = selected >= 0 ? world.owner[selected] : 0;
-  if (!owner) { panel.innerHTML = selected >= 0 ? `<h3>Sem dono</h3>${TERRAINS[world.terrain[selected]].name}` : ""; return; }
-  const c = eco.countries[owner - 1], meta = world.countries[owner - 1];
-  const res = world.resource[selected];
-  const buildings = buildingsFor(res).map((b) => {
-    const def = BUILDINGS[b], lv = eco.levels[b][selected];
-    const tip = def.boosts !== undefined ? ` <small>(+${Math.round(def.mult! * 100)}% ${BUILDINGS[def.boosts].name}/nível)</small>` : "";
-    return `<tr><td>${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} 👷</td>` +
-      `<td><button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, selected)}</button></td></tr>`;
-  });
-  const goods = [];
-  for (let g = 1; g < RESOURCES.length; g++) {
-    if (!c.supply[g] && !c.demand[g]) continue;
-    const pct = Math.round((c.price[g] - 1) * 100);
-    goods.push(`<tr><td>${RESOURCES[g]}</td><td>${fmt(c.supply[g])}</td><td>${fmt(c.demand[g])}</td>` +
-      `<td class="${pct > 0 ? "up" : pct < 0 ? "down" : ""}">${(BASE_PRICE[g] * c.price[g]).toFixed(1)} (${pct > 0 ? "+" : ""}${pct}%)</td></tr>`);
-  }
-  panel.innerHTML =
-    `<h3 style="color:rgb(${meta.color})">${meta.name}</h3>` +
-    `População ${fmt(c.pop)}<br>PIB anual <b>${fmt(c.gdpWeek * 52)}</b>` +
+function countryHtml() {
+  if (!active) return "<i>Clique num país para controlá-lo.</i><hr>";
+  const c = eco.countries[active - 1], meta = world.countries[active - 1];
+  return `<h3 style="color:rgb(${meta.color})">${meta.name} <small>(você)</small></h3>` +
+    `População ${fmt(c.pop)} · ${eco.cities.filter((k) => k.country === active).length} cidade(s)<br>PIB anual <b>${fmt(c.gdpWeek * 52)}</b>` +
     `<canvas id="gdp" width="300" height="80" style="width:100%;background:#111;margin:4px 0"></canvas>` +
     `Tesouro ${fmt(c.treasury)} · Dívida <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span>` +
-    `<br>Manpower livre <b class="${c.manpower < 1000 ? "bad" : ""}">${fmt(c.manpower)}</b> de ${fmt(c.pop * RULES.manpowerShare)}` +
+    `<br>Manpower livre <b class="${c.manpower < 20 ? "bad" : ""}">${fmt(c.manpower)}</b>` +
     `<br>Semana: +${fmt(c.income)} impostos (${Math.round(c.tax * 100)}%) − ${fmt(c.upkeep)} manutenção − ${fmt(c.interest)} juros` +
     (c.bankruptWeeks ? `<br><span class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</span>` : "") +
-    `<hr><b>Hex selecionado</b>: ${TERRAINS[world.terrain[selected]].name} · ${RESOURCES[res]}` +
-    ` · pop ${fmt(world.pop[selected])}` +
-    (buildings.length ? `<table>${buildings.join("")}</table>` : "<br>Sem construções possíveis") +
-    (message ? `<br><span class="bad">${message}</span>` : "") +
-    `<hr><table><tr><td><b>Bem</b></td><td><b>Oferta</b></td><td><b>Demanda</b></td><td><b>Preço</b></td></tr>${goods.join("")}</table>`;
-  drawChart(document.getElementById("gdp") as HTMLCanvasElement, c.gdpHistory);
+    `<br>Colonos: <b>${c.settlers}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button><hr>`;
+}
+
+function hexHtml() {
+  const i = selected, res = world.resource[i], city = cityOf(i);
+  let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]} · pop ${fmt(world.pop[i])}`;
+  if (eco.urban[i]) h += " · <b>urbano</b>";
+  if (world.owner[i] !== active || !active) {
+    h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
+    if (active && !world.owner[i]) h += `<br><button data-act="found">C Fundar cidade aqui</button>`;
+    return h + (message ? `<br><span class="bad">${message}</span>` : "") + "<hr>";
+  }
+  const rows = buildingsFor(res, !!eco.urban[i]).map((b) => {
+    const def = BUILDINGS[b], lv = eco.levels[b][i];
+    const tip = def.boosts !== undefined ? ` <small>(+${Math.round(def.mult! * 100)}% ${BUILDINGS[def.boosts].name}/nível)</small>`
+      : def.industry ? ` <small>(${def.industry.inputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")} → ${def.industry.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")})</small>` : "";
+    return `<tr><td>${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} 👷</td>` +
+      `<td><button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button></td></tr>`;
+  });
+  h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
+  if (!eco.urban[i]) h += `<br><button data-act="found">C Fundar cidade aqui</button>`;
+  if (city && eco.urban[i]) {
+    const others = eco.cities.map((k, idx) => [k, idx] as const).filter(([k]) => k.country === city.country && k !== city);
+    h += `<br><b>${city.name}</b> · tamanho ${city.size} · pop urbana ${fmt(city.urban.reduce((s, j) => s + world.pop[j], 0))}` +
+      ` (cresce com ${fmt(city.size * RULES.cityGrowthPop)})` +
+      (others.length && city.size > 1 ? `<br>Passar 1 de tamanho para: ${others.map(([k, idx]) => `<button data-transfer="${idx}">${k.name}</button>`).join(" ")}` : "");
+  }
+  return h + (message ? `<br><span class="bad">${message}</span>` : "") + "<hr>";
+}
+
+function marketHtml() {
+  const city = cityOf(selected);
+  if (!city) return "";
+  const m = city.market, rows = [];
+  for (let gi = 1; gi < GOODS.length; gi++) {
+    if (!m.supply[gi] && !m.demand[gi]) continue;
+    const pct = Math.round((m.price[gi] - 1) * 100);
+    rows.push(`<tr><td>${GOODS[gi]}</td><td>${fmt(m.supply[gi])}</td><td>${fmt(m.demand[gi])}</td>` +
+      `<td class="${pct > 0 ? "up" : pct < 0 ? "down" : ""}">${(BASE_PRICE[gi] * m.price[gi]).toFixed(1)} (${pct > 0 ? "+" : ""}${pct}%)</td></tr>`);
+  }
+  return `<b>Mercado de ${city.name}</b> · ${fmt(m.pop)} pessoas` +
+    `<table><tr><td><b>Bem</b></td><td><b>Oferta</b></td><td><b>Demanda</b></td><td><b>Preço</b></td></tr>${rows.join("")}</table>`;
 }
 
 function drawChart(cv: HTMLCanvasElement, data: number[]) {
@@ -175,12 +217,13 @@ let frames = 0, fps = 0, last = performance.now(), worst = 0, prev = last;
 function frame(now: number) {
   const dt = now - prev;
   worst = Math.max(worst, dt); prev = now;
-  acc += (Math.min(dt, 250) / 1000) * SPEEDS[speed];
-  for (let n = 0; acc >= 1 && n < 10; n++, acc--) { // no máximo 10 semanas por frame
+  acc = Math.min(acc + (Math.min(dt, 250) / 1000) * SPEEDS[speed], 10);
+  for (; acc >= 1; acc--) {
     const t = performance.now();
     tick(world, eco);
     tickMs = performance.now() - t;
   }
+  if (eco.version !== drawnVersion || (mode === 2 && eco.week % 4 === 0 && frames === 0)) recolor(); // cidades cresceram / população mudou
   renderer.draw(cam.x, cam.y, cam.zoom, hover[0], hover[1]);
   frames++;
   if (now - last >= 500) {

@@ -58,3 +58,14 @@ Algumas leis só ficam disponíveis com certas tecnologias ou eras.
 | Imprensa / liberdades | Censura total, Censura parcial, Imprensa livre |
 
 As leis ligam os sistemas: Economia controla preços e comércio, Trabalho controla quais POPs existem, Exército controla o manpower, Cidadania controla a assimilação de culturas.
+
+## Estados
+
+Mais para frente, o jogador poderá dividir o território em **estados**, como os do Brasil ou dos Estados Unidos.
+
+- **Quem demarca:** o próprio jogador desenha as fronteiras dos estados, juntando hexágonos e cidades.
+- **Quando não pode mudar:** em crise ou guerra, as fronteiras dos estados ficam travadas.
+- **O que um estado faz depende das leis:**
+  - Lei *centralizada*: o estado é só uma divisão administrativa e melhora a administração (menos custo de burocracia, impostos coletados melhor).
+  - Lei *federativa*: cada estado pode ter **leis próprias** (como nos Estados Unidos), dentro do que a lei federal permite.
+- **Interesses:** cada estado, assim como os grupos políticos, tem interesses (por exemplo, um estado agrícola quer comida cara e um estado industrial quer insumos baratos). Estados insatisfeitos perdem lealdade e podem pressionar por autonomia ou separação.

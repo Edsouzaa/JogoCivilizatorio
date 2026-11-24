@@ -1,34 +1,59 @@
-import { RESOURCES, type World } from "./world.ts";
+import { RESOURCES, TERRAINS, isLand, type World } from "./world.ts";
+import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 
-// Preço base por recurso (mesma ordem de RESOURCES; 0 = "sem recurso").
+/** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
+export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas"];
+const g = (n: string) => { const k = GOODS.indexOf(n); if (k < 0) throw new Error(`bem desconhecido: ${n}`); return k; };
+const NG = GOODS.length;
+
 const BASE: Record<string, number> = {
   "Grãos": 10, "Frutas e vegetais": 10, "Carne e caça": 14, "Peles": 18, "Madeira": 12, "Pedra": 10, "Fibras": 12,
   "Argila": 8, "Sal": 15, "Cobre": 30, "Estanho": 35, "Ferro": 30, "Ouro": 120, "Prata": 80, "Pedras preciosas": 150,
   "Especiarias": 60, "Cavalos": 50, "Gado": 30, "Carvão mineral": 20, "Enxofre": 25, "Petróleo": 40,
+  "Bronze": 60, "Tecidos": 35, "Ferramentas": 55, "Armas": 90,
 };
-export const BASE_PRICE = RESOURCES.map((n) => BASE[n] ?? 0);
-const FOOD = new Set(["Grãos", "Frutas e vegetais", "Carne e caça"].map((n) => RESOURCES.indexOf(n)));
-const G = RESOURCES.length;
-const ids = (...names: string[]) => names.map((n) => { const k = RESOURCES.indexOf(n); if (k < 0) throw new Error(n); return k; });
+export const BASE_PRICE = GOODS.map((n) => BASE[n] ?? 0);
 
+// Consumo semanal por pessoa (era tribal/antiga). Comida pesa mais; o resto é pouco por pessoa.
+const POP_DEMAND = new Float64Array(NG).fill(1 / 1500);
+POP_DEMAND[0] = 0;
+const FOOD = ["Grãos", "Frutas e vegetais", "Carne e caça"].map(g);
+for (const f of FOOD) POP_DEMAND[f] = 1 / 200;
+POP_DEMAND[g("Tecidos")] = 1 / 300; POP_DEMAND[g("Ferramentas")] = 1 / 800; POP_DEMAND[g("Armas")] = 1 / 3000;
+POP_DEMAND[g("Bronze")] = 1 / 4000;
+
+type Building = {
+  name: string; workers: number;
+  for: number[];                 // recursos do hex onde pode ser construída (vazio = qualquer, se industrial)
+  boosts?: number; mult?: number; // melhoria: multiplica a extratora `boosts`
+  industry?: { inputs: [number, number][]; outputs: [number, number][] }; // só em hex urbano
+};
 /**
- * Construções. Extratora: produz o recurso do hex. Melhoria: multiplica a extratora indicada em `boosts`.
+ * Construções. Extratora: produz o recurso do hex. Melhoria: multiplica uma extratora.
+ * Indústria: só em hex de cidade; compra insumos no mercado da cidade e vende o produto nele.
  * Cada nível ocupa `workers` pessoas, que saem do manpower do país.
  */
-export const BUILDINGS: { name: string; for: number[]; workers: number; boosts?: number; mult?: number }[] = [];
-const add = (b: (typeof BUILDINGS)[number]) => BUILDINGS.push(b) - 1;
-const FARM = add({ name: "Fazenda", for: ids("Grãos", "Frutas e vegetais", "Fibras", "Especiarias"), workers: 500 });
-add({ name: "Irrigação", for: BUILDINGS[FARM].for, workers: 200, boosts: FARM, mult: 0.5 });
-const PASTURE = add({ name: "Pasto", for: ids("Cavalos", "Gado"), workers: 300 });
-add({ name: "Estábulo", for: BUILDINGS[PASTURE].for, workers: 150, boosts: PASTURE, mult: 0.4 });
-add({ name: "Acampamento de caça", for: ids("Carne e caça", "Peles"), workers: 300 });
-const LUMBER = add({ name: "Serraria", for: ids("Madeira"), workers: 400 });
-add({ name: "Trilhas de transporte", for: BUILDINGS[LUMBER].for, workers: 150, boosts: LUMBER, mult: 0.3 });
-const MINE = add({ name: "Mina", for: ids("Pedra", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Carvão mineral", "Enxofre", "Sal"), workers: 700 });
-add({ name: "Galerias escoradas", for: BUILDINGS[MINE].for, workers: 300, boosts: MINE, mult: 0.5 });
-add({ name: "Barreiro", for: ids("Argila"), workers: 250 });
-add({ name: "Poço", for: ids("Petróleo"), workers: 400 });
-const B = BUILDINGS.length;
+export const BUILDINGS: Building[] = [];
+const add = (b: Building) => BUILDINGS.push(b) - 1;
+const res = (...names: string[]) => names.map(g);
+const FARM = add({ name: "Fazenda", for: res("Grãos", "Frutas e vegetais", "Fibras", "Especiarias"), workers: 20 });
+add({ name: "Irrigação", for: BUILDINGS[FARM].for, workers: 10, boosts: FARM, mult: 0.5 });
+const PASTURE = add({ name: "Pasto", for: res("Cavalos", "Gado"), workers: 15 });
+add({ name: "Estábulo", for: BUILDINGS[PASTURE].for, workers: 8, boosts: PASTURE, mult: 0.4 });
+add({ name: "Acampamento de caça", for: res("Carne e caça", "Peles"), workers: 15 });
+const LUMBER = add({ name: "Serraria", for: res("Madeira"), workers: 20 });
+add({ name: "Trilhas de transporte", for: BUILDINGS[LUMBER].for, workers: 8, boosts: LUMBER, mult: 0.3 });
+const MINE = add({ name: "Mina", for: res("Pedra", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Carvão mineral", "Enxofre", "Sal"), workers: 30 });
+add({ name: "Galerias escoradas", for: BUILDINGS[MINE].for, workers: 15, boosts: MINE, mult: 0.5 });
+add({ name: "Barreiro", for: res("Argila"), workers: 12 });
+add({ name: "Poço", for: res("Petróleo"), workers: 20 });
+// Cadeia curta. A ordem importa: Bronze sai antes das Armas no mesmo tick.
+add({ name: "Fundição de bronze", for: [], workers: 40, industry: { inputs: [[g("Cobre"), 2], [g("Estanho"), 1]], outputs: [[g("Bronze"), 2]] } });
+add({ name: "Tecelagem", for: [], workers: 30, industry: { inputs: [[g("Fibras"), 2]], outputs: [[g("Tecidos"), 2]] } });
+add({ name: "Ferraria", for: [], workers: 35, industry: { inputs: [[g("Ferro"), 1], [g("Madeira"), 1]], outputs: [[g("Ferramentas"), 2]] } });
+add({ name: "Armeiro", for: [], workers: 35, industry: { inputs: [[g("Bronze"), 1], [g("Madeira"), 1]], outputs: [[g("Armas"), 1]] } });
+const NB = BUILDINGS.length;
+const INDUSTRIES = BUILDINGS.map((_, b) => b).filter((b) => BUILDINGS[b].industry);
 
 export const MIN_PRICE = 0.5, MAX_PRICE = 1.75; // -50% a +75% do preço base
 
@@ -38,51 +63,98 @@ export function priceFactor(supply: number, demand: number) {
   return Math.min(MAX_PRICE, Math.max(MIN_PRICE, 1 + (demand - supply) / Math.max(supply, demand)));
 }
 
-export type Country = {
-  treasury: number; debt: number; tax: number;
-  gdpWeek: number; income: number; upkeep: number; interest: number;
-  bankruptWeeks: number; pop: number;
-  manpower: number; // pessoas livres para trabalhar em novas construções (e, no futuro, para o exército)
-  supply: Float64Array; demand: Float64Array; price: Float64Array;
-  gdpHistory: number[]; // PIB anual, um ponto por mês
-};
-
 export const RULES = {
-  outputPerLevel: 5,        // unidades por semana por nível de extratora
+  outputPerLevel: 5,        // unidades por semana por nível de extratora; indústria = receita × nível
   buildCost: 100,           // custo do nível n = buildCost * n
   upkeepPerLevel: 0.5,      // por semana, por nível de qualquer construção
   interestYear: 0.05,       // juros anuais da dívida
   bankruptDebtToGdp: 2,     // dívida > 2× PIB anual = falência
   bankruptPenalty: 0.75,    // produção ×0.75 enquanto falido
   bankruptWeeks: 52,
-  foodPerPop: 1 / 20000,    // demanda semanal de comida por pessoa (calibrado p/ oferta ≈ demanda no início)
-  goodsPerPop: 1 / 40000,   // demanda semanal dos outros bens
-  manpowerShare: 0.1,       // fração da população que pode ser mobilizada (trabalho ou exército)
-  hexLaborShare: 0.3,       // fração da população do hex que trabalha nas construções dele
+  manpowerShare: 0.5,       // fração da população que pode ser mobilizada (trabalho ou exército); tribal = quase todos
+  subsistence: 0.8,         // comida que cada hex produz sozinho, em fração do que a população dele come × fertilidade
+  hexLaborShare: 0.5,       // fração da população do hex que trabalha nas construções dele
+  startSettlers: 2,
+  settlerCost: 200,         // dinheiro para treinar colonos
+  settlerPop: 50,           // pessoas que saem da capital para virar colonos
+  minCityDistance: 4,       // hexágonos entre cidades
+  maxSettleDistance: 12,    // colonos só fundam até esta distância de uma cidade do país
+  settleClaimRadius: 2,     // território que uma cidade nova reivindica
+  migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
+  cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer
+  maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
 };
 
-/** levels[b][i] = nível da construção b no hex i. */
-export type Economy = { week: number; levels: Uint8Array[]; producers: Int32Array; countries: Country[] };
+export type Market = { supply: Float64Array; demand: Float64Array; price: Float64Array; used: Float64Array; pop: number };
+export type City = { name: string; country: number; hex: number; size: number; urban: number[]; market: Market };
+export type Country = {
+  treasury: number; debt: number; tax: number;
+  gdpWeek: number; income: number; upkeep: number; interest: number;
+  bankruptWeeks: number; pop: number;
+  manpower: number; // pessoas livres para trabalhar em novas construções (e, no futuro, para o exército)
+  settlers: number;
+  gdpHistory: number[]; // PIB anual, um ponto por mês
+};
 
-/** Construções que podem existir no hex i (pelo recurso dele). */
-export const buildingsFor = (resource: number) => BUILDINGS.map((_, b) => b).filter((b) => BUILDINGS[b].for.includes(resource));
-const extractorFor = (resource: number) => BUILDINGS.findIndex((b) => b.boosts === undefined && b.for.includes(resource));
+/** levels[b][i] = nível da construção b no hex i. market[i] = cidade (1-based) cujo mercado atende o hex. */
+export type Economy = {
+  week: number; levels: Uint8Array[]; producers: Set<number>;
+  countries: Country[]; cities: City[];
+  market: Uint16Array; urban: Uint8Array; owned: Int32Array;
+  version: number; // muda a cada refresh: hora de redesenhar cidades e fronteiras
+};
+
+const newMarket = (): Market => ({ supply: new Float64Array(NG), demand: new Float64Array(NG), price: new Float64Array(NG).fill(1), used: new Float64Array(NG), pop: 0 });
+
+/** Construções possíveis num hex com este recurso; indústrias só se o hex for urbano. */
+export const buildingsFor = (resource: number, urban: boolean) =>
+  BUILDINGS.map((_, b) => b).filter((b) => (BUILDINGS[b].industry ? urban : BUILDINGS[b].for.includes(resource)));
+const extractorFor = (resource: number) => BUILDINGS.findIndex((b) => !b.industry && b.boosts === undefined && b.for.includes(resource));
+
+/** Recalcula hexes urbanos, a que mercado cada hex pertence e a lista de hexes com dono. */
+export function refresh(w: World, e: Economy) {
+  const N = w.W * w.H;
+  e.version++;
+  e.urban.fill(0); e.market.fill(0);
+  const owned: number[] = [];
+  for (let i = 0; i < N; i++) if (w.owner[i]) owned.push(i);
+  e.owned = Int32Array.from(owned);
+  let queue: number[] = [];
+  e.cities.forEach((c, k) => {
+    c.urban = hexesInRadius(c.hex, 3, w.W, w.H).filter((j) => w.owner[j] === c.country && isLand(w.terrain[j])).slice(0, c.size);
+    for (const j of c.urban) e.urban[j] = 1;
+    e.market[c.hex] = k + 1; queue.push(c.hex);
+  });
+  // cada hex do país compra/vende no mercado da cidade mais próxima (por caminho dentro do país)
+  while (queue.length) {
+    const next: number[] = [];
+    for (const i of queue) forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => {
+      if (!e.market[j] && w.owner[j] === w.owner[i]) { e.market[j] = e.market[i]; next.push(j); }
+    });
+    queue = next;
+  }
+}
 
 export function createEconomy(w: World): Economy {
-  const N = w.W * w.H, levels = Array.from({ length: B }, () => new Uint8Array(N)), prod: number[] = [];
-  const countries: Country[] = w.countries.map(() => ({
-    treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0, manpower: 0,
-    supply: new Float64Array(G), demand: new Float64Array(G), price: new Float64Array(G).fill(1), gdpHistory: [],
-  }));
-  for (let i = 0; i < N; i++) {
-    if (!w.owner[i]) continue;
-    const c = countries[w.owner[i] - 1];
+  const N = w.W * w.H;
+  const e: Economy = {
+    week: 0, levels: Array.from({ length: NB }, () => new Uint8Array(N)), producers: new Set(),
+    countries: w.countries.map(() => ({
+      treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
+      manpower: 0, settlers: RULES.startSettlers, gdpHistory: [],
+    })),
+    cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket() })),
+    market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
+  };
+  refresh(w, e);
+  for (const i of e.owned) {
+    const c = e.countries[w.owner[i] - 1];
     c.pop += w.pop[i];
     const ex = w.resource[i] ? extractorFor(w.resource[i]) : -1;
-    if (ex >= 0) { levels[ex][i] = 1; prod.push(i); c.manpower -= BUILDINGS[ex].workers; } // começa com extratora nível 1
+    if (ex >= 0) { e.levels[ex][i] = 1; e.producers.add(i); c.manpower -= BUILDINGS[ex].workers; } // começa com extratora nível 1
   }
-  for (const c of countries) c.manpower += c.pop * RULES.manpowerShare;
-  return { week: 0, levels, producers: Int32Array.from(prod), countries };
+  for (const c of e.countries) c.manpower += c.pop * RULES.manpowerShare;
+  return e;
 }
 
 export function buildCost(e: Economy, b: number, i: number) { return RULES.buildCost * (e.levels[b][i] + 1); }
@@ -91,7 +163,8 @@ export function buildCost(e: Economy, b: number, i: number) { return RULES.build
 export function build(w: World, e: Economy, i: number, b: number): string | null {
   const def = BUILDINGS[b];
   if (!w.owner[i]) return "Hex sem dono";
-  if (!def || !def.for.includes(w.resource[i])) return "Construção não serve para este recurso";
+  if (!def) return "Construção inválida";
+  if (def.industry ? !e.urban[i] : !def.for.includes(w.resource[i])) return def.industry ? "Indústria só em hex de cidade" : "Construção não serve para este recurso";
   if (def.boosts !== undefined && !e.levels[def.boosts][i]) return `Precisa de ${BUILDINGS[def.boosts].name} antes`;
   if (e.levels[b][i] >= 255) return "Nível máximo";
   const c = e.countries[w.owner[i] - 1];
@@ -99,35 +172,117 @@ export function build(w: World, e: Economy, i: number, b: number): string | null
   c.treasury -= buildCost(e, b, i);
   if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
   c.manpower -= def.workers;
-  if (!e.producers.includes(i)) e.producers = Int32Array.from([...e.producers, i]);
+  e.producers.add(i);
   e.levels[b][i]++;
   return null;
 }
 
-/** Avança uma semana. */
-// shortcut: cada país é um mercado fechado (sem comércio entre países), trocar quando entrar comércio/nós.
+/** Colonos do país `country` (1-based) fundam uma cidade no hex i. */
+export function foundCity(w: World, e: Economy, i: number, country: number): string | null {
+  const c = e.countries[country - 1];
+  if (c.settlers <= 0) return "Sem colonos";
+  if (!isLand(w.terrain[i])) return "Precisa ser em terra";
+  if (w.owner[i] && w.owner[i] !== country) return "Território de outro país";
+  const col = i % w.W, row = (i / w.W) | 0;
+  const dist = (h: number) => hexDistance(col, row, h % w.W, (h / w.W) | 0, w.W);
+  if (e.cities.some((k) => dist(k.hex) < RULES.minCityDistance)) return `Muito perto de outra cidade (mínimo ${RULES.minCityDistance})`;
+  if (!e.cities.some((k) => k.country === country && dist(k.hex) <= RULES.maxSettleDistance)) return `Longe demais das suas cidades (máximo ${RULES.maxSettleDistance})`;
+  c.settlers--;
+  for (const j of hexesInRadius(i, RULES.settleClaimRadius, w.W, w.H)) if (!w.owner[j] && isLand(w.terrain[j])) { w.owner[j] = country; c.pop += w.pop[j]; }
+  e.cities.push({ name: `Cidade ${e.cities.length + 1}`, country, hex: i, size: 1, urban: [], market: newMarket() });
+  refresh(w, e);
+  return null;
+}
+
+/** Treina um grupo de colonos: custa dinheiro e gente da capital. */
+export function trainSettlers(w: World, e: Economy, country: number): string | null {
+  const c = e.countries[country - 1], capital = e.cities.find((k) => k.country === country)!;
+  if (w.pop[capital.hex] < RULES.settlerPop * 2) return "Capital pequena demais";
+  if (c.treasury < RULES.settlerCost) return `Precisa de ${RULES.settlerCost} no tesouro`;
+  c.treasury -= RULES.settlerCost;
+  w.pop[capital.hex] -= RULES.settlerPop; c.pop -= RULES.settlerPop;
+  c.settlers++;
+  return null;
+}
+
+/** Passa 1 de tamanho da cidade `from` para a cidade `to` (índices em e.cities), do mesmo país. */
+export function transferSize(w: World, e: Economy, from: number, to: number): string | null {
+  const a = e.cities[from], b = e.cities[to];
+  if (!a || !b || a === b) return "Cidade inválida";
+  if (a.country !== b.country) return "Só entre cidades do mesmo país";
+  if (a.size <= 1) return "A cidade precisa manter tamanho 1";
+  if (b.size >= RULES.maxCitySize) return "Cidade de destino no tamanho máximo";
+  a.size--; b.size++;
+  refresh(w, e);
+  return null;
+}
+
+/** Avança uma semana. Cada cidade é um mercado; o país soma os mercados das suas cidades. */
+// shortcut: sem comércio entre mercados (nem entre cidades do mesmo país), trocar quando entrarem rotas/nós.
 export function tick(w: World, e: Economy) {
-  for (const c of e.countries) { c.supply.fill(0); c.upkeep = 0; }
+  for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.pop = 0; }
+  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; }
+
+  for (const i of e.owned) {
+    const k = e.market[i];
+    if (!k) continue;
+    const city = e.cities[k - 1];
+    if (!e.urban[i] && w.pop[i] > 1) { // cidades atraem a população em volta
+      const moved = w.pop[i] * RULES.migrationWeek, to = city.urban[(e.week + i) % city.urban.length];
+      w.pop[i] -= moved; w.pop[to] += moved;
+    }
+    city.market.pop += w.pop[i];
+    // subsistência: caça, coleta e roças sem construção; fazendas vêm por cima disso
+    const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence;
+    for (const f of FOOD) city.market.supply[f] += food;
+    e.countries[w.owner[i] - 1].pop += w.pop[i];
+  }
+
+  // throughput[cidade][b] = soma de nível × ocupação das indústrias b no mercado da cidade
+  const throughput = e.cities.map(() => new Float64Array(NB));
   for (const i of e.producers) {
-    const c = e.countries[w.owner[i] - 1];
+    const k = e.market[i];
+    if (!k) continue;
+    const m = e.cities[k - 1].market, c = e.countries[w.owner[i] - 1];
     let base = 0, mult = 1, required = 0;
-    for (let b = 0; b < B; b++) {
+    for (let b = 0; b < NB; b++) {
       const lv = e.levels[b][i];
       if (!lv) continue;
       const def = BUILDINGS[b];
-      if (def.boosts === undefined) base += lv * RULES.outputPerLevel; else mult += lv * def.mult!;
       required += lv * def.workers;
       c.upkeep += lv * RULES.upkeepPerLevel;
+      if (def.industry) continue;
+      if (def.boosts === undefined) base += lv * RULES.outputPerLevel; else mult += lv * def.mult!;
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
-    c.supply[w.resource[i]] += base * mult * staffing * (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1);
+    const penalty = c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1;
+    if (base) m.supply[w.resource[i]] += base * mult * staffing * penalty;
+    for (const b of INDUSTRIES) if (e.levels[b][i]) throughput[e.market[i] - 1][b] += e.levels[b][i] * staffing * penalty;
   }
-  for (const c of e.countries) {
+
+  e.cities.forEach((city, k) => {
+    const m = city.market;
+    for (const b of INDUSTRIES) { // na ordem de BUILDINGS: o bronze feito aqui já serve ao armeiro
+      const thr = throughput[k][b];
+      if (!thr) continue;
+      const { inputs, outputs } = BUILDINGS[b].industry!;
+      let eff = 1;
+      for (const [gi, q] of inputs) { m.demand[gi] += q * thr; eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / (q * thr)); }
+      for (const [gi, q] of inputs) m.used[gi] += q * thr * eff;
+      for (const [go, q] of outputs) m.supply[go] += q * thr * eff;
+    }
+    for (let gi = 1; gi < NG; gi++) {
+      m.demand[gi] += m.pop * POP_DEMAND[gi];
+      m.price[gi] = priceFactor(m.supply[gi], m.demand[gi]);
+    }
+  });
+
+  e.countries.forEach((c, ci) => {
     let gdp = 0;
-    for (let g = 1; g < G; g++) {
-      c.demand[g] = c.pop * (FOOD.has(g) ? RULES.foodPerPop : RULES.goodsPerPop);
-      c.price[g] = priceFactor(c.supply[g], c.demand[g]);
-      gdp += c.supply[g] * BASE_PRICE[g] * c.price[g];
+    for (const city of e.cities) {
+      if (city.country !== ci + 1) continue;
+      const m = city.market;
+      for (let gi = 1; gi < NG; gi++) gdp += m.supply[gi] * BASE_PRICE[gi] * m.price[gi];
     }
     c.gdpWeek = gdp;
     c.income = gdp * c.tax;
@@ -141,6 +296,15 @@ export function tick(w: World, e: Economy) {
       c.debt /= 2;
     }
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
+  });
+
+  if (e.week % 4 === 0) { // cidades crescem quando a população urbana passa do limite do tamanho atual
+    let grew = false;
+    for (const city of e.cities) {
+      const urbanPop = city.urban.reduce((s, j) => s + w.pop[j], 0);
+      if (city.size < RULES.maxCitySize && urbanPop > city.size * RULES.cityGrowthPop) { city.size++; grew = true; }
+    }
+    if (grew) refresh(w, e);
   }
   e.week++;
 }
@@ -149,3 +313,4 @@ export function dateLabel(week: number) {
   const year = -2000 + Math.floor(week / 52), w = (week % 52) + 1;
   return `${year < 0 ? `${-year} a.C.` : `${year + 1} d.C.`} · semana ${w}`; // não existe ano 0
 }
+
