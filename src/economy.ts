@@ -7,6 +7,7 @@ import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 import type { Flag } from "./flags.ts";
 import { makeName } from "./names.ts";
 import { updateControl, CONTROL } from "./control.ts";
+import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
@@ -149,6 +150,7 @@ export type City = {
   blockaded?: boolean; // frota inimiga na zona marítima colada: sem comércio exterior, metade do interno, sem porto
   state?: number;       // id do estado da cidade (states.ts)
   flag?: Flag;          // bandeira própria (sem ela, a do país)
+  identity?: Identity;  // cultura, língua e religião da população (culture.ts)
   harbor?: number;      // nível do porto (0 = sem porto): mais comércio, até o máximo da era
   coast?: boolean;      // algum centro urbano encosta no mar (pode ter porto)
   road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
@@ -169,6 +171,8 @@ export type Country = {
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
   admin?: number;       // pontos administrativos guardados (admin.ts)
+  primaryCulture?: number; acceptedCultures?: number[]; officialLanguage?: number; stateReligion?: number; // culture.ts
+  culturePenalty?: number; // pontos de lealdade perdidos por gente de cultura não aceita
   adminWeek?: number;   // produzidos na última semana
   literacy?: number;    // 0..1: fração dos letrados (sabem ler, escrever e contar); acelera a pesquisa
   control?: number;     // controle médio (pela população) na última semana
@@ -283,6 +287,7 @@ export function createEconomy(w: World): Economy {
     if (ex >= 0) { e.levels[ex][i] = 1; e.producers.add(i); } // começa com extratora nível 1
   }
   updateControl(w, e, true);
+  for (const city of e.cities) city.identity = homeIdentity(w, e, city.country);
   for (const c of e.countries) c.manpower += c.pop * RULES.manpowerShare;
   e.cities.forEach((city) => { for (let k = 0; k < RULES.startSettlers; k++) spawnSettlers(e, city.country, city.hex); });
   return e;
@@ -393,7 +398,7 @@ export function foundCity(w: World, e: Economy, unit: number, later = false): st
   e.divisions = e.divisions.filter((d) => d !== s);
   if (!w.owner[i]) w.owner[i] = country;
   claim(w, country, i, RULES.settleClaimRadius);
-  e.cities.push({ name: cityName(w, e, country), country, hex: i, size: 1, urban: [], market: newMarket(), port: false });
+  e.cities.push({ name: cityName(w, e, country), country, hex: i, size: 1, urban: [], market: newMarket(), port: false, identity: homeIdentity(w, e, country) });
   if (!later) refresh(w, e);
   return null;
 }
@@ -585,6 +590,7 @@ export const cityName = (w: World, e: Economy, country: number) => {
 export function tick(w: World, e: Economy) {
   e.exhausted = [];
   if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); }
+  if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
   for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); c.adminWeek = 0; }
@@ -712,7 +718,7 @@ export function tick(w: World, e: Economy) {
     const cap = c.pop * c.control * (RULES.manpowerShare + techSum(c.research, "manpower")) - c.pops.count[P["Soldados"]];
     c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen);
     updatePolitics(c.politics, c.pops, c.research.era);
-    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest"));
+    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest") + (c.culturePenalty ?? 0)); // + minorias não aceitas
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     const ideas = Math.min(0.3, 0.1 * (e.incentives ?? []).filter((x) => x.kind === "Impor ideias" && e.cities[x.city]?.country === ci + 1).length);

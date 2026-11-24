@@ -8,13 +8,14 @@ import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
+import { countryMix, cultureName, languageName, RELIGIONS, acceptedShare } from "./culture.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
 import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, warSupport, WAR, NAVY, AIR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo, buildBorders } from "./fog.ts";
-import { applyCommand, type Cmd } from "./commands.ts";
+import { applyCommand, ACCEPT_COST, type Cmd } from "./commands.ts";
 import { advanceWeek, checksum } from "./sim.ts";
 import { saveGame, loadGame } from "./save.ts";
 import { listAutosaves, writeAutosave, readAutosave, autosaveClock, AUTOSAVE, type AutosaveMeta } from "./autosave.ts";
@@ -425,6 +426,7 @@ document.addEventListener("pointerdown", (e) => {
     if (name) cmd({ t: "continent", id: +d.continent, name });
     return;
   }
+  if (d.accept) { const [id, mode] = d.accept.split("|"); return cmd({ t: "acceptCulture", culture: +id, off: mode === "off" }); }
   if (d.incentive) {
     const [kind, ks, mode] = d.incentive.split("|");
     return cmd({ t: "incentive", kind: kind as IncentiveKind, cities: ks.split(",").map(Number), off: mode === "off" });
@@ -520,7 +522,7 @@ function headerHtml() {
     `<span title="População">👥 ${fmt(c.pop)}</span>` +
     `<span title="PIB anual">📈 ${fmt(c.gdpWeek * 52)}</span>` +
     `<span title="Pontos administrativos (centros administrativos + papel): pagam os incentivos">📜 ${Math.floor(c.admin ?? 0)}/${adminCap(eco, active)} <small>${signed(c.adminWeek ?? 0)}</small></span> ` +
-    `<span title="Controle médio do território (pela população): imposto, produção e recrutas">🏛 ${pct(c.control ?? 1)}</span> ` +
+    `<span title="Controle médio do território (pela população): imposto, produção e recrutas">🧭 ${pct(c.control ?? 1)}</span> ` +
     `<span title="Tesouro e saldo por semana">💰 ${fmt(c.treasury)} <small class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}/sem</small></span>` +
     `<span title="Dívida">🏦 <span class="${c.debt > 0 ? "up" : ""}">${fmt(c.debt)}</span></span>` +
     `<span title="Legitimidade do governo">🏛 <span class="${p.legitimacy < 0.4 ? "up" : "down"}">${pct(p.legitimacy)}</span></span>` +
@@ -556,7 +558,17 @@ const politicsTab = () => (active ? politicsHtml(eco.countries[active - 1].polit
 function societyHtml() {
   if (!active) return "";
   const c = eco.countries[active - 1], p = c.pops;
-  const lit = `<br>📚 Letrados: <b>${pct(c.literacy ?? 0)}</b> <small>(pesquisa +${pct(RULES.literacyResearch * (c.literacy ?? 0))}; sobem com Escrita, Universidades, Imprensa...)</small>`;
+  const top = (field: "culture" | "language" | "religion", name: (id: number) => string) =>
+    countryMix(eco, active, field).slice(0, 4).map(([id, f]) => `${name(id)} ${pct(f)}`).join(" · ");
+  const accepted = new Set([c.primaryCulture, ...(c.acceptedCultures ?? [])]);
+  const cultures = countryMix(eco, active, "culture").slice(0, 6).map(([id, f]) =>
+    `${cultureName(world, id)} ${pct(f)}` + (id === c.primaryCulture ? " <small>(principal)</small>" : accepted.has(id)
+      ? ` <small>(aceita)</small> <button data-accept="${id}|off" title="Deixar de aceitar">✕</button>`
+      : ` <span class="bad">(discriminada)</span> <button data-accept="${id}|on" title="Aceitar: custa ${ACCEPT_COST} pontos administrativos">Aceitar</button>`)).join("<br>");
+  const ident = `<br>🎭 <b>Culturas</b><br>${cultures}<br>🗣 <b>Línguas</b> (oficial: ${languageName(c.officialLanguage ?? 0)}): ${top("language", languageName)}` +
+    `<br>⛪ <b>Religiões</b> (do Estado: ${RELIGIONS[c.stateReligion ?? 0]}): ${top("religion", (id) => RELIGIONS[id])}` +
+    ((c.culturePenalty ?? 0) > 0.5 ? `<br><span class="bad">Minorias não aceitas: −${Math.round(c.culturePenalty!)} de lealdade</span>` : "");
+  const lit = ident + `<br>📚 Letrados: <b>${pct(c.literacy ?? 0)}</b> <small>(pesquisa +${pct(RULES.literacyResearch * (c.literacy ?? 0))}; sobem com Escrita, Universidades, Imprensa...)</small>`;
   const qolColor = (q: number) => (q < 15 ? "up" : q >= 30 ? "down" : "");
   const rows = POP_TYPES.map((t, k) => [t, k] as const).filter(([, k]) => p.count[k] >= 0.5)
     .sort(([a], [b]) => a.cls - b.cls)
@@ -724,7 +736,7 @@ function hexHtml() {
   const rows = buildingsFor(res, !!eco.urban[i], world.resource2[i]).map((b) => {
     const def = BUILDINGS[b], lv = eco.levels[b][i];
     const tip = def.boosts !== undefined ? ` <small>(+${Math.round(def.mult! * 100)}% ${BUILDINGS[def.boosts].name}/nível)</small>`
-      : def.industry ? ` <small>(${def.industry.inputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")} → ${def.industry.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")})</small>` : "";
+      : def.industry ? ` <small>(${def.industry.inputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")} → ${def.industry.admin ? `${def.industry.admin} pontos adm.` : def.industry.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")})</small>` : "";
     const tech = techFor(b), locked = tech && !eco.countries[active - 1].research.known.has(tech);
     return `<tr><td>${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} 👷</td>` +
       `<td>${locked ? `<small>🔒 ${tech}</small>` : `<button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>`}</td></tr>`;
@@ -763,8 +775,14 @@ function hexHtml() {
       const hb = city.harbor ?? 0;
       if (city.coast || city.port) h += `<br>⚓ Porto nível ${hb}/${maxHarbor(eco, city.country)} <small>(+${Math.round(RULES.harborTrade * hb * 100)}% comércio${hb ? ", alcance do comércio exterior ×2" : ""})</small>` + (city.country === active && hb < maxHarbor(eco, city.country) ? ` <button data-harbor="${k}">Melhorar (${RULES.harborCost * (hb + 1)})</button>` : "");
       h += `<br>🛣 Estrada nível ${lv}/${maxRoad(eco, city.country)} <small>(+${Math.round(RULES.roadTrade * lv * 100)}% comércio terrestre, +${Math.round(RULES.roadControl * lv * 100)}% controle)</small>` + (city.country === active && lv < maxRoad(eco, city.country) ? ` <button data-road="${k}">Melhorar (${RULES.roadCost * (lv + 1)})</button>` : ""); }
+    if (city.identity) {
+      const main = (m: Record<number, number>) => +Object.entries(m).sort((a, b) => b[1] - a[1])[0][0];
+      const acc = acceptedShare(eco, eco.cities.indexOf(city));
+      h += `<br>🎭 ${cultureName(world, main(city.identity.culture))} · 🗣 ${languageName(main(city.identity.language))} · ⛪ ${RELIGIONS[main(city.identity.religion)]}` +
+        (acc < 0.99 ? ` <span class="bad">(${pct(1 - acc)} de cultura não aceita)</span>` : "");
+    }
     h += `<br><b>${city.name}</b>${city.country === active ? ` <button data-rename="city:${eco.cities.indexOf(city)}" title="Renomear">✏</button>` : ""} · tamanho ${city.size} · pop urbana ${fmt(city.urban.reduce((s, j) => s + world.pop[j], 0))}` +
-      ` (cresce com ${fmt(city.size * RULES.cityGrowthPop)})` +
+      ` <small>(cresce comprando centro urbano vizinho)</small>` +
       (others.length && city.size > 1 ? `<br>Passar 1 de tamanho para: ${others.map(([k, idx]) => `<button data-transfer="${idx}">${k.name}</button>`).join(" ")}` : "");
   }
   return h + (message ? `<br><span class="bad">${message}</span>` : "");

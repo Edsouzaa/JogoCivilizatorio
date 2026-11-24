@@ -47,6 +47,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Rios: não contornam mais o mesmo hex (espirais caíram ~45%) e toleram menos subida; parte dos que terminam numa bacia vira um lago de ~7 hexes (água, com zona marítima própria; lago pequeno não ganha nó no mapa).
 
+- Cultura, língua e religião, separadas, como mistura por cidade. Cada tribo nasce com cultura própria (nome na língua dela), a língua da região e uma de 5 religiões por faixa do mundo. Por ano: assimilação 1%, língua 2%, conversão 0,8% rumo à do dono (× controle, mais rápido com letrados). Cultura principal, aceita (custa 40 pontos adm.) ou discriminada; gente não aceita tira até 25 de lealdade. Aba Sociedade e painel da cidade mostram tudo.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -65,8 +67,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Exploração por unidades terrestres e aéreas.
 6. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
 7. **População**
-    - Cultura, língua e religião por POP, independentes entre si.
-    - Assimilação e conversão.
+    - Cultura/língua/religião por POP (hoje é por cidade), grupos culturais, famílias de línguas e religiões, surgimento e divisão de culturas.
 8. **Eventos**
     - Eventos aleatórios com escolha (pausa todos, 2 min).
 9. **Leis**

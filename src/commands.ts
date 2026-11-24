@@ -19,6 +19,7 @@ export type Cmd =
   | { t: "urbanize"; city: number; hex: number }
   | { t: "road"; city: number }
   | { t: "harbor"; city: number }
+  | { t: "acceptCulture"; culture: number; off?: boolean }
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
@@ -46,6 +47,9 @@ const isInt = (v: unknown, min = 0) => Number.isInteger(v) && (v as number) >= m
 /** Nome digitado por um jogador: sem HTML nem controle, até 30 letras. "" = inválido. */
 export const cleanName = (v: unknown) => (typeof v === "string" ? v.replace(/[<>&"'\u0000-\u001f]/g, "").trim().slice(0, 30) : "");
 
+/** Aceitar uma cultura custa pontos administrativos (a burocracia passa a atender essa gente). */
+export const ACCEPT_COST = 40;
+
 /** Nome e bandeira escolhidos pelo jogador (ignorados se inválidos: fica o padrão). */
 function name(target: { name: string; flag?: Flag }, c: { name?: string; flag?: Flag }) {
   const n = cleanName(c.name);
@@ -68,6 +72,15 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       return err;
     }
     case "settlers": return trainSettlers(w, e, country);
+    case "acceptCulture": {
+      if (!isInt(c.culture, 1) || c.culture === co.primaryCulture) return "Cultura inválida";
+      if (c.off) { co.acceptedCultures = (co.acceptedCultures ?? []).filter((x) => x !== c.culture); return null; }
+      if ((co.acceptedCultures ?? []).includes(c.culture)) return "Já aceita";
+      if ((co.admin ?? 0) < ACCEPT_COST) return `Precisa de ${ACCEPT_COST} pontos administrativos`;
+      co.admin! -= ACCEPT_COST;
+      co.acceptedCultures = [...(co.acceptedCultures ?? []), c.culture];
+      return null;
+    }
     case "harbor": return ownCity(c.city) ? buildHarbor(e, c.city) : "Cidade não é sua";
     case "road": return ownCity(c.city) ? buildRoad(e, c.city) : "Cidade não é sua";
     case "urbanize": return ownCity(c.city) && isInt(c.hex) && c.hex < w.W * w.H ? urbanize(w, e, c.city, c.hex) : "Cidade não é sua";
