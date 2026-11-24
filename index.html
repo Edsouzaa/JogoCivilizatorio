@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jogo Civilizatório</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0d14; color: #e8e8f0; font: 13px system-ui, sans-serif; }
+    #map { display: block; width: 100vw; height: 100vh; cursor: grab; }
+    #map:active { cursor: grabbing; }
+    #hud { position: fixed; top: 8px; left: 8px; background: #000a; padding: 8px 10px; border-radius: 6px; line-height: 1.5; }
+    #hud button { background: #2a2a3a; color: inherit; border: 1px solid #444; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+    #hud button.on { background: #4a5a9a; }
+    #panel { position: fixed; top: 8px; right: 8px; width: 320px; max-height: calc(100vh - 16px); overflow: auto; background: #000c; padding: 10px; border-radius: 6px; line-height: 1.45; }
+    #panel:empty { display: none; }
+    #panel h3 { margin: 0 0 4px; font-size: 15px; }
+    #panel table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    #panel td { padding: 1px 4px; } #panel td:not(:first-child) { text-align: right; }
+    #panel button { background: #3a5a3a; color: inherit; border: 1px solid #5a5; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+    .up { color: #f88; } .down { color: #8f8; } .bad { color: #f66; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <canvas id="map"></canvas>
+  <div id="hud"></div>
+  <div id="panel"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-Basico do jogo:
+# Basico do jogo:
 Esse jogo visa simular a admnistração de nações e o mundo.
 O jogo deve ser jogado por 2 ou mais jogadores(sem considerar o mestre).
 O mestre será responsável por admnistrar combates, simular npcs e suas interações com os jogadores.
@@ -14,37 +14,39 @@ O jogo é baseado em turnos e cada turno é uma semana em jogo.
 
 É importante saber que jogadores podem fazer ações que não estejam no aplicativo, dependendo da ação pode causar algum efeito
 positivo ou negativo na visão do mestre.
+
 ---------------------- POPULAÇÃO ---------------------------
-População:
+# População:
 A população é o que vai movimentar seu país o jogo inteiro.
 A população é dividida em dois grupos:
 População ativa e População Dependente.
 
-População ativa é aquela que pode trabalhar.
-População Dependente é aquela que não pode ou não consegue trabalhar(Apesar de existir leis que faça com que essa parte menor
+*População ativa* é aquela que pode trabalhar.
+
+*População Dependente* é aquela que não pode ou não consegue trabalhar(Apesar de existir leis que faça com que essa parte menor
 da população trabalhe).
 
 População pode ser resumida a um POP. O que difere um POP de outro é:
 Tipo de População, Religião, Raça, Provincia, Estado, Classe Social, Nível de Lealdade e Qualidade de Vida.
 
-As classes sociais são:
+# As classes sociais são:
 Classe Baixa, Classe Media e Classe Alta.
 
-Classe Baixa:
+*Classe Baixa*:
 Servos(Não consomem nada),
 Fazendeiros,
 Militares,
 Marinheiros,
 Trabalhadores.
 
-Classe Media:
+*Classe Media*:
 Oficiais,
 Academicos,
 Engenheiros,
 Escriturarios,
 Clérigos.
 
-Classe Alta:
+*Classe Alta*:
 Capitalistas,
 Burocratas,
 Aristocratas.
@@ -52,16 +54,33 @@ Aristocratas.
 Cada Pessoa tem sua função na sociedade:
 Classe Baixa trabalha em boa parte das contruções.
 Classe media trabalha em boa parte das contruções e dão buffs a construção ao completar 100% de capacidade.
-Classe Alta trabalham em poucas contruções, se tornando donos delas(capitalistas e Aristocratas) ao se tornarem donos dão um buff a mais.
+Classe Alta trabalham em poucas contruções ao se tornarem donos dão um buff ou debuff a mais.
 
 Cada classe vai pagar uma quantidade de impostos, baseado no que a tecnologia permite.
 
-Religião:
-
-No começo do jogo nenhuma civilização possui uma religião e vai do jogador ou mestre criar uma ao iniciar o jogo ou durante o jogo.
+*Religião*:
+No começo do jogo nenhuma civilização possui uma religião e vai mestre criar uma ao iniciar ou do jogador criar durante o jogo.
 Cada religião garante bônus e debuffs baseado em suas crenças.
 
+*Qualidade de Vida*:
+É aquilo que define o quão bem a sua população vive.
+Varia de 1-50.
+Sendo 1 Pessima qualidade de vida, e 50 otima qualidade de vida.
+Isso é definido baseado nas leis de aceitação de grupos, religião, renda e raça.
+
 Nível de Lealdade é o quanto sua população se mantem fiel ao estado.
+Isso é calculado baseado a Qualidade de vida, capacidade de compra em relação ao salario.
+
+*Crescimento Populacional*:
+É calculada usando as metricas pasadas.
+Como cada turno é equivalente a uma semana o crescimento populacional é bem pequeno.
+
+*Imigração*:
+Dependendo de algumas metricas acima alguns pops(principalmente de classe baixa) podem acabar imigrando para outras regiões do mundo que
+sejam boas.
+
 ----------------------------- Arvore Tecnologica -----------------------------
 
+A arvore de tecnologia possui 4 eras:
 
+Era Medieval -> Era Colonial -> Era das Revoluções -> Era do Imperialismo -> Era das Guerras ->
