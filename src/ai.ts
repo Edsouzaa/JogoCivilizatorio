@@ -2,7 +2,7 @@
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
 import {
-  build, buildCost, buildingsFor, outputOf, urbanize, urbanCost, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
+  build, buildCost, buildingsFor, outputOf, urbanize, urbanCost, buildRoad, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
@@ -63,6 +63,9 @@ function expand(w: World, e: Economy, country: number, era: number) {
     if (site >= 0) orderMove(w, e, d.id, site);
   }
   const c = e.countries[country - 1], cities = e.cities.filter((k) => k.country === country).length;
+  e.cities.forEach((city, k) => { // estrada: quando sobra dinheiro
+    if (city.country === country && c.treasury > RULES.roadCost * ((city.road ?? 0) + 1) * AI.reserve * 2) buildRoad(e, k);
+  });
   e.cities.forEach((city, k) => { // cidade cheia: compra o vizinho mais povoado como centro urbano novo
     if (city.country !== country || c.treasury < urbanCost(city) * AI.reserve) return;
     if (city.urban.reduce((s, j) => s + w.pop[j], 0) < city.size * RULES.cityGrowthPop) return;

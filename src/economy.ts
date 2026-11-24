@@ -115,6 +115,9 @@ export const RULES = {
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
   cityGrowthPop: 300,       // a IA compra centro urbano quando a população urbana passa disto × tamanho
+  roadCost: 80,             // estrada nível n custa isto × n
+  roadTrade: 0.1,           // cada nível: +10% do que a cidade manda/recebe no comércio terrestre (mais barato levar)
+  roadControl: 0.05,        // cada nível: +5% de controle máximo na região da cidade
   urbanCost: 150,           // centro urbano novo: isto × tamanho atual da cidade
   popCapRural: 600,         // teto de população de um hex rural (× fertilidade do terreno)
   popCapUrban: 2500,        // teto de um centro urbano...
@@ -144,6 +147,7 @@ export type City = {
   blockaded?: boolean; // frota inimiga na zona marítima colada: sem comércio exterior, metade do interno, sem porto
   state?: number;       // id do estado da cidade (states.ts)
   flag?: Flag;          // bandeira própria (sem ela, a do país)
+  road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
   picked?: number[];    // centros urbanos comprados, na ordem (o resto do tamanho vem dos hexes mais perto)
 };
 export type Country = {
@@ -285,6 +289,21 @@ export const popCap = (w: World, e: Economy, i: number) => {
   const era = w.owner[i] ? e.countries[w.owner[i] - 1].research.era : 0;
   return e.urban[i] ? RULES.popCapUrban * (1 + RULES.popCapPerEra * era) : RULES.popCapRural * Math.max(0.1, TERRAINS[w.terrain[i]].fertility);
 };
+
+/** Estrada máxima pela era: 1 na Tribal, até 5. */
+export const maxRoad = (e: Economy, country: number) => Math.min(5, e.countries[country - 1].research.era + 1);
+
+/** Melhora a estrada da cidade k em 1 nível. */
+export function buildRoad(e: Economy, k: number): string | null {
+  const city = e.cities[k];
+  if (!city) return "Cidade inválida";
+  const lv = (city.road ?? 0) + 1, c = e.countries[city.country - 1];
+  if (lv > maxRoad(e, city.country)) return `Estrada no máximo da era (${maxRoad(e, city.country)})`;
+  const cost = RULES.roadCost * lv;
+  if (c.treasury < cost) return `Faltam ${Math.ceil(cost - c.treasury)} de dinheiro`;
+  c.treasury -= cost; city.road = lv;
+  return null;
+}
 
 /** Custo do próximo centro urbano da cidade. */
 export const urbanCost = (city: City) => RULES.urbanCost * city.size;
@@ -451,7 +470,7 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
   }
   for (const [country, cs] of byCountry) {
     if (cs.length < 2) continue;
-    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : c.port ? RULES.portTradeBonus : 1));
+    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : c.port ? RULES.portTradeBonus : 1) * (1 + RULES.roadTrade * (c.road ?? 0)));
     const c0 = e.countries[country - 1];
     const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")); // lei de Economia + tecnologia
     for (let gi = 1; gi < NG; gi++) {

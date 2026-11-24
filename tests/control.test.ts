@@ -24,3 +24,20 @@ e.control.fill(0.1); e.week = 1; // fora do mês: não recalcula
 tick(w, e);
 assert.ok(e.countries[0].income < before, "pouco controle deveria arrecadar menos");
 console.log("control ok");
+
+// estrada: custa dinheiro, limitada pela era, sobe o controle máximo e o comércio da cidade
+{
+  const { buildRoad, maxRoad, RULES } = await import("../src/economy.ts");
+  const w2 = generateWorld(200, 100, 5, 2), e2 = createEconomy(w2), c = e2.countries[0];
+  c.treasury = 0;
+  assert.match(buildRoad(e2, 0)!, /Faltam/);
+  c.treasury = 1e4;
+  assert.equal(buildRoad(e2, 0), null);
+  assert.equal(maxRoad(e2, 1), 1);
+  assert.match(buildRoad(e2, 0)!, /máximo/);
+  const far = [...e2.owned].filter((i) => e2.market[i] === 1).sort((a, b) => e2.control[a] - e2.control[b])[0];
+  const before = maxControl(w2, e2, far, seats(w2, e2, 1));
+  e2.control[far] = 0; for (let k = 0; k < 40; k++) updateControl(w2, e2);
+  assert.ok(e2.control[far] >= Math.min(1, before + RULES.roadControl) - 1e-6, "estrada deveria subir o controle máximo");
+}
+console.log("road ok");

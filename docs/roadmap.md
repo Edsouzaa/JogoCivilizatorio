@@ -41,6 +41,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Pontos administrativos: bem novo Papel (Oficina de papel: madeira → papel) e Centro administrativo (queima papel, gera 2 pontos/nível; empregos de Burocratas e Escriturários), liberados pela Escrita. Estoque com teto 100 × (era + 1). 📜 no painel do país.
 - Incentivos por cidade ou estado inteiro, pagos com pontos (criação + manutenção semanal; sem pontos, todos caem): Isenção fiscal (sem imposto, +15% produção), Alívio emergencial (ninguém morre de fome), Integração (+25% controle máximo), Impor ideias (+10% de apoio popular à lei em votação, até +30%). Save passa para a versão 5 (saves antigos não abrem: mudou a lista de bens).
 
+- Estradas por cidade em níveis (máximo = era + 1, até 5; custo 80 × nível): cada nível dá +10% no que a cidade troca por terra e +5% de controle máximo na região. A IA melhora quando sobra dinheiro.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -49,7 +51,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
    - Cada hex compra da cidade mais barata, não só da mais próxima.
    - Centros comerciais e mercado mundial (Vic3 1.9) no lugar do comércio por pactos.
 3. **Infraestrutura**
-   - Estradas em níveis (−10% no custo terrestre por nível).
    - Ferrovias (gastam carvão e locomotivas).
    - Portos com nível limitado pela era.
 4. **Rios**
