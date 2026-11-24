@@ -29,6 +29,8 @@ export const subjectsOf = (e: Economy, overlord: number) => Object.entries(e.sub
 export function proposeSubject(e: Economy, overlord: number, target: number, kind: SubjectKind): string | null {
   const def = SUBJECT_KINDS[kind];
   if (!def || overlord === target || !e.countries[target - 1]) return "Proposta inválida";
+  // shortcut: jogador não pode ser posto como súdito sem aceitar; falta a tela de aceite, então por ora é recusado
+  if (e.humans.includes(target)) return "Esse país é de um jogador: ele teria que aceitar (ainda não dá)";
   if (e.subjects?.[target]) return "Esse país já é súdito de alguém";
   if (e.subjects?.[overlord]) return "Um súdito não pode ter súditos";
   if (prestige(e, overlord) < SUBJ.prestigeRatio * prestige(e, target)) return `Recusado: seu prestígio precisa ser ${SUBJ.prestigeRatio}× o deles`;

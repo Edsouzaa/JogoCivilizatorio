@@ -55,3 +55,10 @@ console.log("diplomacy ok");
   assert.equal(e2.subjects![2], undefined);
 }
 console.log("subjects ok");
+{
+  const { proposeSubject } = await import("../src/subjects.ts");
+  const w3 = generateWorld(200, 100, 4, 3), e3 = createEconomy(w3);
+  e3.humans = [2]; e3.countries[0].glory = 1000; addRelation(e3, 1, 2, 100);
+  assert.match(proposeSubject(e3, 1, 2, "Fantoche")!, /jogador/);
+}
+console.log("subjects human ok");
