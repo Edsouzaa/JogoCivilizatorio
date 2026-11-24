@@ -1,13 +1,13 @@
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, BIOME_FILES, type World } from "./world.ts";
 import {
-  createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
+  createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, REVOLUTIONS, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, type Politics } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, SQRT3 } from "./hex.ts";
-import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, WAR } from "./war.ts";
+import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, WAR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 
 // 1600 × 640 = 1.024.000 hexágonos ≈ Terra com 500 km² por hex. Mude por ?w=&h= na URL para testar.
@@ -133,7 +133,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "r" || e.key === "R") newWorld((Math.random() * 2 ** 31) | 0);
   if (e.key === "f" || e.key === "F") fit();
   if (e.key === "b" || e.key === "B") doBuild();
-  if ((e.key === "c" || e.key === "C") && active && selected >= 0) act(foundCity(world, eco, selected, active));
+  if ((e.key === "c" || e.key === "C") && selectedDiv) act(foundCity(world, eco, selectedDiv));
   if (e.key === " ") { e.preventDefault(); togglePause(); }
   if (e.key === "+" || e.key === "=") speed = Math.min(SPEEDS.length - 1, speed + 1);
   if (e.key === "-") speed = Math.max(1, speed - 1);
@@ -144,7 +144,7 @@ document.addEventListener("pointerdown", (e) => {
   const d = (e.target as HTMLElement).dataset;
   if (d.build) return doBuild(Number(d.build));
   if (d.transfer) return act(transferSize(world, eco, eco.market[selected] - 1, Number(d.transfer)));
-  if (d.act === "found") return act(foundCity(world, eco, selected, active));
+  if (d.act === "found" && selectedDiv) return act(foundCity(world, eco, selectedDiv));
   if (d.act === "settlers") return act(trainSettlers(world, eco, active));
   if (d.tech && active) { eco.countries[active - 1].research.researching = d.tech; return updateUI(); }
   if (d.law && active) {
@@ -155,7 +155,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "recruit") return act(recruit(world, eco, active, selected));
   if (d.act === "war") return act(declareWar(eco, active, world.owner[selected]));
   if (d.peace) return act(makePeace(world, eco, active, Number(d.peace)));
-  if (d.act === "disband" && selectedDiv) { disband(eco, selectedDiv); selectedDiv = null; return updateUI(); }
+  if (d.act === "disband" && selectedDiv) { disband(world, eco, selectedDiv); selectedDiv = null; return updateUI(); }
   if (d.mode) setMode(Number(d.mode));
   if (d.act === "new") newWorld((Math.random() * 2 ** 31) | 0);
   if (d.act === "pause") togglePause();
@@ -180,7 +180,7 @@ function updateUI() {
     SPEEDS.slice(1).map((s, k) => `<button data-speed="${k + 1}" class="${speed === k + 1 ? "on" : ""}" title="${+(s * ERA_WEEKS_PER_SECOND[worldEra()]).toFixed(3)} semana(s)/s">${SPEED_NAMES[k + 1]}</button>`).join(" ") +
     `<br>${(W * H).toLocaleString("pt-BR")} hexágonos · ${world.landCount.toLocaleString("pt-BR")} em terra · ${eco.cities.length} cidades · seed ${world.seed}` +
     `<br>${fps.toFixed(0)} FPS · pior frame ${worst.toFixed(1)} ms · gerar ${genMs.toFixed(0)} ms · colorir ${colorMs.toFixed(0)} ms · semana ${tickMs.toFixed(1)} ms` +
-    `<br>${info}<br><small>Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover divisão · B = construir · C = fundar cidade · Espaço = pausar · +/− = velocidade · F = ver tudo</small>`;
+    `<br>${info}<br><small>Arraste = mover · roda = zoom · clique = selecionar · botão direito = mover divisão · B = construir · C = colonos fundam cidade · Espaço = pausar · +/− = velocidade · F = ver tudo</small>`;
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = null; // destruída
   panel.innerHTML = selected >= 0 ? divisionHtml() + countryHtml() + hexHtml() + marketHtml() : "";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
@@ -200,7 +200,7 @@ function countryHtml() {
     `<br>Semana: +${fmt(c.income)} impostos (${Math.round(c.tax * 100)}%) − ${fmt(c.upkeep)} manutenção − ${fmt(c.interest)} juros` +
     (c.bankruptWeeks ? `<br><span class="bad">FALIDO: produção −${Math.round((1 - RULES.bankruptPenalty) * 100)}% por mais ${c.bankruptWeeks} semanas</span>` : "") +
     warsHtml() +
-    `<br>Colonos: <b>${c.settlers}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>` +
+    `<br>Colonos: <b>${settlersOf(eco, active)}</b> <button data-act="settlers">Treinar (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>` +
     researchHtml(c.research, c.researchWeek) + popsHtml(c.pops) + politicsHtml(c.politics, c.research.era) + "<hr>";
 }
 
@@ -208,6 +208,12 @@ function divisionHtml() {
   const d = eco.divisions.find((x) => x.id === selectedDiv);
   if (!d) return "";
   const t = d.target === null ? "parada" : `indo para (${d.target % W}, ${(d.target / W) | 0})`;
+  if (d.kind === "settler") {
+    const dist = settlerDistance(world, eco, d), out = dist > RULES.settlerSupplyRange;
+    return `<b>⛺ Colonos</b> · ${world.countries[d.country - 1].name} · ${t}<br>Pessoas ${Math.round(d.strength)} · ${dist} hex da cidade mais próxima` +
+      (out ? ` <span class="bad">sem suprimentos (máx. ${RULES.settlerSupplyRange}): morrendo</span>` : "") +
+      `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="disband">Voltar para casa</button>${message ? `<br><span class="bad">${message}</span>` : ""}<hr>`;
+  }
   return `<b>⚔ Divisão ${d.id}</b> · ${world.countries[d.country - 1].name} · ${t}` +
     `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · organização ${Math.round(d.org * 100)}% · armas ${Math.round(d.equip * 100)}%` +
     `<br><small>Botão direito no mapa = mover · clique de novo no hex = próxima divisão</small> <button data-act="disband">Desfazer</button><hr>`;
@@ -285,7 +291,6 @@ function hexHtml() {
   if (eco.urban[i]) h += " · <b>urbano</b>";
   if (world.owner[i] !== active || !active) {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
-    if (active && !world.owner[i]) h += `<br><button data-act="found">C Fundar cidade aqui</button>`;
     if (active && world.owner[i] && !atWar(eco, active, world.owner[i])) h += ` <button data-act="war">Declarar guerra</button>`;
     if (eco.occupier[i]) h += `<br>Ocupado por ${world.countries[eco.occupier[i] - 1].name}`;
     return h + (message ? `<br><span class="bad">${message}</span>` : "") + "<hr>";
@@ -299,7 +304,6 @@ function hexHtml() {
       `<td>${locked ? `<small>🔒 ${tech}</small>` : `<button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>`}</td></tr>`;
   });
   h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
-  if (!eco.urban[i]) h += `<br><button data-act="found">C Fundar cidade aqui</button>`;
   if (eco.urban[i] && !eco.occupier[i]) h += `<br><button data-act="recruit">Recrutar divisão (${WAR.recruitCost} + ${WAR.divisionSize} manpower)</button>`;
   if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {
@@ -361,7 +365,9 @@ function drawUnits() {
     }
     units.fillStyle = `rgb(${world.countries[d.country - 1].color})`;
     units.strokeStyle = d.id === selectedDiv ? "#fff" : "#000"; units.lineWidth = d.id === selectedDiv ? 3 : 1.5;
-    units.beginPath(); units.arc(x, y, r, 0, Math.PI * 2); units.fill(); units.stroke();
+    units.beginPath();
+    if (d.kind === "settler") units.rect(x - r * 0.8, y - r * 0.8, r * 1.6, r * 1.6); else units.arc(x, y, r, 0, Math.PI * 2);
+    units.fill(); units.stroke();
     units.fillStyle = "#3c3"; units.fillRect(x - r, y + r + 2, 2 * r * d.org, 3); // barra de organização
     if (r >= 10) { units.fillStyle = "#000"; units.font = `bold ${Math.round(r * 0.8)}px sans-serif`; units.textAlign = "center"; units.textBaseline = "middle"; units.fillText(String(Math.round(d.strength)), x, y); }
   }

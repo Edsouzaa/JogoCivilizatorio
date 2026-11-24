@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   priceFactor, createEconomy, tick, build, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
-  BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius,
+  BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius, settlersOf,
 } from "./economy.ts";
 import { generateWorld, isLand, claim } from "./world.ts";
 import { forNeighbors } from "./hex.ts";
@@ -56,18 +56,21 @@ e.levels[mine][copperHex] = 10; e.levels[mine][tinHex] = 10; e.producers.add(cop
 tick(w, e);
 assert.ok(m.supply[BRONZE] > 0, "fundição não produziu bronze");
 
-// colonos: fundar cidade perto, não perto demais, nem longe demais
+// colonos: são uma unidade; fundam a cidade onde estão, mas não perto demais de outra
 const W = w.W;
 const dist = (a: number, b: number) => Math.hypot((a % W) - (b % W), ((a / W) | 0) - ((b / W) | 0));
 const target = [...Array(W * w.H).keys()].find((i) => isLand(w.terrain[i]) && !w.owner[i] && dist(i, cap) >= 6 && dist(i, cap) <= 9);
 assert.ok(target !== undefined, "mapa de teste sem lugar para cidade nova");
 {
-  assert.match(foundCity(w, e, cap, 1)!, /perto/);
-  const before = e.cities.length;
-  assert.equal(foundCity(w, e, target, 1), null);
+  const settler = e.divisions.find((d) => d.kind === "settler" && d.country === 1)!;
+  assert.equal(settler.hex, cap);
+  assert.match(foundCity(w, e, settler.id)!, /perto/);
+  const before = e.cities.length, settlersBefore = settlersOf(e, 1);
+  settler.hex = target;
+  assert.equal(foundCity(w, e, settler.id), null);
   assert.equal(e.cities.length, before + 1);
   assert.equal(w.owner[target], 1);
-  assert.equal(c.settlers, RULES.startSettlers - 1);
+  assert.equal(settlersOf(e, 1), settlersBefore - 1); // o grupo de colonos virou a cidade
   assert.ok(e.market[target] === e.cities.length, "cidade nova sem mercado próprio");
 
   // comércio: a capital tem muito cobre; a cidade nova, sem minas, recebe parte dele
@@ -89,9 +92,10 @@ assert.ok(target !== undefined, "mapa de teste sem lugar para cidade nova");
 }
 
 c.treasury = 1e6;
-const s = c.settlers;
+w.pop[cap] = 1000;
+const s = settlersOf(e, 1);
 assert.equal(trainSettlers(w, e, 1), null);
-assert.equal(c.settlers, s + 1);
+assert.equal(settlersOf(e, 1), s + 1);
 
 // construir não gasta manpower (ele é só do exército); o que falta no tesouro vira dívida
 c.manpower = 0; c.treasury = 0; c.debt = 0;

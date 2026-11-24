@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createEconomy, tick } from "./economy.ts";
-import { recruit, orderMove, declareWar, stepWar, warScore, makePeace, atWar, controller, WAR } from "./war.ts";
+import { recruit, orderMove, declareWar, stepWar, warScore, makePeace, atWar, controller, settlerDistance, WAR } from "./war.ts";
+import { RULES } from "./economy.ts";
 import { forNeighbors } from "./hex.ts";
 import { generateWorld, isLand } from "./world.ts";
 import { P } from "./pops.ts";
@@ -17,7 +18,7 @@ assert.match(recruit(w, e, A, ruralA)!, /cidade/);
 assert.equal(recruit(w, e, A, capA), null);
 assert.equal(ca.manpower, 1e5 - WAR.divisionSize);
 assert.equal(ca.treasury, 1e5 - WAR.recruitCost);
-const d = e.divisions[0];
+const d = e.divisions.find((x) => x.kind === "army" && x.country === A)!;
 
 // soldados entram na população como POP Soldados
 tick(w, e);
@@ -52,7 +53,7 @@ assert.ok(warScore(w, e, A, B) > 0);
 // combate: uma divisão de B no vizinho; atacar tira soldados e organização dos dois lados
 cb.manpower = 1e5; // o manpower é recalculado pelo teto da população a cada tick
 assert.equal(recruit(w, e, B, capB), null);
-const db = e.divisions.find((x) => x.country === B)!;
+const db = e.divisions.find((x) => x.kind === "army" && x.country === B)!;
 let fight = -1;
 forNeighbors(target % w.W, (target / w.W) | 0, w.W, w.H, (j) => { if (fight < 0 && isLand(w.terrain[j]) && w.terrain[j] !== 7) fight = j; });
 db.hex = fight;
@@ -71,3 +72,23 @@ assert.ok(!atWar(e, A, B));
 for (const i of occupied) { assert.equal(w.owner[i], A); assert.equal(e.occupier[i], 0); }
 assert.equal(w.owner[capB], B, "capital do perdedor não pode ser tomada");
 console.log("war ok");
+
+// colonos: longe das cidades perdem gente; exército inimigo no hex deles os destrói
+{
+  const s = e.divisions.find((x) => x.kind === "settler" && x.country === A)!;
+  let far = -1;
+  for (let i = 0; i < w.W * w.H && far < 0; i++) if (isLand(w.terrain[i]) && !w.owner[i] && settlerDistance(w, e, { ...s, hex: i }) > RULES.settlerSupplyRange + 2) far = i;
+  s.hex = far; s.target = null;
+  const before = s.strength;
+  stepWar(w, e);
+  assert.ok(s.strength < before, "colonos sem suprimento não perderam gente");
+  // perto de casa não perdem
+  s.hex = capA; const home = s.strength;
+  stepWar(w, e);
+  assert.equal(s.strength, home);
+  // colonos não atacam nem entram em território de outro país
+  assert.equal(orderMove(w, e, s.id, target), null);
+  for (let k = 0; k < 30; k++) stepWar(w, e);
+  assert.ok(!w.owner[s.hex] || w.owner[s.hex] === A, "colonos entraram em território estrangeiro");
+}
+console.log("settlers ok");

@@ -1,7 +1,7 @@
 // Guerra terrestre (estilo HOI4 simplificado, sem customizar divisões).
 // Divisões andam hex a hex, lutam contra o hex vizinho que querem entrar, ocupam território inimigo,
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
-import { refresh, GOODS, type Economy, type Division } from "./economy.ts";
+import { refresh, GOODS, RULES, type Economy, type Division } from "./economy.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
 import { T, TERRAINS, type World } from "./world.ts";
 
@@ -52,14 +52,15 @@ export function recruit(w: World, e: Economy, country: number, hex: number): str
   if (c.manpower < WAR.divisionSize) return `Manpower insuficiente (precisa ${WAR.divisionSize})`;
   if (c.treasury < WAR.recruitCost) return `Precisa de ${WAR.recruitCost} no tesouro`;
   c.manpower -= WAR.divisionSize; c.treasury -= WAR.recruitCost;
-  e.divisions.push({ id: e.nextDivision++, country, hex, strength: WAR.divisionSize, org: 1, target: null, progress: 0, equip: 1 });
+  e.divisions.push({ id: e.nextDivision++, kind: "army", country, hex, strength: WAR.divisionSize, org: 1, target: null, progress: 0, equip: 1 });
   return null;
 }
 
-export function disband(e: Economy, id: number) {
+export function disband(w: World, e: Economy, id: number) {
   const d = e.divisions.find((x) => x.id === id);
   if (!d) return;
-  e.countries[d.country - 1].manpower += d.strength;
+  if (d.kind === "army") e.countries[d.country - 1].manpower += d.strength;
+  else { const cap = e.cities.find((k) => k.country === d.country)!.hex; w.pop[cap] += d.strength; } // colonos voltam para casa
   e.divisions = e.divisions.filter((x) => x !== d);
 }
 
@@ -101,18 +102,18 @@ function takeLosses(w: World, e: Economy, ds: Division[], losses: number) {
 export function stepWar(w: World, e: Economy) {
   const ARMS = GOODS.indexOf("Armas");
   const count = new Map<number, number>();
-  for (const d of e.divisions) count.set(d.country, (count.get(d.country) ?? 0) + 1);
+  for (const d of e.divisions) if (d.kind === "army") count.set(d.country, (count.get(d.country) ?? 0) + 1);
   for (const [country, n] of count) { // armas e manutenção
     const c = e.countries[country - 1], m = e.cities.find((k) => k.country === country)!.market;
     const fill = m.demand[ARMS] ? Math.min(1, m.supply[ARMS] / m.demand[ARMS]) : 1;
-    for (const d of e.divisions) if (d.country === country) d.equip = 0.5 + 0.5 * fill;
+    for (const d of e.divisions) if (d.country === country && d.kind === "army") d.equip = 0.5 + 0.5 * fill;
     c.treasury -= n * WAR.upkeep;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
   }
 
   const at = new Map<number, Division[]>(); // divisões por hex
   for (const d of e.divisions) { if (!at.has(d.hex)) at.set(d.hex, []); at.get(d.hex)!.push(d); }
-  const enemiesIn = (hex: number, country: number) => (at.get(hex) ?? []).filter((x) => atWar(e, country, x.country));
+  const enemiesIn = (hex: number, country: number) => (at.get(hex) ?? []).filter((x) => x.kind === "army" && atWar(e, country, x.country));
 
   const battles = new Map<number, Division[]>(); // hex defendido → atacantes
   const fighting = new Set<Division>();
@@ -122,11 +123,13 @@ export function stepWar(w: World, e: Economy) {
     const next = nextStep(w, d.hex, d.target);
     if (next < 0) { d.target = null; continue; }
     if (enemiesIn(next, d.country).length) {
+      if (d.kind === "settler") { d.target = null; continue; } // colonos não atacam
       if (!battles.has(next)) battles.set(next, []);
       battles.get(next)!.push(d);
       continue;
     }
-    if (!canEnter(w, e, d.country, next)) { d.target = null; continue; }
+    const ctrl = controller(w, e, next);
+    if (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country)) { d.target = null; continue; }
     d.progress += 1 / MOVE_WEEKS[w.terrain[next]];
     if (d.progress < 1) continue;
     d.progress = 0;
@@ -135,6 +138,8 @@ export function stepWar(w: World, e: Economy) {
     if (!at.has(next)) at.set(next, []);
     at.get(next)!.push(d);
     if (next === d.target) d.target = null;
+    if (d.kind === "army") for (const x of at.get(next)!) if (x.kind === "settler" && atWar(e, d.country, x.country)) x.strength = 0; // exército inimigo destrói colonos
+    if (d.kind === "settler") continue;
     // ocupar território inimigo; libertar o próprio
     if (w.owner[next] && w.owner[next] !== d.country && atWar(e, d.country, w.owner[next]) && e.occupier[next] !== d.country) { e.occupier[next] = d.country; changed = true; }
     if (w.owner[next] === d.country && e.occupier[next]) { e.occupier[next] = 0; changed = true; }
@@ -159,6 +164,10 @@ export function stepWar(w: World, e: Economy) {
   }
 
   for (const d of e.divisions) {
+    if (d.kind === "settler") { // colonos longe das cidades ficam sem suprimentos e vão morrendo
+      if (settlerDistance(w, e, d) > RULES.settlerSupplyRange) d.strength -= Math.max(0.5, d.strength * RULES.settlerAttrition);
+      continue;
+    }
     if (fighting.has(d)) continue;
     d.org = Math.min(1, d.org + WAR.orgRecovery);
     const c = e.countries[d.country - 1];
@@ -169,6 +178,13 @@ export function stepWar(w: World, e: Economy) {
   }
   e.divisions = e.divisions.filter((d) => d.strength >= 1);
   if (changed) e.version++;
+}
+
+/** Distância (em hexes) dos colonos até a cidade mais próxima do país deles. */
+export function settlerDistance(w: World, e: Economy, d: Division) {
+  let best = Infinity;
+  for (const k of e.cities) if (k.country === d.country) best = Math.min(best, hexDistance(d.hex % w.W, (d.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W));
+  return best;
 }
 
 /** Pontuação de guerra de a contra b (−1..1): população de b que a ocupa menos a de a que b ocupa. */

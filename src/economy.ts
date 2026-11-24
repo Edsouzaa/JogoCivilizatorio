@@ -89,7 +89,8 @@ export const RULES = {
   settlerCost: 200,         // dinheiro para treinar colonos
   settlerPop: 20,           // pessoas que saem da capital para virar colonos
   minCityDistance: 4,       // hexágonos entre cidades
-  maxSettleDistance: 12,    // colonos só fundam até esta distância de uma cidade do país
+  settlerSupplyRange: 6,    // colonos a mais que isto de uma cidade do país ficam sem suprimentos
+  settlerAttrition: 0.05,   // fração das pessoas dos colonos que morre por semana sem suprimentos
   settleClaimRadius: 1,     // território que uma cidade nova reivindica (cresce com o tamanho)
   manpowerRegen: 0.02,      // fração do teto de manpower recuperada por semana
   radicalPenalty: 0.3,      // produção × (1 − isto × fração de radicais)
@@ -116,7 +117,6 @@ export type Country = {
   gdpWeek: number; income: number; upkeep: number; interest: number;
   bankruptWeeks: number; pop: number;
   manpower: number; // pessoas livres para trabalhar em novas construções (e, no futuro, para o exército)
-  settlers: number;
   gdpHistory: number[]; // PIB anual, um ponto por mês
   research: Research;
   pops: Pops;           // população por tipo de POP, renda e qualidade de vida
@@ -135,9 +135,12 @@ function updateBonus(c: Country) {
 }
 
 /** levels[b][i] = nível da construção b no hex i. market[i] = cidade (1-based) cujo mercado atende o hex. */
-/** Divisão do exército (regras em war.ts). strength = soldados; org = organização 0..1. */
+/**
+ * Unidade no mapa (regras em war.ts): divisão do exército ou grupo de colonos.
+ * strength = soldados (ou pessoas, nos colonos); org = organização 0..1.
+ */
 export type Division = {
-  id: number; country: number; hex: number; strength: number; org: number;
+  id: number; kind: "army" | "settler"; country: number; hex: number; strength: number; org: number;
   target: number | null; progress: number; // destino e avanço (0..1) até o próximo hex
   equip: number;                           // 0,5..1: quanto de Armas o país conseguiu dar
 };
@@ -194,7 +197,7 @@ export function createEconomy(w: World): Economy {
     week: 0, levels: Array.from({ length: NB }, () => new Uint8Array(N)), producers: new Set(),
     countries: w.countries.map(() => ({
       treasury: 500, debt: 0, tax: 0.15, gdpWeek: 0, income: 0, upkeep: 0, interest: 0, bankruptWeeks: 0, pop: 0,
-      manpower: 0, settlers: RULES.startSettlers, gdpHistory: [],
+      manpower: 0, gdpHistory: [],
       research: newResearch(), pops: newPops(), politics: newPolitics(), radicals: 0, migration: 0, subsistence: 0, bonus: new Float64Array(NB), researchWeek: 0,
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket() })),
@@ -209,6 +212,7 @@ export function createEconomy(w: World): Economy {
     if (ex >= 0) { e.levels[ex][i] = 1; e.producers.add(i); } // começa com extratora nível 1
   }
   for (const c of e.countries) c.manpower += c.pop * RULES.manpowerShare;
+  e.cities.forEach((city) => { for (let k = 0; k < RULES.startSettlers; k++) spawnSettlers(e, city.country, city.hex); });
   return e;
 }
 
@@ -234,17 +238,23 @@ export function build(w: World, e: Economy, i: number, b: number): string | null
   return null;
 }
 
-/** Colonos do país `country` (1-based) fundam uma cidade no hex i. */
-export function foundCity(w: World, e: Economy, i: number, country: number): string | null {
-  const c = e.countries[country - 1];
-  if (c.settlers <= 0) return "Sem colonos";
+const spawnSettlers = (e: Economy, country: number, hex: number) =>
+  e.divisions.push({ id: e.nextDivision++, kind: "settler", country, hex, strength: RULES.settlerPop, org: 1, target: null, progress: 0, equip: 1 });
+
+/** Quantos grupos de colonos o país tem. */
+export const settlersOf = (e: Economy, country: number) => e.divisions.filter((d) => d.kind === "settler" && d.country === country).length;
+
+/** O grupo de colonos `unit` funda uma cidade onde está, e deixa de existir. */
+export function foundCity(w: World, e: Economy, unit: number): string | null {
+  const s = e.divisions.find((d) => d.id === unit && d.kind === "settler");
+  if (!s) return "Selecione um grupo de colonos";
+  const i = s.hex, country = s.country;
   if (!isLand(w.terrain[i])) return "Precisa ser em terra";
   if (w.owner[i] && w.owner[i] !== country) return "Território de outro país";
   const col = i % w.W, row = (i / w.W) | 0;
   const dist = (h: number) => hexDistance(col, row, h % w.W, (h / w.W) | 0, w.W);
   if (e.cities.some((k) => dist(k.hex) < RULES.minCityDistance)) return `Muito perto de outra cidade (mínimo ${RULES.minCityDistance})`;
-  if (!e.cities.some((k) => k.country === country && dist(k.hex) <= RULES.maxSettleDistance)) return `Longe demais das suas cidades (máximo ${RULES.maxSettleDistance})`;
-  c.settlers--;
+  e.divisions = e.divisions.filter((d) => d !== s);
   if (!w.owner[i]) w.owner[i] = country;
   claim(w, country, i, RULES.settleClaimRadius);
   e.cities.push({ name: `Cidade ${e.cities.length + 1}`, country, hex: i, size: 1, urban: [], market: newMarket() });
@@ -259,7 +269,7 @@ export function trainSettlers(w: World, e: Economy, country: number): string | n
   if (c.treasury < RULES.settlerCost) return `Precisa de ${RULES.settlerCost} no tesouro`;
   c.treasury -= RULES.settlerCost;
   w.pop[capital.hex] -= RULES.settlerPop; c.pop -= RULES.settlerPop;
-  c.settlers++;
+  spawnSettlers(e, country, capital.hex);
   return null;
 }
 
@@ -311,7 +321,7 @@ function updatePops(e: Economy, c: Country, country: number) {
   const n = c.pops.count, r = c.research;
   const add = (t: number, v: number) => { n[t] += v; };
   add(P["Clérigos"], c.pop * POP_RULES.clergyShare);
-  for (const d of e.divisions) if (d.country === country) add(P["Soldados"], d.strength);
+  for (const d of e.divisions) if (d.country === country && d.kind === "army") add(P["Soldados"], d.strength);
   if (r.era >= 1) { add(P["Burocratas"], c.pop * POP_RULES.bureaucratShare / 2); add(P["Escriturários"], c.pop * POP_RULES.bureaucratShare / 2); }
   if (r.known.has("Escrita")) add(P["Acadêmicos"], c.pop * POP_RULES.academicShare);
   const counted = n.reduce((s, v) => s + v, 0);
@@ -426,7 +436,7 @@ export function tick(w: World, e: Economy) {
   trade(e, (m, gi) => m.pop * POP_DEMAND[gi]); // produtos prontos circulam
 
   const ARMS = g("Armas"); // exércitos compram armas no mercado da capital
-  for (const d of e.divisions) e.cities.find((k) => k.country === d.country)!.market.demand[ARMS] += ARMS_PER_DIVISION;
+  for (const d of e.divisions) if (d.kind === "army") e.cities.find((k) => k.country === d.country)!.market.demand[ARMS] += ARMS_PER_DIVISION;
 
   e.cities.forEach((city) => {
     const m = city.market;
