@@ -93,6 +93,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Votação de nomes no multiplayer: com mais de um jogador, renomear continente abre uma votação (Sim/Não na Diplomacia, com aviso); passa com mais da metade dos jogadores, cai com metade dizendo não, vence em 8 semanas. No solo continua direto. (Sem pausar o jogo; rios terão o mesmo quando ganharem nome.)
 
+- Litoral enxugado: zonas de costa vizinhas também se juntam, até 3 por grupo, começando pelas menores (pedacinhos de costa grudam no vizinho). No mapa padrão as zonas costeiras caíram de 233 para 102 (total 444 → 313, a maioria do resto são lagos).
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.

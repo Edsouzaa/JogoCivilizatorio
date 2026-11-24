@@ -422,36 +422,45 @@ function generateSeaZones(w: World) {
 
 /** Mar aberto vira um nó só: zonas sem costa se juntam às vizinhas também sem costa, até OPEN_SEA_MAX zonas por grupo. */
 export const OPEN_SEA_MAX = 10;
+/** Zonas de costa vizinhas se juntam até este tanto (enxuga o litoral sem perder os nós locais). */
+export const COAST_GROUP_MAX = 3;
 /** Zona com menos que isto de hexes encostados em terra (só ilhotas) ainda conta como mar aberto. */
 export const COAST_MIN = 10;
 function mergeOpenSea(w: World, count: number) {
   const { W, H, terrain, seaZone } = w, N = W * H;
-  const shore = new Uint16Array(count), coast = new Uint8Array(count);
-  for (let i = 0; i < N; i++) if (seaZone[i]) { let s = false; forNeighbors(i % W, (i / W) | 0, W, H, (j) => { if (terrain[j] !== T.OCEAN) s = true; }); if (s) shore[seaZone[i]]++; }
+  const shore = new Uint16Array(count), coast = new Uint8Array(count), size = new Uint32Array(count);
+  for (let i = 0; i < N; i++) if (seaZone[i]) {
+    size[seaZone[i]]++;
+    let s = false; forNeighbors(i % W, (i / W) | 0, W, H, (j) => { if (terrain[j] !== T.OCEAN) s = true; });
+    if (s) shore[seaZone[i]]++;
+  }
   for (let z = 1; z < count; z++) coast[z] = shore[z] >= COAST_MIN ? 1 : 0;
-  // vizinhança entre zonas de mar aberto
+  // vizinhança só entre zonas da mesma classe (mar aberto com mar aberto, costa com costa)
   const adj = Array.from({ length: count }, () => new Set<number>());
   for (let i = 0; i < N; i++) {
     const z = seaZone[i];
-    if (!z || coast[z]) continue;
-    forNeighbors(i % W, (i / W) | 0, W, H, (j) => { const y = seaZone[j]; if (y && y !== z && !coast[y]) adj[z].add(y); });
+    if (!z) continue;
+    forNeighbors(i % W, (i / W) | 0, W, H, (j) => { const y = seaZone[j]; if (y && y !== z && coast[y] === coast[z]) adj[z].add(y); });
   }
-  // agrupa por busca em largura, com teto de tamanho (o oceano não vira um nó gigante)
+  // agrupa por busca em largura com teto (o oceano não vira um nó gigante; a costa fica com nós médios);
+  // começa pelas menores, para os pedaços pequenos de costa grudarem num vizinho
   const group = new Uint16Array(count);
-  for (let z = 1; z < count; z++) {
-    if (coast[z] || group[z]) continue;
+  const order = Array.from({ length: count - 1 }, (_, k) => k + 1).sort((x, y) => size[x] - size[y] || x - y);
+  for (const z of order) {
+    if (group[z]) continue;
     group[z] = z;
-    let size = 1;
+    const max = coast[z] ? COAST_GROUP_MAX : OPEN_SEA_MAX;
+    let n = 1;
     const queue = [z];
-    for (let q = 0; q < queue.length && size < OPEN_SEA_MAX; q++)
-      for (const y of [...adj[queue[q]]].sort((a, b) => a - b)) {
-        if (group[y] || size >= OPEN_SEA_MAX) continue;
-        group[y] = z; size++; queue.push(y);
+    for (let q = 0; q < queue.length && n < max; q++)
+      for (const y of [...adj[queue[q]]].sort((p, r) => size[p] - size[r] || p - r)) {
+        if (group[y] || n >= max) continue;
+        group[y] = z; n++; queue.push(y);
       }
   }
-  // renumera de 1 em diante, sem buracos
+  // renumera de 1 em diante, sem buracos (na ordem das zonas, para ficar estável)
   const id = new Uint16Array(count);
   let n = 0;
-  for (let z = 1; z < count; z++) { const root = coast[z] ? z : group[z]; if (!id[root]) id[root] = ++n; id[z] = id[root]; }
+  for (let z = 1; z < count; z++) { const root = group[z]; if (!id[root]) id[root] = ++n; id[z] = id[root]; }
   for (let i = 0; i < N; i++) if (seaZone[i]) seaZone[i] = id[seaZone[i]];
 }
