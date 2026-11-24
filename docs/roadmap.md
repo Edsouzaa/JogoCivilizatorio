@@ -36,6 +36,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Painel da guerra (aba Política): mortos em combate, civis perdidos em território ocupado (0,1% por semana), custo de manutenção, duração e apoio do povo. O apoio cai com o tempo (zero em 5 anos) e com os mortos; guerra impopular tira legitimidade.
 
+- Leis em 3 fases (Proposta, Disputa, Aprovação). O Poder Político barra no parlamento (apoio ≤ 0 trava); o Poder Popular barra nas ruas: protestos (apoio < −20%) cortam a velocidade pela metade e revolta (< −40%) na fase de disputa tira legitimidade toda semana. Na troca de fase pode sair um evento (discurso, escândalo, concessões...), avisado nas notificações.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -64,7 +66,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 9. **Eventos**
     - Eventos aleatórios com escolha (pausa todos, 2 min).
 10. **Leis**
-    - 3 fases com oposição política e popular.
     - Incentivos por estado ou cidade, pagos com pontos administrativos.
 11. **Construção estilo Vic3**: setor de construção, investimento privado, fundo de investimentos, privatização e nacionalização, investimento estrangeiro.
 12. **Diplomacia**

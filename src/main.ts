@@ -6,7 +6,7 @@ import {
 } from "./economy.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
-import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, type Law } from "./politics.ts";
+import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
@@ -45,7 +45,7 @@ function afterWeek() {
   for (const i of eco.exhausted) if (world.owner[i] === active) notify(`⛏ Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
 }
 // eventos do país do jogador que viram notificação (comparando com o quadro anterior)
-let seenTechs = -1, seenWars = "", seenActive = -1;
+let seenTechs = -1, seenWars = "", seenActive = -1, seenLawEvent: string | undefined;
 function watchEvents() {
   if (!active) return;
   const c = eco.countries[active - 1];
@@ -55,7 +55,8 @@ function watchEvents() {
     for (const k of wars.split(",")) if (k && !seenWars.split(",").includes(k)) notify(`⚔ Guerra com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
     for (const k of seenWars.split(",")) if (k && !wars.split(",").includes(k)) notify(`🕊 Paz com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
   }
-  seenActive = active; seenTechs = c.research.known.size; seenWars = wars;
+  if (seenActive === active && c.politics.lawEvent && c.politics.lawEvent !== seenLawEvent) notify(`📰 ${c.politics.lawEvent}`);
+  seenActive = active; seenTechs = c.research.known.size; seenWars = wars; seenLawEvent = c.politics.lawEvent;
 }
 
 const snapshot = () => saveGame({ world, eco, ui: { active, cam: { ...cam }, mode, speed, explored: [...explored] } });
@@ -644,7 +645,10 @@ function politicsHtml(p: Politics, era: number) {
     return `<tr><td colspan="2" class="law-cat"><b>${cat}:</b> ${cur.name} <small style="opacity:.75">— ${cur.desc ?? ""}</small></td></tr>${opts.join("")}`;
   });
   const voting = p.enacting
-    ? `<div>Votando <b>${p.enacting.law}</b> · apoio <span class="${p.support > 0 ? "down" : "up"}">${pct(p.support)}</span>${p.support > 0 ? "" : " <span class='bad'>(travada)</span>"} <button data-act="cancel-law">Cancelar</button>` +
+    ? `<div>Votando <b>${p.enacting.law}</b> · fase ${lawPhase(p.enacting.progress) + 1}/3: ${LAW_PHASES[lawPhase(p.enacting.progress)]}` +
+      `<br>Poder Político <span class="${p.support > 0 ? "down" : "up"}">${pct(p.support)}</span>${p.support > 0 ? "" : " <span class='bad'>(travada no parlamento)</span>"}` +
+      ` · Poder Popular <span class="${(p.popularSupport ?? 0) >= 0 ? "down" : "up"}">${pct(p.popularSupport ?? 0)}</span>${(p.popularSupport ?? 0) < POLITICS_RULES.revoltSupport ? " <span class='bad'>(revolta)</span>" : (p.popularSupport ?? 0) < POLITICS_RULES.protestSupport ? " <span class='bad'>(protestos)</span>" : ""}` +
+      ` <button data-act="cancel-law">Cancelar</button>${p.lawEvent ? `<br><small>📰 ${p.lawEvent}</small>` : ""}` +
       `<div class="bar"><div style="background:#fa6;width:${Math.min(100, p.enacting.progress * 100)}%"></div></div></div>` : "";
   const federal = !!lawOf(p, "Estados").federal;
   const states = statesOf(eco, active).map((x) => {

@@ -1,4 +1,4 @@
-import { RESOURCES, TERRAINS, isLand, claim, snowAt, exhaust, type World } from "./world.ts";
+import { RESOURCES, TERRAINS, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
@@ -663,7 +663,7 @@ export function tick(w: World, e: Economy) {
     c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest"));
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
-    advanceLaw(c.politics);
+    advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci));
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
     const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01);
     c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);

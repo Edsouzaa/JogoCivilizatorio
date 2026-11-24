@@ -86,7 +86,21 @@ for (const laws of Object.values(LAWS)) for (const l of laws) for (const g of [.
 export const POLITICS_RULES = {
   enactWeeks: 26,          // semanas para aprovar uma lei com legitimidade 0,5 e apoio
   unstableLegitimacy: 0.2, // perda de legitimidade quando um grupo de fora tem mais apoio popular que o governo
+  protestSupport: -0.2,    // apoio popular abaixo disto: protestos (a lei anda pela metade)...
+  revoltSupport: -0.4,     // ...e abaixo disto: revolta na fase de disputa (legitimidade cai por semana)
+  revoltLegitimacy: 0.01,
 };
+
+/** As 3 fases de uma lei: cada uma é 1/3 do progresso; na passagem de fase pode acontecer um evento. */
+export const LAW_PHASES = ["Proposta", "Disputa", "Aprovação"];
+export const LAW_EVENTS: { text: string; progress: number; legitimacy?: number }[] = [
+  { text: "Um discurso apaixonado convence os indecisos", progress: 0.1 },
+  { text: "Escândalo: um aliado da lei é pego em corrupção", progress: -0.15, legitimacy: -0.03 },
+  { text: "O governo faz concessões a um grupo contrário", progress: 0.05, legitimacy: -0.02 },
+  { text: "Jornais e pregadores atacam a lei", progress: -0.1 },
+  { text: "Manifestação a favor enche as ruas", progress: 0.08, legitimacy: 0.02 },
+];
+export const lawPhase = (progress: number) => Math.min(2, Math.floor(progress * 3));
 
 export type Politics = {
   laws: Record<string, string>; // categoria → lei em vigor
@@ -95,7 +109,9 @@ export type Politics = {
   government: number[];  // índices dos grupos no governo
   legitimacy: number;    // 0..1
   rival: number;         // grupo de fora com mais apoio popular que o governo, ou -1
-  support: number;       // apoio (−1..1) à lei em votação
+  support: number;       // apoio (−1..1) à lei em votação, do Poder Político
+  popularSupport?: number; // o mesmo, do Poder Popular (povo nas ruas)
+  lawEvent?: string;     // último evento da votação (para mostrar e avisar)
 };
 
 export const newPolitics = (): Politics => ({
@@ -141,11 +157,12 @@ export function updatePolitics(p: Politics, pops: Pops, countryEra: number) {
   if (p.rival >= 0) p.legitimacy = Math.max(0, p.legitimacy - POLITICS_RULES.unstableLegitimacy);
 }
 
-/** Apoio (−1..1) do Poder Político à lei: soma de quem gosta menos quem não gosta. */
-export function lawSupport(p: Politics, law: Law) {
+/** Apoio (−1..1) à lei: soma de quem gosta menos quem não gosta, pelo Poder Político (ou Popular). */
+export function lawSupport(p: Politics, law: Law, popular = false) {
+  const power = popular ? p.popular : p.political;
   let s = 0;
-  for (const g of law.likes) s += p.political[G[g]];
-  for (const g of law.dislikes) s -= p.political[G[g]];
+  for (const g of law.likes) s += power[G[g]];
+  for (const g of law.dislikes) s -= power[G[g]];
   return s;
 }
 
@@ -161,12 +178,26 @@ export function proposeLaw(p: Politics, category: string, name: string, countryE
 }
 
 /** Avança a votação uma semana. Só anda com apoio > 0; legitimidade maior aprova mais rápido. Retorna a lei aprovada. */
-export function advanceLaw(p: Politics): string | null {
+/**
+ * Uma semana de votação. Política barra no parlamento (apoio ≤ 0 = travada); o povo barra nas ruas
+ * (protesto = metade da velocidade; revolta na fase de disputa = perde legitimidade). `rand` sorteia os eventos de fase.
+ */
+export function advanceLaw(p: Politics, rand: () => number = Math.random): string | null {
   if (!p.enacting) return null;
   const law = LAWS[p.enacting.category].find((l) => l.name === p.enacting!.law)!;
   p.support = lawSupport(p, law);
-  if (p.support <= 0) return null; // travada até o apoio mudar
-  p.enacting.progress += (2 * p.legitimacy) / POLITICS_RULES.enactWeeks;
+  p.popularSupport = lawSupport(p, law, true);
+  if (p.support <= 0) return null; // travada no parlamento até o apoio mudar
+  const before = lawPhase(p.enacting.progress);
+  if (p.popularSupport < POLITICS_RULES.revoltSupport && before === 1) p.legitimacy = Math.max(0, p.legitimacy - POLITICS_RULES.revoltLegitimacy);
+  const protest = p.popularSupport < POLITICS_RULES.protestSupport ? 0.5 : 1;
+  p.enacting.progress += ((2 * p.legitimacy) / POLITICS_RULES.enactWeeks) * protest;
+  if (lawPhase(p.enacting.progress) > before && rand() < 0.5) { // mudou de fase: às vezes acontece algo
+    const ev = LAW_EVENTS[Math.floor(rand() * LAW_EVENTS.length)];
+    p.enacting.progress = Math.max(0, p.enacting.progress + ev.progress);
+    p.legitimacy = Math.min(1, Math.max(0, p.legitimacy + (ev.legitimacy ?? 0)));
+    p.lawEvent = `${law.name}: ${ev.text}`;
+  }
   if (p.enacting.progress < 1) return null;
   p.laws[p.enacting.category] = law.name;
   p.enacting = null;

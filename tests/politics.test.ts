@@ -54,3 +54,32 @@ assert.ok(sp.popular[sp.rival] > sp.popular[sp.government[0]]);
 const expected = (1 + sp.popular[sp.government[0]]) / 2 - POLITICS_RULES.unstableLegitimacy;
 assert.ok(Math.abs(sp.legitimacy - expected) < 1e-9, `legitimidade ${sp.legitimacy} ≠ ${expected}`);
 console.log("politics ok");
+
+// 3 fases: povo contra = protestos (metade da velocidade) e, na disputa, revolta que derruba a legitimidade
+{
+  const { lawPhase } = await import("../src/politics.ts");
+  const law = LAWS["Impostos"][1];
+  const make = (popular: number) => {
+    const q = newPolitics();
+    q.political.fill(0); q.popular.fill(0);
+    for (const g of law.likes) q.political[GROUPS.findIndex((x) => x.name === g)] = 0.5;
+    for (const g of law.dislikes) q.popular[GROUPS.findIndex((x) => x.name === g)] = popular;
+    q.enacting = { category: "Impostos", law: law.name, progress: 0 };
+    return q;
+  };
+  const never = () => 0.99; // sem eventos de fase
+  const calm = make(0), angry = make(1);
+  for (let k = 0; k < 5; k++) { advanceLaw(calm, never); advanceLaw(angry, never); }
+  if (law.dislikes.length) {
+    assert.ok(Math.abs(angry.enacting!.progress - calm.enacting!.progress / 2) < 1e-9, "protesto deveria pela metade");
+    angry.enacting!.progress = 0.4; const leg = angry.legitimacy;
+    advanceLaw(angry, never);
+    assert.equal(lawPhase(angry.enacting!.progress), 1);
+    assert.ok(angry.legitimacy < leg, "revolta deveria custar legitimidade");
+  }
+  // evento sorteado na troca de fase muda o progresso e fica registrado
+  const ev = make(0); ev.enacting!.progress = 0.33;
+  advanceLaw(ev, () => 0);
+  assert.ok(ev.lawEvent && ev.lawEvent.startsWith(law.name));
+}
+console.log("law phases ok");
