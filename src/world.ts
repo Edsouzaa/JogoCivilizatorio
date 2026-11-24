@@ -67,6 +67,8 @@ export type World = {
   countries: { name: string; color: [number, number, number]; capital: number; flag?: Flag; lang?: number }[];
   continent?: Uint8Array;                        // continente de cada hex de terra (0 = ilha pequena / mar)
   continents?: { name: string; hex: number }[];  // índice = id − 1; hex = onde escrever o nome
+  rivers?: { name: string; hex: number; zone: number; length: number }[]; // rios navegáveis: nome, onde escrever, zona marítima da foz
+  riverOf?: Uint16Array;                         // rio navegável de cada hex (0 = nenhum)
   landCount: number;
 };
 
@@ -159,6 +161,40 @@ export function generateContinents(w: World) {
   w.continent = id;
 }
 
+/**
+ * Rios navegáveis viram "sistemas": hexes com trecho navegável ligados entre si. Cada um ganha nome (na língua
+ * da região) e a zona marítima da foz (o mar ou lago onde deságua) — todo rio navegável está ligado a um nó de mar.
+ */
+export const RIVER_MIN = 15; // sistema com menos hexes que isto é só um trecho: sem nome
+export function generateRiverSystems(w: World) {
+  const { W, H } = w, N = W * H, id = new Uint16Array(N);
+  w.rivers = [];
+  for (let s = 0; s < N; s++) {
+    if (!w.navigable[s] || id[s]) continue;
+    const part = [s]; id[s] = 65535;
+    for (let q = 0; q < part.length; q++) forNeighbors(part[q] % W, (part[q] / W) | 0, W, H, (j) => { if (w.navigable[j] && !id[j]) { id[j] = 65535; part.push(j); } });
+    if (part.length < RIVER_MIN || w.rivers.length >= 65534) { for (const j of part) id[j] = 0; continue; }
+    let zone = 0;
+    for (const j of part) forNeighbors(j % W, (j / W) | 0, W, H, (k) => { if (!zone && w.seaZone[k]) zone = w.seaZone[k]; });
+    if (!zone) { // deságua noutro rio: o nó é o mar mais perto (busca em volta do rio)
+      const seen = new Set(part);
+      for (let front = [...part], step = 0; !zone && front.length && step < 300; step++) {
+        const next: number[] = [];
+        for (const j of front) forNeighbors(j % W, (j / W) | 0, W, H, (k) => {
+          if (zone || seen.has(k)) return;
+          seen.add(k);
+          if (w.seaZone[k]) zone = w.seaZone[k]; else next.push(k);
+        });
+        front = next;
+      }
+    }
+    const k = w.rivers.length + 1;
+    for (const j of part) id[j] = k;
+    w.rivers.push({ name: "Rio " + makeName(languageAt(s % W, (s / W) | 0, W, H, w.seed) + 5, w.seed * 17 + k), hex: part[part.length >> 1], zone, length: part.length });
+  }
+  w.riverOf = id;
+}
+
 /** A jazida do hex acabou: vira o recurso comum do terreno. */
 export function exhaust(w: World, i: number) { w.resource[i] = commonOf(w.terrain[i]); w.resource2[i] = 0; w.reserve[i] = Infinity; }
 
@@ -229,6 +265,7 @@ export function generateWorld(W: number, H: number, seed: number, nCountries?: n
   generateRivers(w, elev, hills, rand);
   generateSeaZones(w);
   generateContinents(w);
+  generateRiverSystems(w);
   for (let i = 0; i < N; i++) if (w.river[i]) pop[i] *= 1.5; // gente vive perto da água
   const target = Math.min(nCountries ?? Math.max(4, Math.round(landCount / 10000)), 65535); // 1 tribo a cada 10.000 hexes de terra
   for (let tries = 0; countries.length < target && tries < 2000000; tries++) {

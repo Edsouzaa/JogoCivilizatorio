@@ -32,6 +32,7 @@ export type Cmd =
   | { t: "independence" }            // súdito rompe com o soberano
   | { t: "respond"; id: number; accept: boolean } // responder proposta de outro jogador
   | { t: "vote"; id: number; yes: boolean } // votar num nome (multiplayer)
+  | { t: "river"; id: number; name: string } // renomear rio navegável
   | { t: "saveCharacter"; id: number } // guardar na história (o livro continua depois da morte) // resposta ao evento pendente
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
@@ -173,7 +174,14 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       k.name = name;
       return null;
     }
-    case "vote": return isInt(c.id, 1) ? castVote(e, country, c.id, !!c.yes, (ct, name) => { const k = w.continents?.[ct - 1]; if (k) k.name = name; }) : "Voto inválido";
+    case "vote": return isInt(c.id, 1) ? castVote(e, country, c.id, !!c.yes, (ct, name, river) => { const k = (river ? w.rivers : w.continents)?.[ct - 1]; if (k) k.name = name; }) : "Voto inválido";
+    case "river": {
+      const name = cleanName(c.name), k = w.rivers?.[c.id - 1];
+      if (!name || !k) return "Rio inválido";
+      if (e.humans.length > 1) return startVote(e, country, c.id, name, true); // multiplayer: os jogadores votam
+      k.name = name;
+      return null;
+    }
     case "claim": if (!e.humans.includes(country)) e.humans.push(country); return null;
     case "release": e.humans = e.humans.filter((k) => k !== country); return null;
     default: return "Comando desconhecido";

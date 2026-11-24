@@ -33,23 +33,23 @@ export const expireProposals = (e: Economy) => {
 };
 
 /** Votação entre jogadores (multiplayer): hoje para nome de continente. Passa com mais da metade dos jogadores. */
-export type Vote = { id: number; continent: number; name: string; yes: number[]; no: number[]; week: number };
+export type Vote = { id: number; continent: number; name: string; yes: number[]; no: number[]; week: number; river?: boolean }; // river: continent = id do rio
 
-export function startVote(e: Economy, from: number, continent: number, name: string): string | null {
-  const v: Vote = { id: (e.nextProposal = (e.nextProposal ?? 0) + 1), continent, name, yes: [from], no: [], week: e.week };
+export function startVote(e: Economy, from: number, continent: number, name: string, river = false): string | null {
+  const v: Vote = { id: (e.nextProposal = (e.nextProposal ?? 0) + 1), continent, name, yes: [from], no: [], week: e.week, river };
   (e.votes ??= []).push(v);
   return castVote(e, from, v.id, true);
 }
 
 /** Registra o voto e resolve se já há maioria (sim aplica o nome; não descarta). */
-export function castVote(e: Economy, who: number, id: number, yes: boolean, rename?: (continent: number, name: string) => void): string | null {
+export function castVote(e: Economy, who: number, id: number, yes: boolean, rename?: (continent: number, name: string, river: boolean) => void): string | null {
   const v = (e.votes ?? []).find((x) => x.id === id);
   if (!v) return "Votação não encontrada";
   if (!e.humans.includes(who)) return "Só jogadores votam";
   v.yes = v.yes.filter((x) => x !== who); v.no = v.no.filter((x) => x !== who);
   (yes ? v.yes : v.no).push(who);
   const half = e.humans.length / 2;
-  if (v.yes.length > half) { rename?.(v.continent, v.name); e.votes = e.votes!.filter((x) => x !== v); }
+  if (v.yes.length > half) { rename?.(v.continent, v.name, !!v.river); e.votes = e.votes!.filter((x) => x !== v); }
   else if (v.no.length >= half) e.votes = e.votes!.filter((x) => x !== v);
   return null;
 }

@@ -36,3 +36,23 @@ console.log("names ok");
   assert.equal(e.votes!.length, 0);
 }
 console.log("votes ok");
+
+// rios navegáveis: sistemas com nome e ligados a um nó de mar; renomear (votação no multiplayer)
+{
+  const { RIVER_MIN } = await import("../src/world.ts");
+  const wr = generateWorld(400, 200, 11, 6), er = createEconomy(wr);
+  assert.ok(wr.rivers!.length > 0, "sem rio navegável");
+  for (const [k, r] of wr.rivers!.entries()) {
+    assert.ok(r.length >= RIVER_MIN && /^Rio /.test(r.name));
+    assert.ok(r.zone > 0, `rio ${r.name} sem nó de mar`);
+    assert.equal(wr.riverOf![r.hex], k + 1);
+  }
+  assert.equal(applyCommand(wr, er, 1, { t: "river", id: 1, name: "Grande Rio" }), null);
+  assert.equal(wr.rivers![0].name, "Grande Rio");
+  er.humans = [1, 2];
+  assert.equal(applyCommand(wr, er, 1, { t: "river", id: 1, name: "Rio Doce" }), null);
+  assert.equal(wr.rivers![0].name, "Grande Rio");
+  assert.equal(applyCommand(wr, er, 2, { t: "vote", id: er.votes![0].id, yes: true }), null);
+  assert.equal(wr.rivers![0].name, "Rio Doce");
+}
+console.log("rivers ok");

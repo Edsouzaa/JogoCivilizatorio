@@ -1,4 +1,4 @@
-import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, HEX_MODES, type World } from "./world.ts";
+import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, generateRiverSystems, HEX_MODES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
@@ -96,7 +96,7 @@ function watchEvents() {
   }
   if (seenActive === active && c.politics.lawEvent && c.politics.lawEvent !== seenLawEvent) notify(`<i class=i-news></i> ${c.politics.lawEvent}`);
   for (const p of proposalsTo(eco, active)) if (p.id > seenProposal) { seenProposal = p.id; notify(`<i class=i-diplomacy></i> ${world.countries[p.from - 1].name} mandou uma proposta (aba Diplomacia)`); }
-  for (const v of eco.votes ?? []) if (v.id > seenVote) { seenVote = v.id; if (!v.yes.includes(active)) notify(`<i class=i-diplomacy></i> Votação: renomear um continente para ${v.name} (aba Diplomacia)`); }
+  for (const v of eco.votes ?? []) if (v.id > seenVote) { seenVote = v.id; if (!v.yes.includes(active)) notify(`<i class=i-diplomacy></i> Votação: renomear ${v.river ? "um rio" : "um continente"} para ${v.name} (aba Diplomacia)`); }
   seenActive = active; seenTechs = c.research.known.size; seenWars = wars; seenLawEvent = c.politics.lawEvent;
 }
 
@@ -517,6 +517,11 @@ document.addEventListener("pointerdown", (e) => {
   if (d.build) return doBuild(Number(d.build));
   if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
   if (d.act === "found" && selectedDiv) return askFound(selectedDiv);
+  if (d.river) {
+    const name = prompt("Nome do rio", world.rivers![+d.river - 1].name);
+    if (name) cmd({ t: "river", id: +d.river, name });
+    return;
+  }
   if (d.continent) {
     const name = prompt("Nome do continente", world.continents![+d.continent - 1].name);
     if (name) cmd({ t: "continent", id: +d.continent, name });
@@ -896,7 +901,7 @@ function diplomacyHtml() {
   const me = subjectOf(eco, active);
   const inbox = proposalsTo(eco, active).map((p) => `<div class="card"><b>${world.countries[p.from - 1].name}</b> propõe ${p.kind === "pact" ? "um acordo comercial" : `que você seja ${p.subject}`}` +
     ` <small>(vence em ${PROPOSAL_WEEKS - (eco.week - p.week)} semanas)</small><br><button data-respond="${p.id}|1">Aceitar</button> <button data-respond="${p.id}|0">Recusar</button></div>`).join("");
-  const votes = (eco.votes ?? []).map((v) => `<div class="card">Renomear o continente <b>${world.continents?.[v.continent - 1]?.name ?? "?"}</b> para <b>${v.name}</b>? <small>sim ${v.yes.length} · não ${v.no.length} de ${eco.humans.length}</small><br>` +
+  const votes = (eco.votes ?? []).map((v) => `<div class="card">Renomear ${v.river ? "o rio" : "o continente"} <b>${(v.river ? world.rivers : world.continents)?.[v.continent - 1]?.name ?? "?"}</b> para <b>${v.name}</b>? <small>sim ${v.yes.length} · não ${v.no.length} de ${eco.humans.length}</small><br>` +
     `<button data-vote="${v.id}|1" class="${v.yes.includes(active) ? "on" : ""}">Sim</button> <button data-vote="${v.id}|0" class="${v.no.includes(active) ? "on" : ""}">Não</button></div>`).join("");
   return (inbox ? `<h3>Propostas recebidas</h3>${inbox}` : "") + (votes ? `<h3>Votações</h3>${votes}` : "") + (me ? `<div class="card">Você é <b>${me.kind}</b> de ${world.countries[me.overlord - 1].name} · autonomia ${Math.round(me.autonomy)}/100 <small>(em 100 você se solta sozinho)</small> <button data-act="independence" title="Romper agora: a relação com o soberano despenca">Romper</button></div>` : "") +
     (claimsOf(eco, active).length ? `<h3>Suas reivindicações</h3><table>${claimsOf(eco, active).map((c) => `<tr><td>${eco.cities[c.city].name} <small>(${world.countries[eco.cities[c.city].country - 1].name})</small></td><td>${c.type}</td><td>força ${Math.round(c.strength)}</td></tr>`).join("")}</table><small>Guerra contra quem você reivindica dá metade da infâmia.</small>` : "") +
@@ -1212,6 +1217,8 @@ function hexHtml() {
   let h = `<b>Hex selecionado</b>: ${TERRAINS[world.terrain[i]].name} · ${RESOURCES[res]}${world.resource2[i] ? ` + ${RESOURCES[world.resource2[i]]}` : ""} · pop ${fmt(world.pop[i])}`;
   if (world.reserve[i] !== Infinity) h += ` · jazida para ~${Math.round(world.reserve[i] / 52)} anos (com 1 nível)`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
+  const rv = world.riverOf?.[i];
+  if (rv) { const x = world.rivers![rv - 1]; h += ` · <b>${x.name}</b> <button data-river="${rv}" title="Renomear rio"><i class=i-edit></i></button> <small>(navegável, ${x.length} hexes, deságua na zona marítima ${x.zone || "—"})</small>`; }
   const ct = world.continent?.[i];
   if (ct) h += ` · continente <b>${world.continents![ct - 1].name}</b> <button data-continent="${ct}" title="Renomear continente"><i class=i-edit></i></button>`;
   h += ` · cabem ${fmt(popCap(world, eco, i))}` + (world.owner[i] ? ` · controle ${pct(eco.control[i])}` : "");
@@ -1385,6 +1392,14 @@ function drawSecondResources() {
 function drawRegions() {
   drawSecondResources();
   if (!world.continents) generateContinents(world); // save de antes dos continentes
+  if (!world.rivers) generateRiverSystems(world); // save de antes dos rios com nome
+  if (cam.zoom >= 5) for (const rv of world.rivers!) { // nome do rio navegável, de perto
+    const [x, y] = worldToScreen(...hexCenter(rv.hex % W, (rv.hex / W) | 0));
+    if (x < -100 || y < -20 || x > unitsCanvas.width + 100 || y > unitsCanvas.height + 20 || (active && !explored.get(active)?.[rv.hex])) continue;
+    units.font = "italic 600 13px serif"; units.textAlign = "center"; units.textBaseline = "middle";
+    units.strokeStyle = "#0008"; units.lineWidth = 3; units.strokeText(rv.name, x, y);
+    units.fillStyle = "#9fd0ff"; units.fillText(rv.name, x, y);
+  }
   if (cam.zoom < 2.5) for (const k of world.continents!) { // nomes dos continentes, de longe
     const [x, y] = worldToScreen(...hexCenter(k.hex % W, (k.hex / W) | 0));
     units.font = "italic bold 18px serif"; units.textAlign = "center"; units.textBaseline = "middle";

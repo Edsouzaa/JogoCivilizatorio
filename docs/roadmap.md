@@ -95,6 +95,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Litoral enxugado: zonas de costa vizinhas também se juntam, até 3 por grupo, começando pelas menores (pedacinhos de costa grudam no vizinho). No mapa padrão as zonas costeiras caíram de 233 para 102 (total 444 → 313, a maioria do resto são lagos).
 
+- Rios navegáveis com nome: trechos navegáveis ligados viram um rio (15+ hexes) com nome na língua da região e o nó de mar da foz (se deságua noutro rio, o mar mais perto). Nome aparece no mapa de perto; o hex mostra o rio e a foz; renomear pelo lápis (no multiplayer, votação como os continentes).
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -106,7 +108,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 4. **Infraestrutura**
    - Ferrovias (gastam carvão e locomotivas).
 5. **Rios**
-   - Rios navegáveis largos, ligados a um nó de mar, com nome (votação no multiplayer).
+   - Rio navegável desenhado largo (ocupando o hex, com margem).
    - Cidades e portos na margem.
    - Disputa de navegação.
 6. **Guerra**
