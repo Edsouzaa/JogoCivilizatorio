@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import {
   priceFactor, createEconomy, tick, build, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
-  BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE,
+  BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius,
 } from "./economy.ts";
-import { generateWorld, isLand } from "./world.ts";
+import { generateWorld, isLand, claim } from "./world.ts";
+import { forNeighbors } from "./hex.ts";
 
 assert.equal(priceFactor(10, 10), 1);
 assert.equal(priceFactor(0, 100), MAX_PRICE);   // só demanda: +75%
@@ -92,13 +93,33 @@ const s = c.settlers;
 assert.equal(trainSettlers(w, e, 1), null);
 assert.equal(c.settlers, s + 1);
 
-// manpower e dívida continuam valendo
-c.manpower = 0;
-assert.match(build(w, e, cap, forge)!, /Manpower/);
-c.treasury = 0; c.debt = 0; c.manpower = 1e9;
+// construir não gasta manpower (ele é só do exército); o que falta no tesouro vira dívida
+c.manpower = 0; c.treasury = 0; c.debt = 0;
 assert.equal(build(w, e, cap, forge), null);
+assert.equal(c.manpower, 0);
 assert.equal(c.debt, RULES.buildCost * 2);
 c.debt = c.gdpWeek * 52 * 10;
 tick(w, e);
 assert.equal(c.bankruptWeeks, RULES.bankruptWeeks);
 console.log("economy ok");
+
+// águas territoriais: reivindicar terra na costa pega o mar colado nela, e só ele
+{
+  const w2 = generateWorld(400, 200, 5, 0);
+  let coast = -1;
+  for (let i = 0; i < w2.W * w2.H && coast < 0; i++) {
+    if (!isLand(w2.terrain[i])) continue;
+    forNeighbors(i % w2.W, (i / w2.W) | 0, w2.W, w2.H, (j) => { if (w2.terrain[j] === 0) coast = i; });
+  }
+  const got = claim(w2, 1, coast, 1);
+  const seas = got.filter((j) => w2.terrain[j] === 0);
+  assert.ok(seas.length > 0, 'costa sem águas territoriais');
+  for (const i of seas) {
+    let touches = false;
+    forNeighbors(i % w2.W, (i / w2.W) | 0, w2.W, w2.H, (j) => { if (w2.owner[j] === 1 && isLand(w2.terrain[j])) touches = true; });
+    assert.ok(touches, 'mar territorial longe da terra do país');
+  }
+  // fronteira cresce com a cidade
+  assert.equal(borderRadius(1), 1); assert.equal(borderRadius(2), 2); assert.equal(borderRadius(10), 3);
+}
+console.log("territory ok");

@@ -50,7 +50,8 @@ assert.equal(controller(w, e, target), A);
 assert.ok(warScore(w, e, A, B) > 0);
 
 // combate: uma divisão de B no vizinho; atacar tira soldados e organização dos dois lados
-recruit(w, e, B, capB);
+cb.manpower = 1e5; // o manpower é recalculado pelo teto da população a cada tick
+assert.equal(recruit(w, e, B, capB), null);
 const db = e.divisions.find((x) => x.country === B)!;
 let fight = -1;
 forNeighbors(target % w.W, (target / w.W) | 0, w.W, w.H, (j) => { if (fight < 0 && isLand(w.terrain[j]) && w.terrain[j] !== 7) fight = j; });

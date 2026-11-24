@@ -1,4 +1,4 @@
-import { RESOURCES, TERRAINS, isLand, type World } from "./world.ts";
+import { RESOURCES, TERRAINS, isLand, claim, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { newResearch, research, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
@@ -87,17 +87,18 @@ export const RULES = {
   hexLaborShare: 0.5,       // fração da população do hex que trabalha nas construções dele
   startSettlers: 2,
   settlerCost: 200,         // dinheiro para treinar colonos
-  settlerPop: 50,           // pessoas que saem da capital para virar colonos
+  settlerPop: 20,           // pessoas que saem da capital para virar colonos
   minCityDistance: 4,       // hexágonos entre cidades
   maxSettleDistance: 12,    // colonos só fundam até esta distância de uma cidade do país
-  settleClaimRadius: 2,     // território que uma cidade nova reivindica
+  settleClaimRadius: 1,     // território que uma cidade nova reivindica (cresce com o tamanho)
+  manpowerRegen: 0.02,      // fração do teto de manpower recuperada por semana
   radicalPenalty: 0.3,      // produção × (1 − isto × fração de radicais)
   radicalLegitimacy: 0.3,   // legitimidade − isto × fração de radicais
   migrationMinQol: 5,       // diferença mínima de QV da classe baixa para alguém emigrar
   migrationMonth: 0.003,    // fração máxima da população rural que emigra por mês (com 50 pontos de diferença)
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
-  cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer
+  cityGrowthPop: 300,       // população urbana por nível de tamanho antes de crescer (no máximo 1 nível por mês)
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
   researchBase: 1,          // pontos de pesquisa por semana de qualquer país
   researchPerPop: 1000,     // +1 ponto por semana a cada tantas pessoas
@@ -205,11 +206,14 @@ export function createEconomy(w: World): Economy {
     const c = e.countries[w.owner[i] - 1];
     c.pop += w.pop[i];
     const ex = w.resource[i] ? extractorFor(w.resource[i]) : -1;
-    if (ex >= 0) { e.levels[ex][i] = 1; e.producers.add(i); c.manpower -= BUILDINGS[ex].workers; } // começa com extratora nível 1
+    if (ex >= 0) { e.levels[ex][i] = 1; e.producers.add(i); } // começa com extratora nível 1
   }
   for (const c of e.countries) c.manpower += c.pop * RULES.manpowerShare;
   return e;
 }
+
+/** Raio de território de uma cidade pelo tamanho: 1, 2 a partir do tamanho 2, 3 a partir do 4. */
+export const borderRadius = (size: number) => Math.min(3, 1 + Math.floor(size / 2));
 
 export function buildCost(e: Economy, b: number, i: number) { return RULES.buildCost * (e.levels[b][i] + 1); }
 
@@ -223,10 +227,8 @@ export function build(w: World, e: Economy, i: number, b: number): string | null
   if (e.levels[b][i] >= 255) return "Nível máximo";
   const c = e.countries[w.owner[i] - 1], tech = techFor(b);
   if (tech && !c.research.known.has(tech)) return `Precisa pesquisar ${tech}`;
-  if (c.manpower < def.workers) return `Manpower insuficiente (precisa ${def.workers})`;
   c.treasury -= buildCost(e, b, i);
   if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
-  c.manpower -= def.workers;
   e.producers.add(i);
   e.levels[b][i]++;
   return null;
@@ -243,7 +245,8 @@ export function foundCity(w: World, e: Economy, i: number, country: number): str
   if (e.cities.some((k) => dist(k.hex) < RULES.minCityDistance)) return `Muito perto de outra cidade (mínimo ${RULES.minCityDistance})`;
   if (!e.cities.some((k) => k.country === country && dist(k.hex) <= RULES.maxSettleDistance)) return `Longe demais das suas cidades (máximo ${RULES.maxSettleDistance})`;
   c.settlers--;
-  for (const j of hexesInRadius(i, RULES.settleClaimRadius, w.W, w.H)) if (!w.owner[j] && isLand(w.terrain[j])) { w.owner[j] = country; c.pop += w.pop[j]; }
+  if (!w.owner[i]) w.owner[i] = country;
+  claim(w, country, i, RULES.settleClaimRadius);
   e.cities.push({ name: `Cidade ${e.cities.length + 1}`, country, hex: i, size: 1, urban: [], market: newMarket() });
   refresh(w, e);
   return null;
@@ -454,6 +457,8 @@ export function tick(w: World, e: Economy) {
     }
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
     updatePops(e, c, ci + 1);
+    const cap = c.pop * RULES.manpowerShare - c.pops.count[P["Soldados"]];
+    c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen);
     updatePolitics(c.politics, c.pops, c.research.era);
     c.radicals = updateLoyalty(c.pops, c.politics.legitimacy);
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
@@ -468,7 +473,10 @@ export function tick(w: World, e: Economy) {
     let grew = false;
     for (const city of e.cities) {
       const urbanPop = city.urban.reduce((s, j) => s + w.pop[j], 0);
-      if (city.size < RULES.maxCitySize && urbanPop > city.size * RULES.cityGrowthPop) { city.size++; grew = true; }
+      if (city.size < RULES.maxCitySize && urbanPop > city.size * RULES.cityGrowthPop) {
+        city.size++; grew = true;
+        claim(w, city.country, city.hex, borderRadius(city.size)); // a fronteira cresce com a cidade
+      }
     }
     if (grew) refresh(w, e);
   }

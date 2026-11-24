@@ -7,6 +7,9 @@ export const REVOLUTIONS = ERAS.indexOf("Revoluções");
 /** Semanas de jogo por segundo real na velocidade média (docs/escopo.md). Das Revoluções em diante: 1 fase do dia = 0,2 s. */
 export const ERA_WEEKS_PER_SECOND = ERAS.map((_, k) => (k >= REVOLUTIONS ? 1 / (7 * 4 * 0.2) : [1, 0.5, 0.35, 0.25][k]));
 
+/** Escala dos custos: a era tribal toda leva cerca de uma hora na velocidade média. */
+const COST = 25;
+
 export type Tech = {
   name: string; era: number; cost: number; requires: string[];
   unlocks?: string[];          // nomes de construções que só podem ser feitas com esta tecnologia
@@ -16,16 +19,16 @@ export type Tech = {
 
 // shortcut: só Tribal e Clássica têm tecnologias; a partir da Medieval o país para na Clássica até as próximas existirem.
 export const TECHS: Tech[] = [
-  { name: "Agricultura", era: 0, cost: 60, requires: [], bonus: [["Fazenda", 0.25]] },
-  { name: "Domesticação", era: 0, cost: 60, requires: [], unlocks: ["Estábulo"], bonus: [["Pasto", 0.25]] },
-  { name: "Tecelagem", era: 0, cost: 80, requires: ["Agricultura"], unlocks: ["Tecelagem"] },
-  { name: "Mineração", era: 0, cost: 80, requires: [], unlocks: ["Galerias escoradas"], bonus: [["Mina", 0.25]] },
-  { name: "Metalurgia do bronze", era: 0, cost: 150, requires: ["Mineração"], unlocks: ["Fundição de bronze"] },
-  { name: "Irrigação", era: 1, cost: 200, requires: ["Agricultura"], unlocks: ["Irrigação"] },
-  { name: "Armas de bronze", era: 1, cost: 200, requires: ["Metalurgia do bronze"], unlocks: ["Armeiro"] },
-  { name: "Trabalho do ferro", era: 1, cost: 250, requires: ["Metalurgia do bronze"], unlocks: ["Ferraria"], bonus: [["Mina", 0.25]] },
-  { name: "Estradas", era: 1, cost: 250, requires: [], unlocks: ["Trilhas de transporte"], bonus: [["Serraria", 0.25]] },
-  { name: "Escrita", era: 1, cost: 300, requires: [], research: 0.25 },
+  { name: "Agricultura", era: 0, cost: 60 * COST, requires: [], bonus: [["Fazenda", 0.25]] },
+  { name: "Domesticação", era: 0, cost: 60 * COST, requires: [], unlocks: ["Estábulo"], bonus: [["Pasto", 0.25]] },
+  { name: "Tecelagem", era: 0, cost: 80 * COST, requires: ["Agricultura"], unlocks: ["Tecelagem"] },
+  { name: "Mineração", era: 0, cost: 80 * COST, requires: [], unlocks: ["Galerias escoradas"], bonus: [["Mina", 0.25]] },
+  { name: "Metalurgia do bronze", era: 0, cost: 150 * COST, requires: ["Mineração"], unlocks: ["Fundição de bronze"] },
+  { name: "Irrigação", era: 1, cost: 200 * COST, requires: ["Agricultura"], unlocks: ["Irrigação"] },
+  { name: "Armas de bronze", era: 1, cost: 200 * COST, requires: ["Metalurgia do bronze"], unlocks: ["Armeiro"] },
+  { name: "Trabalho do ferro", era: 1, cost: 250 * COST, requires: ["Metalurgia do bronze"], unlocks: ["Ferraria"], bonus: [["Mina", 0.25]] },
+  { name: "Estradas", era: 1, cost: 250 * COST, requires: [], unlocks: ["Trilhas de transporte"], bonus: [["Serraria", 0.25]] },
+  { name: "Escrita", era: 1, cost: 300 * COST, requires: [], research: 0.25 },
 ];
 
 /** Tecnologia exigida por cada construção (só as que alguma tecnologia libera). */

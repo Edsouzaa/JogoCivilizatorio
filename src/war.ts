@@ -3,7 +3,7 @@
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
 import { refresh, GOODS, type Economy, type Division } from "./economy.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
-import { T, type World } from "./world.ts";
+import { T, TERRAINS, type World } from "./world.ts";
 
 export const WAR = {
   divisionSize: 100,   // soldados por divisão (saem do manpower)
@@ -20,12 +20,12 @@ export const WAR = {
 /** Semanas para entrar num hex de cada terreno (Infinity = intransitável). */
 const MOVE_WEEKS: number[] = [];
 MOVE_WEEKS[T.OCEAN] = Infinity; MOVE_WEEKS[T.ICE] = Infinity;
-MOVE_WEEKS[T.PLAINS] = MOVE_WEEKS[T.GRASS] = MOVE_WEEKS[T.DESERT] = MOVE_WEEKS[T.TUNDRA] = 1;
-MOVE_WEEKS[T.FOREST] = MOVE_WEEKS[T.JUNGLE] = MOVE_WEEKS[T.HILLS] = 2;
+MOVE_WEEKS[T.PLAINS] = MOVE_WEEKS[T.GRASS] = MOVE_WEEKS[T.DESERT] = MOVE_WEEKS[T.TUNDRA] = MOVE_WEEKS[T.SAVANNA] = MOVE_WEEKS[T.STEPPE] = 1;
+MOVE_WEEKS[T.FOREST] = MOVE_WEEKS[T.JUNGLE] = MOVE_WEEKS[T.HILLS] = MOVE_WEEKS[T.TAIGA] = 2;
 MOVE_WEEKS[T.MOUNTAIN] = 3;
 /** Bônus de defesa do terreno. */
-const DEFENSE: number[] = Array(10).fill(1);
-DEFENSE[T.FOREST] = 1.15; DEFENSE[T.JUNGLE] = 1.25; DEFENSE[T.HILLS] = 1.25; DEFENSE[T.MOUNTAIN] = 1.5;
+const DEFENSE: number[] = Array(TERRAINS.length).fill(1);
+DEFENSE[T.FOREST] = DEFENSE[T.TAIGA] = 1.15; DEFENSE[T.JUNGLE] = 1.25; DEFENSE[T.HILLS] = 1.25; DEFENSE[T.MOUNTAIN] = 1.5;
 
 const key = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`);
 export const atWar = (e: Economy, a: number, b: number) => a !== b && a > 0 && b > 0 && e.wars.has(key(a, b));
@@ -200,3 +200,5 @@ export function makePeace(w: World, e: Economy, a: number, b: number): string | 
   refresh(w, e);
   return null;
 }
+
+for (let t = 0; t < TERRAINS.length; t++) if (MOVE_WEEKS[t] === undefined) throw new Error(`terreno sem custo de movimento: ${TERRAINS[t].name}`);

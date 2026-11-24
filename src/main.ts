@@ -32,7 +32,7 @@ let message = "";
 let selectedDiv: number | null = null; // divisão selecionada (id)
 
 // Multiplicador sobre o ritmo da era (ERA_WEEKS_PER_SECOND). "Média" = 1×.
-const SPEEDS = [0, 0.25, 0.5, 1, 2, 4];
+const SPEEDS = [0, 0.5, 1, 3, 10, 30];
 // O ritmo segue a era do país mais avançado.
 // shortcut: em multiplayer isso deve ser decidido pela sala (era mais comum ou votação), quando houver salas.
 const worldEra = () => Math.max(...eco.countries.map((c) => c.research.era));

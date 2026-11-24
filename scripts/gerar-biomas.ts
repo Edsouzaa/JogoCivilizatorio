@@ -59,6 +59,16 @@ function biome(t: number) {
   } else if (name === "Floresta" || name === "Selva") {
     const trees = name === "Selva" ? 160 : 90;
     for (let k = 0; k < trees; k++) disc((rand() * S) | 0, (rand() * S) | 0, 4 + ((rand() * (name === "Selva" ? 5 : 3)) | 0), 0.75 + rand() * 0.4);
+  } else if (name === "Savana") { // capim seco e algumas árvores esparsas
+    for (let k = 0; k < 400; k++) { const x = (rand() * S) | 0, y = (rand() * S) | 0; set(x, y, shade(br, 0.85), shade(bg, 0.85), shade(bb, 0.8)); set(x, y - 1, shade(br, 0.85), shade(bg, 0.85), shade(bb, 0.8)); }
+    for (let k = 0; k < 9; k++) disc((rand() * S) | 0, (rand() * S) | 0, 5, 0.55);
+  } else if (name === "Estepe") { // capim baixo em faixas
+    for (let k = 0; k < 260; k++) { const x = (rand() * S) | 0, y = (rand() * S) | 0, f = rand() < 0.5 ? 0.85 : 1.1; for (let d = 0; d < 4; d++) set(x + d, y, shade(br, f), shade(bg, f), shade(bb, f)); }
+  } else if (name === "Taiga") { // pinheiros
+    for (let k = 0; k < 70; k++) {
+      const cx = (rand() * S) | 0, cy = (rand() * S) | 0, hgt = 7 + ((rand() * 5) | 0);
+      for (let dy = 0; dy < hgt; dy++) for (let dx = -((dy / 2) | 0); dx <= ((dy / 2) | 0); dx++) set(cx + dx, cy - hgt + dy, shade(br, dx < 0 ? 1.3 : 0.8), shade(bg, dx < 0 ? 1.3 : 0.8), shade(bb, dx < 0 ? 1.3 : 0.8));
+    }
   } else if (name === "Colinas") {
     for (let k = 0; k < 14; k++) disc((rand() * S) | 0, (rand() * S) | 0, 10 + ((rand() * 8) | 0), 0.85 + rand() * 0.25);
   } else if (name === "Montanha") {
