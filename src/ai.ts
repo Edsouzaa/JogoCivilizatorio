@@ -5,7 +5,7 @@ import {
   build, buildCost, buildingsFor, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
 } from "./economy.ts";
-import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, coastOf, WAR, NAVY } from "./war.ts";
+import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
 import { hexDistance, hexesInRadius } from "./hex.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
@@ -107,6 +107,10 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   if (port !== undefined && c.research.known.has(NAVY.tech) && !e.divisions.some((d) => d.kind === "fleet" && d.country === country) &&
       c.treasury > NAVY.cost * AI.reserve && c.manpower >= NAVY.sailors) buildFleet(w, e, country, port);
 
+  // força aérea: um esquadrão a cada 3 cidades
+  const wings = e.divisions.filter((d) => d.kind === "air" && d.country === country);
+  if (c.research.known.has(AIR.tech) && wings.length < Math.ceil(mine.length / 3) && c.treasury > AIR.cost * AI.reserve && c.manpower >= AIR.pilots) buildAir(w, e, country, mine[0].hex);
+
   const enemies = e.countries.map((_, k) => k + 1).filter((b) => atWar(e, country, b));
   for (const b of enemies) { // paz quando decidiu ou se arrastou
     const key = `${Math.min(country, b)}-${Math.max(country, b)}`, s = warScore(w, e, country, b);
@@ -116,6 +120,12 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   const still = enemies.filter((b) => atWar(e, country, b));
   if (still.length) { // ataque: cada divisão parada vai para a cidade inimiga mais perto
     const targets = e.cities.filter((k) => still.includes(k.country));
+    // esquadrões parados cobrem a cidade inimiga mais perto ao alcance
+    for (const d of wings) {
+      if (d.target !== null) continue;
+      const t = targets.filter((k) => dist(w, d.hex, k.hex) <= AIR.range).sort((x, y) => dist(w, d.hex, x.hex) - dist(w, d.hex, y.hex))[0];
+      if (t) orderMove(w, e, d.id, t.hex);
+    }
     // frotas paradas vão bloquear o porto inimigo mais perto
     const seas = targets.flatMap((k) => k.urban.map((j) => coastOf(w, j))).filter((s) => s >= 0);
     for (const f of e.divisions) {

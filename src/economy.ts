@@ -154,7 +154,7 @@ function updateBonus(c: Country) {
  * strength = soldados (ou pessoas, nos colonos); org = organização 0..1.
  */
 export type Division = {
-  id: number; kind: "army" | "settler" | "fleet"; country: number; hex: number; strength: number; org: number;
+  id: number; kind: "army" | "settler" | "fleet" | "air"; country: number; hex: number; strength: number; org: number;
   target: number | null; progress: number; // destino e avanço (0..1) até o próximo hex
   equip: number;                           // 0,5..1: quanto de Armas o país conseguiu dar
 };
@@ -399,7 +399,7 @@ function updatePops(e: Economy, c: Country, country: number) {
   const n = c.pops.count, r = c.research;
   const add = (t: number, v: number) => { n[t] += v; };
   add(P["Clérigos"], c.pop * POP_RULES.clergyShare);
-  for (const d of e.divisions) if (d.country === country && d.kind === "army") add(P["Soldados"], d.strength);
+  for (const d of e.divisions) if (d.country === country && (d.kind === "army" || d.kind === "air")) add(P["Soldados"], d.strength);
   for (const d of e.divisions) if (d.country === country && d.kind === "fleet") add(P["Marinheiros"], d.strength);
   if (r.era >= 1) { add(P["Burocratas"], c.pop * POP_RULES.bureaucratShare / 2); add(P["Escriturários"], c.pop * POP_RULES.bureaucratShare / 2); }
   if (r.known.has("Escrita")) add(P["Acadêmicos"], c.pop * POP_RULES.academicShare);

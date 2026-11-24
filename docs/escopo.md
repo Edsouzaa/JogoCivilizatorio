@@ -124,13 +124,21 @@ Todo país que não é o do jogador decide uma vez por mês:
 - **IA:** constrói uma frota se tiver litoral e a tecnologia; em guerra, manda a frota bloquear o porto inimigo mais perto.
 - A fazer: navegar pelos rios navegáveis, desembarque com combate na praia, comércio por zonas marítimas.
 
+## Guerra aérea
+
+- **Regiões aéreas** = região de cada cidade (a mesma dos mercados). Quando existirem estados, a região aérea vira o estado, como no design.
+- **Esquadrões** (✈ no mapa): formados numa cidade com a tecnologia **Aviação**, por 300 de dinheiro e 10 pilotos (manpower); custam 1 por semana. Ficam na cidade-base; com o **botão direito** recebem uma região de missão até 10 hexes da base. Sem missão, defendem a região da base. Se a base cai, mudam para a capital.
+- **Superioridade aérea** de cada lado numa região = força aérea dele ÷ força aérea total ali (50% se ninguém voa). Nas batalhas em terra da região, superioridade total dá **+30%** de força e nenhuma dá **−30%**.
+- **Combate aéreo:** esquadrões de países em guerra na mesma região se derrubam toda semana. Computadores, Mísseis e Drones aumentam a força aérea.
+- **IA:** um esquadrão a cada 3 cidades quando tem Aviação; em guerra cobre a cidade inimiga mais perto ao alcance.
+- A fazer: bombardeio de construções e de frotas, interceptação de transporte naval.
+
 ## O que fica fora da primeira versão jogável
 
 A primeira versão jogável é: economia + cidades + política básica, em uma ou duas eras, single-player. O resto entra depois que isso estiver divertido.
 
 | Cortado por enquanto | Por quê |
 |---|---|
-| Guerra aérea | A naval e a terrestre vêm primeiro |
 | Editor de mapas e mapas pagos | O mapa aleatório já cobre as partidas; o editor só vale quando houver jogadores |
 | Multiplayer em rede | O jogo precisa ser divertido sozinho antes; hoje é só no PC do jogador |
 | Todas as eras de uma vez | Fazer tribal → clássica bem feitas e depois avançar |

@@ -27,6 +27,43 @@ export const NAVY = {
   tech: "Galés",    // tecnologia que libera frotas
 };
 
+/**
+ * Força aérea. Regiões aéreas = região de cada cidade (a mesma dos mercados; vira "estado" quando houver estados).
+ * Um esquadrão fica numa cidade-base e cobre a região de missão (até AIR.range da base; sem missão, a da base).
+ */
+export const AIR = {
+  pilots: 10,       // pilotos por esquadrão (saem do manpower)
+  cost: 300,        // dinheiro para formar
+  upkeep: 1,        // dinheiro por semana
+  range: 10,        // hexes da base até a região de missão
+  bonus: 0.3,       // superioridade total: +30% de força nas batalhas da região; nenhuma: −30%
+  tech: "Aviação",
+};
+/** Região aérea do hex: índice da cidade cujo mercado o atende (−1 = fora de qualquer região). */
+export const airRegion = (e: Economy, i: number) => (e.market[i] ? e.market[i] - 1 : -1);
+const missionOf = (e: Economy, d: Division) => airRegion(e, d.target ?? d.hex);
+
+export function buildAir(w: World, e: Economy, country: number, hex: number): string | null {
+  if (w.owner[hex] !== country || !e.urban[hex] || e.occupier[hex]) return "Forme o esquadrão numa cidade sua";
+  const c = e.countries[country - 1];
+  if (!c.research.known.has(AIR.tech)) return `Precisa pesquisar ${AIR.tech}`;
+  if (c.manpower < AIR.pilots) return `Manpower insuficiente (precisa ${AIR.pilots})`;
+  if (c.treasury < AIR.cost) return `Precisa de ${AIR.cost} no tesouro`;
+  c.manpower -= AIR.pilots; c.treasury -= AIR.cost;
+  e.divisions.push({ id: e.nextDivision++, kind: "air", country, hex, strength: AIR.pilots, org: 1, target: null, progress: 0, equip: 1 });
+  return null;
+}
+
+const airPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "air")), 0);
+
+/** Superioridade aérea de `a` sobre `b` numa região (0..1; 0,5 se ninguém voa lá). */
+export function airSuperiority(e: Economy, region: number, a: number, b: number) {
+  if (region < 0) return 0.5;
+  const over = (c: number) => airPower(e, e.divisions.filter((d) => d.kind === "air" && d.country === c && d.strength >= 1 && missionOf(e, d) === region));
+  const pa = over(a), pb = over(b);
+  return pa + pb > 0 ? pa / (pa + pb) : 0.5;
+}
+
 /** Hex de mar colado no hex (−1 se não houver). */
 export function coastOf(w: World, i: number) {
   let s = -1;
@@ -112,6 +149,13 @@ export function disband(w: World, e: Economy, id: number) {
 export function orderMove(w: World, e: Economy, id: number, target: number): string | null {
   const d = e.divisions.find((x) => x.id === id);
   if (!d) return "Divisão não existe";
+  if (d.kind === "air") { // missão: região até AIR.range da base
+    const dd = hexDistance(d.hex % w.W, (d.hex / w.W) | 0, target % w.W, (target / w.W) | 0, w.W);
+    if (dd > AIR.range) return `Fora do alcance (máx. ${AIR.range} hexes da base)`;
+    if (airRegion(e, target) < 0) return "Sem região aérea aí (só sobre território com cidade)";
+    d.target = target === d.hex ? null : target;
+    return null;
+  }
   if (d.kind === "fleet" ? w.terrain[target] !== T.OCEAN : w.terrain[target] === T.ICE) return d.kind === "fleet" ? "Frotas só andam no mar" : "Não dá para ir até lá";
   if (d.kind !== "fleet" && w.terrain[target] === T.OCEAN && (d.kind !== "army" || !hasFleetIn(w, e, d.country, w.seaZone[target])))
     return "Para atravessar o mar, o exército precisa de uma frota sua nessa zona marítima";
@@ -158,9 +202,9 @@ export function stepWar(w: World, e: Economy) {
   const ARMS = GOODS.indexOf("Armas");
   const count = new Map<number, number>();
   for (const d of e.divisions) if (d.kind === "army") count.set(d.country, (count.get(d.country) ?? 0) + 1);
-  for (const d of e.divisions) if (d.kind === "fleet") { // manutenção da frota
+  for (const d of e.divisions) if (d.kind === "fleet" || d.kind === "air") { // manutenção de frotas e esquadrões
     const c = e.countries[d.country - 1];
-    c.treasury -= NAVY.upkeep;
+    c.treasury -= d.kind === "air" ? AIR.upkeep : NAVY.upkeep;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
   }
   for (const [country, n] of count) { // armas e manutenção
@@ -188,7 +232,7 @@ export function stepWar(w: World, e: Economy) {
   const fighting = new Set<Division>();
   let changed = false;
   for (const d of e.divisions) {
-    if (d.target === null) continue;
+    if (d.target === null || d.kind === "air") continue; // esquadrões não andam: voam missões
     const next = nextStep(w, d.hex, d.target, (j) => passable(w, e, d, j));
     const sea = next >= 0 && w.terrain[next] === T.OCEAN;
     if (next < 0) { d.target = null; continue; }
@@ -215,11 +259,30 @@ export function stepWar(w: World, e: Economy) {
     if (w.owner[next] === d.country && e.occupier[next]) { e.occupier[next] = 0; changed = true; }
   }
 
+  // combate aéreo: em cada região, esquadrões de países em guerra se derrubam
+  const airIn = new Map<number, Division[]>();
+  for (const d of e.divisions) if (d.kind === "air") { const r = missionOf(e, d); if (!airIn.has(r)) airIn.set(r, []); airIn.get(r)!.push(d); }
+  for (const ds of airIn.values()) {
+    const cs = [...new Set(ds.map((d) => d.country))];
+    for (const a of cs) for (const b of cs) {
+      if (a >= b || !atWar(e, a, b)) continue;
+      const A = ds.filter((d) => d.country === a), B = ds.filter((d) => d.country === b);
+      const pa = airPower(e, A), pb = airPower(e, B);
+      takeLosses(w, e, B, pa * WAR.casualties);
+      takeLosses(w, e, A, pb * WAR.casualties);
+      for (const d of A) d.org = Math.max(0, d.org - WAR.orgLoss * (pb / (pa || 1)));
+      for (const d of B) d.org = Math.max(0, d.org - WAR.orgLoss * (pa / (pb || 1)));
+      for (const d of [...A, ...B]) { fighting.add(d); if (d.org < WAR.brokenOrg) d.target = null; } // abatido volta a defender a base
+    }
+  }
+
   for (const [hex, attackers] of battles) {
     const defenders = attackers.length ? enemiesIn(hex, attackers[0].country) : [];
     if (!defenders.length) continue;
     const riverLine = attackers.some((a) => crossesRiver(w, a.hex, hex)); // atacar atravessando rio é pior
-    const pa = power(e, attackers), pd = power(e, defenders) * DEFENSE[w.terrain[hex]] * (riverLine ? 1.25 : 1);
+    const sup = airSuperiority(e, airRegion(e, hex), attackers[0].country, defenders[0].country); // céu de quem?
+    const pa = power(e, attackers) * (1 + AIR.bonus * (2 * sup - 1));
+    const pd = power(e, defenders) * DEFENSE[w.terrain[hex]] * (riverLine ? 1.25 : 1) * (1 + AIR.bonus * (1 - 2 * sup));
     takeLosses(w, e, defenders, pa * WAR.casualties);
     takeLosses(w, e, attackers, pd * WAR.casualties);
     for (const d of defenders) d.org = Math.max(0, d.org - WAR.orgLoss * (pa / (pd || 1)));
@@ -278,10 +341,11 @@ export function stepWar(w: World, e: Economy) {
       if (settlerDistance(w, e, d) > RULES.settlerSupplyRange) d.strength -= Math.max(0.5, d.strength * RULES.settlerAttrition);
       continue;
     }
+    if (d.kind === "air" && controller(w, e, d.hex) !== d.country) { d.hex = e.cities.find((k) => k.country === d.country)!.hex; d.target = null; } // base caiu: muda para a capital
     if (fighting.has(d) || d.strength < 1) continue; // morta não se recupera nem recebe reforço
     d.org = Math.min(1, d.org + WAR.orgRecovery);
     const c = e.countries[d.country - 1];
-    const full = d.kind === "fleet" ? NAVY.sailors : WAR.divisionSize;
+    const full = d.kind === "fleet" ? NAVY.sailors : d.kind === "air" ? AIR.pilots : WAR.divisionSize;
     if (controller(w, e, d.hex) === d.country && d.strength < full && c.manpower > 0) { // reforço em território (ou águas) próprio
       const add = Math.min(WAR.reinforce, c.manpower, full - d.strength);
       d.strength += add; c.manpower -= add;
