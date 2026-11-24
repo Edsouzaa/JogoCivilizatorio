@@ -51,7 +51,7 @@ Especificação visual do jogo. O que já existe está marcado com **[feito]**.
   - Política: cartões dos grupos de interesse e personagens.
 
 ## Tecnologia
-Árvore visual por área, com cartões ligados aos pré-requisitos. Tecnologias bloqueadas aparecem visíveis, mas com menos contraste.
+**[feito]** Árvore visual por área, com cartões ligados aos pré-requisitos. Tecnologias bloqueadas aparecem visíveis, mas com menos contraste.
 
 ## Militar
 Operacional, no estilo HOI4. Três grupos: terrestre, naval e aéreo. Desenhar frentes, objetivos e rotas no mapa, e uma tela de logística (demanda, estoque, entrega, gargalos).

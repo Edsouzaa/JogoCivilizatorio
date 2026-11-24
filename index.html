@@ -95,6 +95,19 @@
     #notelist .n small { color: var(--dim); }
     #toast { position: fixed; bottom: calc(var(--bottom) + 10px); left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--gold);
       padding: 5px 12px; z-index: 6; display: none; }
+
+    /* árvore tecnológica */
+    .tree { position: relative; display: grid; gap: 6px 26px; align-items: start; margin-top: 8px; }
+    .tree .tlines { position: absolute; left: 0; top: 0; pointer-events: none; fill: none; stroke: #4a4d55; stroke-width: 1.2; }
+    .thead { font: 600 15px var(--serif); color: var(--gold); border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+    .tarea { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding-top: 8px; }
+    .tcell { display: flex; flex-direction: column; gap: 6px; min-height: 20px; }
+    .tcard { position: relative; z-index: 1; background: var(--panel2); border: 1px solid var(--line); padding: 5px 7px; font-size: 12px; display: flex; flex-direction: column; }
+    .tcard small { color: var(--dim); } .tcard .fx { font-size: 10.5px; }
+    .tcard.known { border-color: #4f6b4c; } .tcard.known b { color: var(--green); }
+    .tcard.avail { border-color: var(--gold); cursor: pointer; } .tcard.avail:hover { background: #2a2a24; }
+    .tcard.locked { opacity: .45; }
+    .tcard.cur { box-shadow: inset 3px 0 0 var(--gold); }
   </style>
 </head>
 <body>

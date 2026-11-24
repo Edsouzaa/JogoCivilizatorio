@@ -61,7 +61,8 @@ console.log("sim ok");
   const m = make();
   for (let k = 0; k < 12; k++) advanceWeek(m.w, m.e);
   const h = m.e.countries[0].history!;
-  assert.deepEqual(Object.keys(h).sort(), Object.keys(SERIES).sort());
+  assert.deepEqual(Object.keys(h).filter((k) => !k.startsWith("$")).sort(), Object.keys(SERIES).sort());
+  assert.equal(h["$Grãos"].length, 3, "preço de cada bem também vira série");
   assert.equal(h["PIB"].length, 3);
 }
 console.log("history ok");

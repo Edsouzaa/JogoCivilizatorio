@@ -470,7 +470,11 @@ window.addEventListener("keydown", (e) => {
 });
 // pointerdown, não click: o HUD é redesenhado a cada 500 ms e um click pode cair entre o down e o up.
 document.addEventListener("pointerdown", (e) => {
-  const d = (e.target as HTMLElement).dataset;
+  // o clique pode cair num filho (ícone, texto do cartão): sobe até o primeiro elemento com data-*
+  let el = e.target as HTMLElement | null;
+  while (el && !(el.dataset && Object.keys(el.dataset).length)) el = el.parentElement;
+  if (!el || el.dataset.tnode && !el.dataset.tech) return;
+  const d = el.dataset;
   if (d.build) return doBuild(Number(d.build));
   if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
   if (d.act === "found" && selectedDiv) return askFound(selectedDiv);
@@ -520,6 +524,8 @@ document.addEventListener("pointerdown", (e) => {
   if (d.peace) return cmd({ t: "peace", target: Number(d.peace) });
   if (d.act === "disband" && selectedDiv) { cmd({ t: "disband", id: selectedDiv }); selectedDiv = null; return updateUI(); }
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
+  if (d.econ) { econTab = Number(d.econ); return updateUI(); }
+  if (d.goto) { selected = Number(d.goto); const [x, y] = hexCenter(selected % W, (selected / W) | 0); cam.x = x; cam.y = y; cam.zoom = Math.max(cam.zoom, 8); return updateUI(); }
   if (d.menu) { menuCat = menuCat === d.menu ? null : d.menu; return updateUI(); }
   if (d.notes) return showNotes(d.notes);
   if (d.selectDiv) { selectedDiv = Number(d.selectDiv); group = [selectedDiv]; const u = eco.divisions.find((x) => x.id === selectedDiv); if (u) selected = u.hex; return updateUI(); }
@@ -615,11 +621,125 @@ function leftmenuHtml() {
     `<button data-act="new" title="Gera um mapa novo (R)">${icon("newmap")} Novo mapa</button></div>`;
 }
 
+// ---- Economia em abas (docs/interface.md §4): o único lugar onde mercadorias aparecem como estoque e fluxo
+const ECON_TABS = ["Visão Geral", "Mercados", "Mercadorias"] as const;
+let econTab = 0;
+const GOOD_CATS: [string, string[]][] = [
+  ["Alimentos", ["Grãos", "Frutas e vegetais", "Carne e caça"]],
+  ["Agricultura e pecuária", ["Fibras", "Especiarias", "Gado", "Cavalos", "Peles"]],
+  ["Floresta e construção", ["Madeira", "Pedra", "Argila"]],
+  ["Minerais e energia", ["Sal", "Enxofre", "Carvão mineral", "Petróleo", "Pedras preciosas"]],
+  ["Metais", ["Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Bronze"]],
+  ["Manufaturados", ["Tecidos", "Ferramentas", "Papel"]],
+  ["Militar", ["Armas"]],
+];
+/** Soma dos mercados das cidades do país para um bem. Comércio > 0 = entrou de outras cidades/países. */
+function nationalGood(g: number) {
+  let prod = 0, cons = 0, imp = 0, exp = 0, price = 0, pop = 0;
+  for (const k of eco.cities) {
+    if (k.country !== active) continue;
+    const m = k.market;
+    prod += m.supply[g] - Math.max(0, m.trade[g]); cons += m.demand[g];
+    if (m.trade[g] > 0) imp += m.trade[g]; else exp -= m.trade[g];
+    price += m.price[g] * m.pop; pop += m.pop;
+  }
+  return { prod, cons, imp, exp, price: pop ? price / pop : 1 };
+}
+
+function economyView() {
+  const tabs = `<div class="tabs">${ECON_TABS.map((t, k) => `<button data-econ="${k}" class="${k === econTab ? "on" : ""}">${t}</button>`).join("")}</div>`;
+  return tabs + [econOverview, marketsHtml, goodsCardsHtml][econTab]();
+}
+
+function econOverview() {
+  if (!active) return "";
+  const c = eco.countries[active - 1], weekly = c.income + c.tariffs - c.upkeep - c.interest;
+  const h = c.history?.["PIB"] ?? [], growth = h.length > 12 ? (h[h.length - 1] / (h[h.length - 13] || 1) - 1) : 0;
+  const card = (k: string, v: string, cls = "") => `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
+  return `<div class="cards">${card("PIB anual", fmt(c.gdpWeek * 52))}${card("Crescimento (12 meses)", `${growth >= 0 ? "+" : ""}${Math.round(growth * 100)}%`, growth >= 0 ? "down" : "up")}` +
+    `${card("Arrecadação / sem", fmt(c.income + c.tariffs))}${card("Despesas / sem", fmt(c.upkeep + c.interest))}${card("Saldo / sem", signed(weekly), weekly >= 0 ? "down" : "up")}` +
+    `${card("Fundo privado", fmt(c.investPool ?? 0))}${card("Dívida", fmt(c.debt), c.debt > 0 ? "up" : "")}</div>` + economyHtml();
+}
+
+function marketsHtml() {
+  if (!active) return "";
+  const rows = eco.cities.map((k, i) => [k, i] as const).filter(([k]) => k.country === active).map(([k, i]) => {
+    const m = k.market;
+    let prod = 0, cons = 0, need = 0, got = 0;
+    for (let g = 1; g < GOODS.length; g++) { prod += (m.supply[g] - Math.max(0, m.trade[g])) * BASE_PRICE[g]; cons += m.demand[g] * BASE_PRICE[g]; need += m.need[g]; got += Math.min(m.need[g], m.supply[g]); }
+    const eff = need ? got / need : 1;
+    return `<tr><td><button data-goto="${k.hex}" title="Ver no mapa e abrir o mercado">${k.name}</button></td><td>${fmt(m.pop)}</td><td>${fmt(prod)}</td><td>${fmt(cons)}</td>` +
+      `<td class="${eff < 0.6 ? "up" : eff > 0.9 ? "down" : "warn"}">${pct(eff)}</td><td>${k.road ?? 0}</td><td>${k.harbor ?? 0}</td></tr>`;
+  });
+  return `<small>Cada cidade é um mercado metropolitano; o mercado nacional é a soma deles (aba Mercadorias). Clique numa cidade para ver o mercado dela à direita.</small>` +
+    `<table><tr><td><b>Mercado</b></td><td><b>População</b></td><td><b>Produção</b></td><td><b>Consumo</b></td><td><b title="Quanto do que o mercado precisa ele tem">Abastecimento</b></td><td><b>Estrada</b></td><td><b>Porto</b></td></tr>${rows.join("")}</table>`;
+}
+
+function goodsCardsHtml() {
+  if (!active) return "";
+  const hist = eco.countries[active - 1].history ?? {};
+  return GOOD_CATS.map(([cat, names]) => {
+    const cards = names.map((n) => {
+      const g = GOODS.indexOf(n), d = nationalGood(g);
+      if (d.prod < 0.5 && d.cons < 0.5) return "";
+      const ph = hist["$" + n] ?? [], old = ph.length > 6 ? ph[ph.length - 7] : d.price, trend = old ? d.price / old - 1 : 0;
+      const bal = d.prod + d.imp - d.exp - d.cons;
+      return `<div class="card"><div class="k">${n}</div><div class="v">${(BASE_PRICE[g] * d.price).toFixed(1)} <small class="${trend > 0.02 ? "up" : trend < -0.02 ? "down" : ""}">${trend >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(trend * 100))}%</small></div>` +
+        `<small>Produção ${fmt(d.prod)} · Consumo ${fmt(d.cons)}<br>Importa ${fmt(d.imp)} · Exporta ${fmt(d.exp)}<br>Saldo <span class="${bal >= 0 ? "down" : "up"}">${signed(bal)}</span>/sem</small></div>`;
+    }).join("");
+    return cards ? `<h3>${cat}</h3><div class="cards">${cards}</div>` : "";
+  }).join("") + "<small>Preço com a variação dos últimos 6 meses. Vermelho = mais caro (falta), verde = mais barato (sobra).</small>";
+}
+
+// ---- Tecnologia em árvore: linhas = áreas, colunas = eras; linhas ligam cada tecnologia aos pré-requisitos
+const TECH_AREAS: [string, (t: (typeof TECHS)[number]) => boolean][] = [
+  ["Militar", (t) => !!(t.army || t.fleet || t.air || t.manpower)],
+  ["Ciência", (t) => !!(t.research || t.unrest)],
+  ["Comércio", (t) => !!t.trade],
+  ["Indústria", (t) => !!(t.unlocks?.some((b) => BUILDINGS.find((x) => x.name === b)?.industry) || t.bonus?.some(([b]) => b !== "Fazenda" && b !== "Pasto"))],
+  ["Agricultura", () => true],
+];
+const techArea = (t: (typeof TECHS)[number]) => TECH_AREAS.findIndex(([, f]) => f(t));
+
+function techTreeHtml() {
+  if (!active) return "";
+  const r = eco.countries[active - 1].research, avail = new Set(available(r).map((t) => t.name));
+  const lastEra = Math.min(ERAS.length - 1, r.era + 1); // mostra até a próxima era
+  const cols = Array.from({ length: lastEra + 1 }, (_, e) => e);
+  const cell = (area: number, era: number) => TECHS.filter((t) => t.era === era && techArea(t) === area).map((t) => {
+    const st = r.known.has(t.name) ? "known" : avail.has(t.name) ? "avail" : "locked";
+    const prog = r.progress.get(t.name) ?? 0;
+    return `<div class="tcard ${st}${t.name === r.researching ? " cur" : ""}" data-tnode="${t.name}" ${st === "avail" ? `data-tech="${t.name}"` : ""} title="${t.requires.length ? "Requer: " + t.requires.join(", ") : "Sem pré-requisitos"}">` +
+      `<b>${t.name}</b><small>${st === "known" ? "conhecida" : fmt(t.cost) + " pts"}${prog && st !== "known" ? ` · ${pct(prog / t.cost)}` : ""}</small><small class="fx">${techEffect(t)}</small></div>`;
+  }).join("");
+  return researchHtml(r, eco.countries[active - 1].researchWeek, true) +
+    `<div class="tree" style="grid-template-columns: 90px repeat(${cols.length}, minmax(150px, 1fr))"><svg class="tlines"></svg>` +
+    `<div></div>${cols.map((e) => `<div class="thead">${ERAS[e]}</div>`).join("")}` +
+    TECH_AREAS.map(([name], a) => `<div class="tarea">${name}</div>${cols.map((e) => `<div class="tcell">${cell(a, e)}</div>`).join("")}`).join("") + `</div>`;
+}
+
+/** Depois de desenhar a árvore: linhas de cada tecnologia até os pré-requisitos (SVG por cima da grade). */
+function drawTechLines() {
+  const tree = document.querySelector(".tree") as HTMLElement | null, svg = tree?.querySelector("svg");
+  if (!tree || !svg) return;
+  const base = tree.getBoundingClientRect(), pos = new Map<string, DOMRect>();
+  tree.querySelectorAll<HTMLElement>("[data-tnode]").forEach((el) => pos.set(el.dataset.tnode!, el.getBoundingClientRect()));
+  svg.setAttribute("width", String(tree.scrollWidth)); svg.setAttribute("height", String(tree.scrollHeight));
+  let paths = "";
+  for (const t of TECHS) for (const q of t.requires) {
+    const a = pos.get(q), b = pos.get(t.name);
+    if (!a || !b) continue;
+    const x1 = a.right - base.left, y1 = a.top + a.height / 2 - base.top, x2 = b.left - base.left, y2 = b.top + b.height / 2 - base.top, mx = (x1 + x2) / 2;
+    paths += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
+  }
+  svg.innerHTML = paths;
+}
+
 /** Conteúdo de cada item do menu (no painel ao lado do menu). */
 const CAT_VIEWS: Record<string, () => string> = {
-  overview: () => overviewHtml(), people: () => societyHtml("pops"), economy: () => economyHtml() + goodsHtml(), build: () => buildingsHtml(),
+  overview: () => overviewHtml(), people: () => societyHtml("pops"), economy: () => economyView(), build: () => buildingsHtml(),
   trade: () => pactsHtml() + (selected >= 0 && cityOf(selected) ? marketHtml() : "<small>Clique numa cidade sua para ver o mercado dela.</small>"),
-  diplomacy: () => diplomacyHtml(), politics: () => politicsTab(), tech: () => researchTab(), military: () => militaryHtml(),
+  diplomacy: () => diplomacyHtml(), politics: () => politicsTab(), tech: () => techTreeHtml(), military: () => militaryHtml(),
   admin: () => adminHtml(), society: () => societyHtml("culture"), charts: () => chartsHtml(),
 };
 
@@ -644,21 +764,6 @@ function overviewHtml() {
   return `<div class="cards">${card("População", fmt(c.pop))}${card("PIB anual", fmt(c.gdpWeek * 52))}${card("Dívida", fmt(c.debt))}${card("Controle", pct(c.control ?? 1))}` +
     `${card("Recrutas", fmt(c.manpower))}${card("Infâmia", String(Math.round(c.infamy)))}${card("Cidades", String(eco.cities.filter((k) => k.country === active).length))}${card("Colonos", String(settlersOf(eco, active)))}</div>` +
     headerHtml() + warsHtml();
-}
-
-/** Mercadorias do país inteiro: soma dos mercados das cidades (o único lugar com recursos como estoque e fluxo). */
-function goodsHtml() {
-  if (!active) return "";
-  const cs = eco.cities.filter((k) => k.country === active);
-  const rows = GOODS.map((name, g) => {
-    if (!g) return "";
-    let prod = 0, cons = 0, trade = 0, price = 0, pop = 0;
-    for (const k of cs) { const m = k.market; prod += m.supply[g] - Math.max(0, m.trade[g]); cons += m.demand[g]; trade += m.trade[g]; price += m.price[g] * m.pop; pop += m.pop; }
-    if (prod < 0.5 && cons < 0.5) return ""; // bem que o país nem produz nem usa
-    const p = pop ? price / pop : 1;
-    return `<tr><td>${name}</td><td>${fmt(prod)}</td><td>${fmt(cons)}</td><td class="${prod >= cons ? "down" : "up"}">${signed(prod - cons)}</td><td class="${p > 1.2 ? "up" : p < 0.8 ? "down" : ""}">${Math.round((p - 1) * 100)}%</td></tr>`;
-  }).join("");
-  return `<h3>Mercadorias</h3><table><tr><td><b>Bem</b></td><td><b>Produção/sem</b></td><td><b>Consumo/sem</b></td><td><b>Saldo</b></td><td><b>Preço</b></td></tr>${rows}</table>`;
 }
 
 function buildingsHtml() {
@@ -704,7 +809,7 @@ function updateUI() {
   document.getElementById("maptools")!.innerHTML = maptoolsHtml();
   document.getElementById("leftmenu")!.innerHTML = leftmenuHtml();
   const cat = document.getElementById("catpanel")!, title = MENU.find(([k]) => k === menuCat)?.[1];
-  cat.className = menuCat === "economy" || menuCat === "charts" ? "wide" : "";
+  cat.className = menuCat === "economy" || menuCat === "charts" || menuCat === "tech" ? "wide" : "";
   cat.innerHTML = menuCat && title ? `<h2>${icon(menuCat, 20)} ${title} <button data-menu="${menuCat}" style="float:right" title="Fechar">${icon("close")}</button></h2>` + CAT_VIEWS[menuCat]() : "";
   group = group.filter((id) => eco.divisions.some((d) => d.id === id));
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = group[0] ?? null; // destruída
@@ -714,6 +819,7 @@ function updateUI() {
   if (performance.now() >= hudMsgUntil) document.getElementById("toast")!.style.display = "none";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
+  drawTechLines();
   const series = document.getElementById("series") as HTMLCanvasElement | null;
   if (series && active) drawChart(series, eco.countries[active - 1].history?.[chartKey] ?? []);
 }
@@ -893,10 +999,7 @@ function politicsHtml(p: Politics, era: number) {
     `<table class="laws">${laws.join("")}</table>` + statesTable;
 }
 
-function researchHtml(r: Economy["countries"][number]["research"], perWeek: number) {
-  const cur = TECHS.find((t) => t.name === r.researching);
-  const done = cur ? (r.progress.get(cur.name) ?? 0) / cur.cost : 0;
-  const effect = (t: (typeof TECHS)[number]) => [
+const techEffect = (t: (typeof TECHS)[number]) => [
     ...(t.unlocks ?? []).map((b) => `libera ${b}`),
     ...(t.bonus ?? []).map(([b, v]) => `+${Math.round(v * 100)}% ${b}`),
     ...(t.research ? [`+${Math.round(t.research * 100)}% pesquisa`] : []),
@@ -905,11 +1008,16 @@ function researchHtml(r: Economy["countries"][number]["research"], perWeek: numb
     ...(t.manpower ? [`+${Math.round(t.manpower * 100)}% manpower`] : []),
     ...(t.unrest ? [t.unrest > 0 ? `−${t.unrest} lealdade (agita o povo)` : `+${-t.unrest} lealdade`] : []),
   ].join(", ");
+
+function researchHtml(r: Economy["countries"][number]["research"], perWeek: number, headerOnly = false) {
+  const cur = TECHS.find((t) => t.name === r.researching);
+  const done = cur ? (r.progress.get(cur.name) ?? 0) / cur.cost : 0;
+  const effect = techEffect;
   const weeks = cur ? Math.ceil(((1 - done) * cur.cost) / Math.max(perWeek, 1e-9)) : 0;
   const opts = available(r).map((t) => `<tr><td><button data-tech="${t.name}" class="${t.name === r.researching ? "on" : ""}">${t.name}</button></td><td style="text-align:left"><small>${effect(t)}</small></td><td>${fmt(t.cost)}</td></tr>`);
   return `${r.known.size}/${TECHS.length} tecnologias · ${perWeek.toFixed(1)} pontos/semana` +
     (cur ? `<br>Pesquisando <b>${cur.name}</b> · faltam ~${weeks} semanas<div class="bar"><div style="background:#6af;width:${done * 100}%"></div></div>` : "<br>Nada para pesquisar nesta era") +
-    (opts.length ? `<table>${opts.join("")}</table>` : "");
+    (opts.length && !headerOnly ? `<table>${opts.join("")}</table>` : "");
 }
 
 function hexHtml() {
