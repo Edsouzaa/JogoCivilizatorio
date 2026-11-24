@@ -121,6 +121,10 @@ export const RULES = {
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
   researchBase: 1,          // pontos de pesquisa por semana de qualquer país
   researchPerPop: 1000,     // +1 ponto por semana a cada tantas pessoas
+  // letrados: o alvo vem das tecnologias de ensino; anda devagar até ele; pesquisa × (1 + literacyResearch × letrados)
+  literacyTechs: [["Escrita", 0.05], ["Universidades", 0.1], ["Imprensa", 0.15], ["Iluminismo", 0.15], ["Telégrafo", 0.1], ["Rádio", 0.1], ["Computadores", 0.15], ["Internet", 0.15]] as [string, number][],
+  literacyYear: 0.01,       // quanto a fração anda por ano até o alvo
+  literacyResearch: 1.5,
   diffusion: 0.15,          // +pesquisa por vizinho/parceiro que já conhece a tecnologia...
   diffusionMax: 0.6,        // ...até isto
 };
@@ -153,6 +157,7 @@ export type Country = {
   subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
+  literacy?: number;    // 0..1: fração dos letrados (sabem ler, escrever e contar); acelera a pesquisa
   control?: number;     // controle médio (pela população) na última semana
   drive: number;        // 0,3–1: vontade de sair da era tribal (tribos isoladas ficam paradas mais tempo)
   exports: number; imports: number; tariffs: number; // comércio exterior na última semana (valor) e tarifas cobradas
@@ -657,7 +662,9 @@ export function tick(w: World, e: Economy) {
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     advanceLaw(c.politics);
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
-    c.researchWeek = (RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
+    const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01);
+    c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);
+    c.researchWeek = (1 + RULES.literacyResearch * c.literacy) * (RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
     if (c.research.era === 0) { // comércio puxa a tribo para fora do isolamento, mas não garante
       let partners = 0;
       for (const key of e.pacts) if (key.split("-").includes(String(ci + 1))) partners++;

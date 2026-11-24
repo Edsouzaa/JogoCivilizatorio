@@ -32,6 +32,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Nomes gerados por 10 "línguas" (latina, germânica, eslava, árabe, sínica, banto, náuatle, tupi, nórdica, persa), por região do mapa: tribos e cidades nascem com nome. Continentes (terras com 800+ hexes) têm nome no mapa de longe e se renomeiam no ✏.
 
+- Letrados: fração alfabetizada do país, com alvo dado pelas tecnologias de ensino (Escrita, Universidades, Imprensa, Iluminismo...), subindo 1 ponto por ano; pesquisa × (1 + 1,5 × letrados). Aparece na aba Sociedade.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -58,7 +60,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 8. **População**
     - Cultura, língua e religião por POP, independentes entre si.
     - Assimilação e conversão.
-    - Letrados dando bônus à pesquisa.
 9. **Eventos**
     - Eventos aleatórios com escolha (pausa todos, 2 min).
 10. **Leis**

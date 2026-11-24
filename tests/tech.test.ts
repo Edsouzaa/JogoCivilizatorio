@@ -42,3 +42,17 @@ assert.ok(techSum(r, "army") > 0 && techSum(r, "trade") > 0 && techSum(r, "manpo
 const calm = newResearch(); calm.known.add("Medicina moderna");
 assert.equal(techSum(calm, "unrest"), -5);
 console.log("tech ok");
+
+// letrados: sobem devagar com as tecnologias de ensino e aceleram a pesquisa
+{
+  const { generateWorld } = await import("../src/world.ts");
+  const { createEconomy, tick, RULES } = await import("../src/economy.ts");
+  const w = generateWorld(200, 100, 2, 2), e = createEconomy(w), c = e.countries[0];
+  tick(w, e); const base = c.researchWeek, lit0 = c.literacy!;
+  c.research.known.add("Escrita"); c.research.known.add("Imprensa");
+  for (let k = 0; k < 52; k++) tick(w, e);
+  assert.ok(Math.abs(c.literacy! - lit0 - RULES.literacyYear) < 1e-6, "deveria subir 1 ponto por ano");
+  assert.ok(c.literacy! < 0.2, "não pula direto para o alvo");
+  assert.ok(base > 0);
+}
+console.log("literacy ok");

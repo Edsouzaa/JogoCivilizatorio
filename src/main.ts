@@ -547,6 +547,7 @@ const politicsTab = () => (active ? politicsHtml(eco.countries[active - 1].polit
 function societyHtml() {
   if (!active) return "";
   const c = eco.countries[active - 1], p = c.pops;
+  const lit = `<br>📚 Letrados: <b>${pct(c.literacy ?? 0)}</b> <small>(pesquisa +${pct(RULES.literacyResearch * (c.literacy ?? 0))}; sobem com Escrita, Universidades, Imprensa...)</small>`;
   const qolColor = (q: number) => (q < 15 ? "up" : q >= 30 ? "down" : "");
   const rows = POP_TYPES.map((t, k) => [t, k] as const).filter(([, k]) => p.count[k] >= 0.5)
     .sort(([a], [b]) => a.cls - b.cls)
@@ -554,7 +555,7 @@ function societyHtml() {
       `<td>${(p.income[k] / p.count[k]).toFixed(2)}</td><td class="${qolColor(p.qol[k])}">${Math.round(p.qol[k])}</td>` +
       `<td class="${p.loyalty[k] < POP_RULES.radicalBelow ? "bad" : ""}">${Math.round(p.loyalty[k])}</td></tr>`);
   const weight = politicalWeight(p), total = weight.reduce((s, v) => s + v, 0) || 1;
-  return `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td><td><b title="Lealdade, 0 a 100 (abaixo de 30 = radical)">Leal</b></td></tr>${rows.join("")}</table>` +
+  return lit + `<table><tr><td><b>POP</b></td><td><b>Classe</b></td><td><b>Pessoas</b></td><td><b title="renda semanal por pessoa">Renda</b></td><td><b title="Qualidade de vida, 1 a 50">QV</b></td><td><b title="Lealdade, 0 a 100 (abaixo de 30 = radical)">Leal</b></td></tr>${rows.join("")}</table>` +
     `<small>Peso político: ${CLASSES.map((cl, k) => `${cl} ${pct(weight[k] / total)}`).join(" · ")}` +
     ` · migração no mês <span class="${c.migration < 0 ? "up" : c.migration > 0 ? "down" : ""}">${signed(c.migration)}</span></small>`;
 }
