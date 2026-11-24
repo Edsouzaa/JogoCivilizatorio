@@ -10,7 +10,7 @@ import { updateControl, CONTROL } from "./control.ts";
 import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
 import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
 import { stepClaims, type Claim } from "./claims.ts";
-import { expireProposals, type Proposal } from "./proposals.ts";
+import { expireProposals, type Proposal, type Vote } from "./proposals.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
@@ -231,7 +231,7 @@ export type Economy = {
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
   characters?: Character[]; nextCharacter?: number; // personagens (characters.ts)
   obituaries?: { name: string; country: number; age: number }[]; // governantes que morreram nesta semana (aviso)
-  proposals?: Proposal[]; nextProposal?: number; // propostas esperando jogador (proposals.ts)
+  proposals?: Proposal[]; nextProposal?: number; votes?: Vote[]; // propostas esperando jogador (proposals.ts)
   claims?: Claim[];                   // reivindicações sobre cidades (claims.ts)
   subjects?: Record<number, Subject>; // súdito → ligação com o soberano (subjects.ts)
   freed?: number[];                   // súditos que se soltaram neste mês (aviso)

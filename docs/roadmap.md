@@ -91,6 +91,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Propostas entre jogadores: acordo comercial ou dependência proposto a um país de jogador fica esperando ele aceitar ou recusar (8 semanas, depois vence); aviso nas notificações e lista "Propostas recebidas" na Diplomacia. Aceitar aplica com as regras normais (prestígio, relação). País da IA continua decidindo sozinho.
 
+- Votação de nomes no multiplayer: com mais de um jogador, renomear continente abre uma votação (Sim/Não na Diplomacia, com aviso); passa com mais da metade dos jogadores, cai com metade dizendo não, vence em 8 semanas. No solo continua direto. (Sem pausar o jogo; rios terão o mesmo quando ganharem nome.)
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -117,16 +119,15 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
     - Tratados com manutenção em pontos administrativos.
     - Colônia, satélite e união pessoal; dependência imposta na paz.
 12. **IA (resto)**: planos em etapas, memória de traições, avaliação de guerra pelo poder militar e logística, exigências territoriais sem guerra.
-13. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
-14. **Personagens**
+13. **Personagens**
     - Outros personagens (generais, ministros, líderes de grupo, empresários), família, mortes por eventos.
     - Comandantes e generais.
-15. **Militar completo**
+14. **Militar completo**
     - Papéis especiais (submarino caçando comércio, porta-aviões levando aviões, bombardeiro destruindo indústria), reconhecimento, engenharia; comandantes terrestre/naval/aéreo e exércitos com vários generais.
     - Operações conjuntas.
     - Logística por rede (estradas, ferrovias, portos e comboios com capacidade), mapa de suprimentos, alcance aéreo por base.
-16. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
-17. **Gráficos (resto)**: comparação entre países, preços, composição cultural ao longo do tempo, modos Cidade/Estado/Mundo.
+15. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
+16. **Gráficos (resto)**: comparação entre países, preços, composição cultural ao longo do tempo, modos Cidade/Estado/Mundo.
 
 ## Fora por enquanto
 

@@ -84,7 +84,7 @@ function afterWeek() {
   for (const i of eco.exhausted) if (world.owner[i] === active) notify(`<i class=i-pick></i> Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
 }
 // eventos do país do jogador que viram notificação (comparando com o quadro anterior)
-let seenTechs = -1, seenWars = "", seenActive = -1, seenLawEvent: string | undefined, seenProposal = 0;
+let seenTechs = -1, seenWars = "", seenActive = -1, seenLawEvent: string | undefined, seenProposal = 0, seenVote = 0;
 function watchEvents() {
   if (!active) return;
   const c = eco.countries[active - 1];
@@ -96,6 +96,7 @@ function watchEvents() {
   }
   if (seenActive === active && c.politics.lawEvent && c.politics.lawEvent !== seenLawEvent) notify(`<i class=i-news></i> ${c.politics.lawEvent}`);
   for (const p of proposalsTo(eco, active)) if (p.id > seenProposal) { seenProposal = p.id; notify(`<i class=i-diplomacy></i> ${world.countries[p.from - 1].name} mandou uma proposta (aba Diplomacia)`); }
+  for (const v of eco.votes ?? []) if (v.id > seenVote) { seenVote = v.id; if (!v.yes.includes(active)) notify(`<i class=i-diplomacy></i> Votação: renomear um continente para ${v.name} (aba Diplomacia)`); }
   seenActive = active; seenTechs = c.research.known.size; seenWars = wars; seenLawEvent = c.politics.lawEvent;
 }
 
@@ -523,6 +524,7 @@ document.addEventListener("pointerdown", (e) => {
   }
   if (d.book) return openBook(Number(d.book));
   if (d.saveChar) return cmd({ t: "saveCharacter", id: Number(d.saveChar) });
+  if (d.vote) { const [id, ok] = d.vote.split("|"); return cmd({ t: "vote", id: +id, yes: ok === "1" }); }
   if (d.respond) { const [id, ok] = d.respond.split("|"); return cmd({ t: "respond", id: +id, accept: ok === "1" }); }
   if (d.subject) { const [k, kind] = d.subject.split("|"); return cmd({ t: "subject", target: +k, kind: kind as SubjectKind }); }
   if (d.free) return cmd({ t: "freeSubject", target: Number(d.free) });
@@ -894,7 +896,9 @@ function diplomacyHtml() {
   const me = subjectOf(eco, active);
   const inbox = proposalsTo(eco, active).map((p) => `<div class="card"><b>${world.countries[p.from - 1].name}</b> propõe ${p.kind === "pact" ? "um acordo comercial" : `que você seja ${p.subject}`}` +
     ` <small>(vence em ${PROPOSAL_WEEKS - (eco.week - p.week)} semanas)</small><br><button data-respond="${p.id}|1">Aceitar</button> <button data-respond="${p.id}|0">Recusar</button></div>`).join("");
-  return (inbox ? `<h3>Propostas recebidas</h3>${inbox}` : "") + (me ? `<div class="card">Você é <b>${me.kind}</b> de ${world.countries[me.overlord - 1].name} · autonomia ${Math.round(me.autonomy)}/100 <small>(em 100 você se solta sozinho)</small> <button data-act="independence" title="Romper agora: a relação com o soberano despenca">Romper</button></div>` : "") +
+  const votes = (eco.votes ?? []).map((v) => `<div class="card">Renomear o continente <b>${world.continents?.[v.continent - 1]?.name ?? "?"}</b> para <b>${v.name}</b>? <small>sim ${v.yes.length} · não ${v.no.length} de ${eco.humans.length}</small><br>` +
+    `<button data-vote="${v.id}|1" class="${v.yes.includes(active) ? "on" : ""}">Sim</button> <button data-vote="${v.id}|0" class="${v.no.includes(active) ? "on" : ""}">Não</button></div>`).join("");
+  return (inbox ? `<h3>Propostas recebidas</h3>${inbox}` : "") + (votes ? `<h3>Votações</h3>${votes}` : "") + (me ? `<div class="card">Você é <b>${me.kind}</b> de ${world.countries[me.overlord - 1].name} · autonomia ${Math.round(me.autonomy)}/100 <small>(em 100 você se solta sozinho)</small> <button data-act="independence" title="Romper agora: a relação com o soberano despenca">Romper</button></div>` : "") +
     (claimsOf(eco, active).length ? `<h3>Suas reivindicações</h3><table>${claimsOf(eco, active).map((c) => `<tr><td>${eco.cities[c.city].name} <small>(${world.countries[eco.cities[c.city].country - 1].name})</small></td><td>${c.type}</td><td>força ${Math.round(c.strength)}</td></tr>`).join("")}</table><small>Guerra contra quem você reivindica dá metade da infâmia.</small>` : "") +
     `<table><tr><td><b>País</b></td><td><b>Relação</b></td><td><b>Prestígio</b></td><td></td></tr>${rows}</table>` +
     (known.size ? "" : "<small>Ninguém conhecido ainda: vizinhos e parceiros aparecem aqui.</small>");

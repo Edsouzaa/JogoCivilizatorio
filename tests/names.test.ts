@@ -22,3 +22,17 @@ assert.equal(applyCommand(w, e, 1, { t: "continent", id: 1, name: "Pangeia" }), 
 assert.equal(w.continents![0].name, "Pangeia");
 assert.match(applyCommand(w, e, 1, { t: "continent", id: 99, name: "X" })!, /inválido/);
 console.log("names ok");
+
+// multiplayer: renomear continente vira votação; passa com mais da metade dos jogadores
+{
+  e.humans = [1, 2, 3];
+  const old = w.continents![0].name;
+  assert.equal(applyCommand(w, e, 1, { t: "continent", id: 1, name: "Novaterra" }), null);
+  assert.equal(w.continents![0].name, old, "não muda sem votação");
+  const v = e.votes![0];
+  assert.match(applyCommand(w, e, 4, { t: "vote", id: v.id, yes: true }) ?? "", /jogadores|inválido|País/);
+  assert.equal(applyCommand(w, e, 2, { t: "vote", id: v.id, yes: true }), null);
+  assert.equal(w.continents![0].name, "Novaterra");
+  assert.equal(e.votes!.length, 0);
+}
+console.log("votes ok");

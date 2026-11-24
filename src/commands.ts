@@ -9,7 +9,7 @@ import { validFlag, type Flag } from "./flags.ts";
 import { EVENT_LIST, resolve } from "./choices.ts";
 import { improveRelations } from "./diplomacy.ts";
 import { proposeSubject, releaseSubject, SUBJECT_KINDS, type SubjectKind } from "./subjects.ts";
-import { addProposal, respond } from "./proposals.ts";
+import { addProposal, respond, startVote, castVote } from "./proposals.ts";
 import { hireGeneral } from "./characters.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
@@ -31,6 +31,7 @@ export type Cmd =
   | { t: "freeSubject"; target: number } // soberano solta o súdito
   | { t: "independence" }            // súdito rompe com o soberano
   | { t: "respond"; id: number; accept: boolean } // responder proposta de outro jogador
+  | { t: "vote"; id: number; yes: boolean } // votar num nome (multiplayer)
   | { t: "saveCharacter"; id: number } // guardar na história (o livro continua depois da morte) // resposta ao evento pendente
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
@@ -168,9 +169,11 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "continent": {
       const name = cleanName(c.name), k = w.continents?.[c.id - 1];
       if (!name || !k) return "Continente inválido";
+      if (e.humans.length > 1) return startVote(e, country, c.id, name); // multiplayer: os jogadores votam
       k.name = name;
       return null;
     }
+    case "vote": return isInt(c.id, 1) ? castVote(e, country, c.id, !!c.yes, (ct, name) => { const k = w.continents?.[ct - 1]; if (k) k.name = name; }) : "Voto inválido";
     case "claim": if (!e.humans.includes(country)) e.humans.push(country); return null;
     case "release": e.humans = e.humans.filter((k) => k !== country); return null;
     default: return "Comando desconhecido";
