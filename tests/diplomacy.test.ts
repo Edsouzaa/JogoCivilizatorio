@@ -62,3 +62,33 @@ console.log("subjects ok");
   assert.match(proposeSubject(e3, 1, 2, "Fantoche")!, /jogador/);
 }
 console.log("subjects human ok");
+
+// propostas entre jogadores: vão para o outro aceitar ou recusar; aceitar aplica com as regras normais
+{
+  const { applyCommand: ac } = await import("../src/commands.ts");
+  const { proposalsTo, PROPOSAL_WEEKS } = await import("../src/proposals.ts");
+  const w4 = generateWorld(200, 100, 4, 3), e4 = createEconomy(w4);
+  e4.humans = [1, 2];
+  assert.equal(ac(w4, e4, 1, { t: "pact", target: 2 }), null);
+  assert.ok(!e4.pacts.has("1-2"), "acordo com jogador não vale sem ele aceitar");
+  assert.match(ac(w4, e4, 1, { t: "pact", target: 2 })!, /esperando/);
+  const p = proposalsTo(e4, 2)[0];
+  assert.match(ac(w4, e4, 3, { t: "respond", id: p.id, accept: true })!, /não encontrada/, "só o destinatário responde");
+  assert.equal(ac(w4, e4, 2, { t: "respond", id: p.id, accept: true }), null);
+  assert.ok(e4.pacts.has("1-2"));
+  // dependência: proposta; recusa não aplica
+  e4.countries[0].glory = 1000; addRelation(e4, 1, 2, 100);
+  assert.equal(ac(w4, e4, 1, { t: "subject", target: 2, kind: "Vassalo" }), null);
+  const q = proposalsTo(e4, 2)[0];
+  assert.equal(ac(w4, e4, 2, { t: "respond", id: q.id, accept: false }), null);
+  assert.equal(e4.subjects?.[2], undefined);
+  assert.equal(ac(w4, e4, 1, { t: "subject", target: 2, kind: "Vassalo" }), null);
+  const q2 = proposalsTo(e4, 2)[0];
+  assert.equal(ac(w4, e4, 2, { t: "respond", id: q2.id, accept: true }), null);
+  assert.equal(e4.subjects?.[2]?.overlord, 1);
+  // vence
+  ac(w4, e4, 3, { t: "pact", target: 1 });
+  e4.week += PROPOSAL_WEEKS + 1;
+  assert.equal(proposalsTo(e4, 1).length, 0);
+}
+console.log("proposals ok");

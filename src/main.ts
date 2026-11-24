@@ -13,6 +13,7 @@ import { SERIES } from "./history.ts";
 import { relation, prestige, DIPLO } from "./diplomacy.ts";
 import { subjectOf, SUBJECT_KINDS, SUBJ, type SubjectKind } from "./subjects.ts";
 import { personality, desires, claimsOf, hasClaimOn } from "./claims.ts";
+import { proposalsTo, PROPOSAL_WEEKS } from "./proposals.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
@@ -83,7 +84,7 @@ function afterWeek() {
   for (const i of eco.exhausted) if (world.owner[i] === active) notify(`<i class=i-pick></i> Jazida esgotada em (${i % W}, ${(i / W) | 0}): a mina fechou e os trabalhadores ficaram sem emprego`);
 }
 // eventos do país do jogador que viram notificação (comparando com o quadro anterior)
-let seenTechs = -1, seenWars = "", seenActive = -1, seenLawEvent: string | undefined;
+let seenTechs = -1, seenWars = "", seenActive = -1, seenLawEvent: string | undefined, seenProposal = 0;
 function watchEvents() {
   if (!active) return;
   const c = eco.countries[active - 1];
@@ -94,6 +95,7 @@ function watchEvents() {
     for (const k of seenWars.split(",")) if (k && !wars.split(",").includes(k)) notify(`<i class=i-peace></i> Paz com ${world.countries[+k.split("-").find((x) => x !== String(active))! - 1].name}`);
   }
   if (seenActive === active && c.politics.lawEvent && c.politics.lawEvent !== seenLawEvent) notify(`<i class=i-news></i> ${c.politics.lawEvent}`);
+  for (const p of proposalsTo(eco, active)) if (p.id > seenProposal) { seenProposal = p.id; notify(`<i class=i-diplomacy></i> ${world.countries[p.from - 1].name} mandou uma proposta (aba Diplomacia)`); }
   seenActive = active; seenTechs = c.research.known.size; seenWars = wars; seenLawEvent = c.politics.lawEvent;
 }
 
@@ -521,6 +523,7 @@ document.addEventListener("pointerdown", (e) => {
   }
   if (d.book) return openBook(Number(d.book));
   if (d.saveChar) return cmd({ t: "saveCharacter", id: Number(d.saveChar) });
+  if (d.respond) { const [id, ok] = d.respond.split("|"); return cmd({ t: "respond", id: +id, accept: ok === "1" }); }
   if (d.subject) { const [k, kind] = d.subject.split("|"); return cmd({ t: "subject", target: +k, kind: kind as SubjectKind }); }
   if (d.free) return cmd({ t: "freeSubject", target: Number(d.free) });
   if (d.act === "independence") return cmd({ t: "independence" });
@@ -889,7 +892,9 @@ function diplomacyHtml() {
       `<td class="${r < 0 ? "up" : "down"}">${Math.round(r)}</td><td>${prestige(eco, k)}</td><td><button data-improve="${k}" title="+${DIPLO.improve} de relação por ${DIPLO.improveCost} pontos administrativos">Melhorar</button></td></tr>`;
   }).join("");
   const me = subjectOf(eco, active);
-  return (me ? `<div class="card">Você é <b>${me.kind}</b> de ${world.countries[me.overlord - 1].name} · autonomia ${Math.round(me.autonomy)}/100 <small>(em 100 você se solta sozinho)</small> <button data-act="independence" title="Romper agora: a relação com o soberano despenca">Romper</button></div>` : "") +
+  const inbox = proposalsTo(eco, active).map((p) => `<div class="card"><b>${world.countries[p.from - 1].name}</b> propõe ${p.kind === "pact" ? "um acordo comercial" : `que você seja ${p.subject}`}` +
+    ` <small>(vence em ${PROPOSAL_WEEKS - (eco.week - p.week)} semanas)</small><br><button data-respond="${p.id}|1">Aceitar</button> <button data-respond="${p.id}|0">Recusar</button></div>`).join("");
+  return (inbox ? `<h3>Propostas recebidas</h3>${inbox}` : "") + (me ? `<div class="card">Você é <b>${me.kind}</b> de ${world.countries[me.overlord - 1].name} · autonomia ${Math.round(me.autonomy)}/100 <small>(em 100 você se solta sozinho)</small> <button data-act="independence" title="Romper agora: a relação com o soberano despenca">Romper</button></div>` : "") +
     (claimsOf(eco, active).length ? `<h3>Suas reivindicações</h3><table>${claimsOf(eco, active).map((c) => `<tr><td>${eco.cities[c.city].name} <small>(${world.countries[eco.cities[c.city].country - 1].name})</small></td><td>${c.type}</td><td>força ${Math.round(c.strength)}</td></tr>`).join("")}</table><small>Guerra contra quem você reivindica dá metade da infâmia.</small>` : "") +
     `<table><tr><td><b>País</b></td><td><b>Relação</b></td><td><b>Prestígio</b></td><td></td></tr>${rows}</table>` +
     (known.size ? "" : "<small>Ninguém conhecido ainda: vizinhos e parceiros aparecem aqui.</small>");

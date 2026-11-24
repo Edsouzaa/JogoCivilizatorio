@@ -1,0 +1,30 @@
+// Propostas para países de jogador: em vez de valer na hora, ficam esperando o outro aceitar ou recusar.
+// (País da IA decide sozinho pelas regras de cada proposta.)
+import { proposePact, type Economy } from "./economy.ts";
+import { proposeSubject, type SubjectKind } from "./subjects.ts";
+
+export type Proposal = { id: number; from: number; to: number; kind: "pact" | "subject"; subject?: SubjectKind; week: number };
+export const PROPOSAL_WEEKS = 8; // sem resposta nesse tempo, a proposta vence
+
+export const proposalsTo = (e: Economy, k: number) => (e.proposals ?? []).filter((p) => p.to === k && e.week - p.week <= PROPOSAL_WEEKS);
+
+/** Guarda a proposta (uma por par e tipo). */
+export function addProposal(e: Economy, p: Omit<Proposal, "id" | "week">): string | null {
+  const list = (e.proposals ??= []);
+  if (list.some((x) => x.from === p.from && x.to === p.to && x.kind === p.kind)) return "Já existe uma proposta igual esperando resposta";
+  list.push({ ...p, id: (e.nextProposal = (e.nextProposal ?? 0) + 1), week: e.week });
+  return null;
+}
+
+/** O destinatário responde. Aceitar aplica (com as mesmas regras de sempre, menos o bloqueio "é jogador"). */
+export function respond(e: Economy, to: number, id: number, accept: boolean): string | null {
+  const p = (e.proposals ?? []).find((x) => x.id === id && x.to === to);
+  if (!p) return "Proposta não encontrada";
+  e.proposals = e.proposals!.filter((x) => x !== p);
+  if (!accept) return null;
+  if (e.week - p.week > PROPOSAL_WEEKS) return "Proposta vencida";
+  return p.kind === "pact" ? proposePact(e, p.from, p.to) : proposeSubject(e, p.from, p.to, p.subject!, true);
+}
+
+/** Tira as vencidas (uma vez por mês). */
+export const expireProposals = (e: Economy) => { e.proposals = (e.proposals ?? []).filter((p) => e.week - p.week <= PROPOSAL_WEEKS); };

@@ -9,6 +9,7 @@ import { validFlag, type Flag } from "./flags.ts";
 import { EVENT_LIST, resolve } from "./choices.ts";
 import { improveRelations } from "./diplomacy.ts";
 import { proposeSubject, releaseSubject, SUBJECT_KINDS, type SubjectKind } from "./subjects.ts";
+import { addProposal, respond } from "./proposals.ts";
 import { hireGeneral } from "./characters.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
@@ -29,6 +30,7 @@ export type Cmd =
   | { t: "subject"; target: number; kind: SubjectKind } // propor dependência (o outro vira súdito)
   | { t: "freeSubject"; target: number } // soberano solta o súdito
   | { t: "independence" }            // súdito rompe com o soberano
+  | { t: "respond"; id: number; accept: boolean } // responder proposta de outro jogador
   | { t: "saveCharacter"; id: number } // guardar na história (o livro continua depois da morte) // resposta ao evento pendente
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
@@ -85,7 +87,11 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     }
     case "settlers": return trainSettlers(w, e, country);
     case "saveCharacter": { const ch = e.characters?.find((x) => x.id === c.id && x.country === country); if (!ch) return "Personagem não é seu"; ch.saved = true; return null; }
-    case "subject": return isInt(c.target, 1) && c.target <= e.countries.length && c.kind in SUBJECT_KINDS ? proposeSubject(e, country, c.target, c.kind) : "Proposta inválida";
+    case "subject": {
+      if (!isInt(c.target, 1) || c.target > e.countries.length || !(c.kind in SUBJECT_KINDS)) return "Proposta inválida";
+      return e.humans.includes(c.target) && c.target !== country ? addProposal(e, { from: country, to: c.target, kind: "subject", subject: c.kind }) : proposeSubject(e, country, c.target, c.kind);
+    }
+    case "respond": return isInt(c.id, 1) ? respond(e, country, c.id, !!c.accept) : "Resposta inválida";
     case "freeSubject": return e.subjects?.[c.target]?.overlord === country ? releaseSubject(e, c.target, true) : "Não é seu súdito";
     case "independence": return e.subjects?.[country] ? releaseSubject(e, country, false) : "Você não é súdito";
     case "improve": return isInt(c.target, 1) && c.target <= e.countries.length ? improveRelations(e, country, c.target) : "País inválido";
@@ -125,7 +131,10 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "disband": if (!own(c.id)) return "Unidade não é sua"; disband(w, e, c.id); return null;
     case "war": return isInt(c.target, 1) && c.target <= e.countries.length ? declareWar(e, country, c.target) : "País inválido";
     case "peace": return isInt(c.target, 1) && c.target <= e.countries.length ? makePeace(w, e, country, c.target) : "País inválido";
-    case "pact": return isInt(c.target, 1) && c.target <= e.countries.length ? proposePact(e, country, c.target) : "País inválido";
+    case "pact": {
+      if (!isInt(c.target, 1) || c.target > e.countries.length) return "País inválido";
+      return e.humans.includes(c.target) && c.target !== country ? addProposal(e, { from: country, to: c.target, kind: "pact" }) : proposePact(e, country, c.target);
+    }
     case "unpact": cancelPact(e, country, c.target); return null;
     case "stateNew": {
       const err = createState(e, country, c.city);

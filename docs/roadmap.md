@@ -89,6 +89,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Claims e caráter da IA: reivindicações sobre cidades (Histórico 80 ao perder a cidade na paz; Cultural 60 sobre cidade vizinha de maioria da sua cultura; Estratégico 35 sobre porto vizinho de quem não tem litoral), perdem 2 de força por ano e somem se a cidade voltar. Guerra contra quem você reivindica dá metade da infâmia; o reivindicado gosta menos de quem reivindica. Personalidade da IA (Expansionista, Comercial, Defensivo, Diplomático, Revanchista) muda chance de guerra, acordos e dependências; a IA ataca primeiro quem ela reivindica. Desejos de cada país e personalidade aparecem na Diplomacia, junto com suas reivindicações.
 - Correção: país que perde todas as cidades perde as tropas (antes o jogo travava na paz).
 
+- Propostas entre jogadores: acordo comercial ou dependência proposto a um país de jogador fica esperando ele aceitar ou recusar (8 semanas, depois vence); aviso nas notificações e lista "Propostas recebidas" na Diplomacia. Aceitar aplica com as regras normais (prestígio, relação). País da IA continua decidindo sozinho.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -113,7 +115,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 11. **Diplomacia**
     - Confiança, influência e esferas.
     - Tratados com manutenção em pontos administrativos.
-    - Colônia, satélite e união pessoal; proposta de dependência a jogador (hoje só IA aceita sozinha) e dependência imposta na paz.
+    - Colônia, satélite e união pessoal; dependência imposta na paz.
 12. **IA (resto)**: planos em etapas, memória de traições, avaliação de guerra pelo poder militar e logística, exigências territoriais sem guerra.
 13. **Votação de nomes no multiplayer** (continentes e rios): hoje qualquer jogador renomeia direto.
 14. **Personagens**

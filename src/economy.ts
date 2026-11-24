@@ -10,6 +10,7 @@ import { updateControl, CONTROL } from "./control.ts";
 import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
 import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
 import { stepClaims, type Claim } from "./claims.ts";
+import { expireProposals, type Proposal } from "./proposals.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
@@ -230,6 +231,7 @@ export type Economy = {
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
   characters?: Character[]; nextCharacter?: number; // personagens (characters.ts)
   obituaries?: { name: string; country: number; age: number }[]; // governantes que morreram nesta semana (aviso)
+  proposals?: Proposal[]; nextProposal?: number; // propostas esperando jogador (proposals.ts)
   claims?: Claim[];                   // reivindicações sobre cidades (claims.ts)
   subjects?: Record<number, Subject>; // súdito → ligação com o soberano (subjects.ts)
   freed?: number[];                   // súditos que se soltaram neste mês (aviso)
@@ -621,7 +623,7 @@ export function dropHomeless(e: Economy) {
 export function tick(w: World, e: Economy) {
   e.exhausted = []; e.freed = [];
   dropHomeless(e);
-  if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); }
+  if (e.week % 4 === 0) { updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); expireProposals(e); }
   if (e.week % 52 === 26) stepClaims(w, e);
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
