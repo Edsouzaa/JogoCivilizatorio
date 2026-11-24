@@ -4,11 +4,13 @@
 // estado insatisfeito tira legitimidade do governo.
 import { BASE_PRICE, GOODS, type Economy } from "./economy.ts";
 import { LAWS, lawOf } from "./politics.ts";
+import type { Flag } from "./flags.ts";
 
 export type State = {
   id: number; country: number; name: string;
   taxLaw: string | null;          // na Federação: lei de impostos própria (null = a nacional)
   interest: Interest; happy: boolean;
+  flag?: Flag;
 };
 export type Interest = "Agrícola" | "Industrial" | "Mercantil";
 

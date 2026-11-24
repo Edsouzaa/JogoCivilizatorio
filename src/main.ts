@@ -264,9 +264,9 @@ function cmd(c: Cmd) {
 // ---------------- identidade do país: nome, cor e bandeira ----------------
 const idBox = document.createElement("div");
 idBox.style.cssText = "display:none;position:fixed;top:120px;left:8px;background:#000d;padding:10px;border-radius:6px;width:300px;line-height:1.9;z-index:5";
-idBox.innerHTML = `<b>🏳 Identidade do país</b><br>
+idBox.innerHTML = `<b id="id-title">🏳 Identidade do país</b><br>
   Nome <input id="id-name" maxlength="30" style="width:200px"><br>
-  Cor no mapa <input id="id-color" type="color"><br>
+  <span id="id-colorrow">Cor no mapa <input id="id-color" type="color"><br></span>
   Bandeira <select id="id-layout">${FLAG_LAYOUTS.map((l, k) => `<option value="${k}">${l}</option>`).join("")}</select>
   <select id="id-symbol">${FLAG_SYMBOLS.map((s) => `<option value="${s}">${s || "sem símbolo"}</option>`).join("")}</select><br>
   Cores <input id="id-c0" type="color"> <input id="id-c1" type="color"> <input id="id-c2" type="color"><br>
@@ -276,15 +276,30 @@ document.body.appendChild(idBox);
 const idIn = (k: string) => document.getElementById("id-" + k) as HTMLInputElement;
 const idFlag = (): Flag => ({ layout: +idIn("layout").value, symbol: idIn("symbol").value, colors: [idIn("c0").value, idIn("c1").value, idIn("c2").value] });
 const idPreview = () => { const g = (idIn("preview") as unknown as HTMLCanvasElement).getContext("2d")!; g.clearRect(0, 0, 120, 80); drawFlag(g, 1, 1, 118, 78, idFlag()); };
-function openIdentity() {
-  const meta = world.countries[active - 1], f = flagOf(active);
-  idIn("name").value = meta.name; idIn("color").value = rgbHex(meta.color);
+/** Mesma janela para país, cidade e estado: nome + bandeira (cor no mapa só no país). */
+let idOk: () => void = () => {};
+function openNamer(title: string, name: string, f: Flag, ok: () => void, color?: readonly number[]) {
+  document.getElementById("id-title")!.textContent = title;
+  (document.getElementById("id-colorrow") as HTMLElement).style.display = color ? "" : "none";
+  idIn("name").value = name;
+  if (color) idIn("color").value = rgbHex(color);
   idIn("layout").value = String(f.layout); idIn("symbol").value = f.symbol;
   f.colors.forEach((c, k) => (idIn("c" + k).value = c));
-  idBox.style.display = "block"; idPreview();
+  idOk = ok; idBox.style.display = "block"; idPreview(); idIn("name").focus();
+}
+function openIdentity() {
+  const meta = world.countries[active - 1];
+  openNamer("🏳 Identidade do país", meta.name, flagOf(active), () => cmd({ t: "identity", name: idIn("name").value, color: hexRgb(idIn("color").value), flag: idFlag() }), meta.color);
+}
+const cityFlag = (k: number) => eco.cities[k].flag ?? flagOf(eco.cities[k].country);
+const stateFlag = (id: number) => { const s = eco.states.find((x) => x.id === id)!; return s.flag ?? flagOf(s.country); };
+/** Fundar cidade: pede nome e bandeira antes (a bandeira começa sendo a do país). */
+function askFound(unit: number) {
+  openNamer("🏙 Nova cidade", `Cidade ${eco.cities.length + 1}`, flagOf(active), () => cmd({ t: "found", unit, name: idIn("name").value, flag: idFlag() }));
 }
 idBox.addEventListener("input", idPreview);
-idIn("ok").onclick = () => { cmd({ t: "identity", name: idIn("name").value, color: hexRgb(idIn("color").value), flag: idFlag() }); idBox.style.display = "none"; };
+idBox.addEventListener("keydown", (ev) => { if (ev.key === "Enter") idIn("ok").click(); if (ev.key === "Escape") idIn("cancel").click(); });
+idIn("ok").onclick = () => { idOk(); idBox.style.display = "none"; };
 idIn("cancel").onclick = () => (idBox.style.display = "none");
 
 // ---------------- multiplayer (lockstep; ver server/server.ts) ----------------
@@ -378,14 +393,14 @@ function doBuild(b = buildingsFor(world.resource[selected], !!eco.urban[selected
   if (selected >= 0 && b !== undefined) cmd({ t: "build", i: selected, b });
 }
 window.addEventListener("keydown", (e) => {
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); doSave(); return; }
   const n = Number(e.key);
   if (n >= 1 && n <= MAP_MODES.length) setMode(n - 1);
   if (e.key === "r" || e.key === "R") newWorld((Math.random() * 2 ** 31) | 0);
   if (e.key === "f" || e.key === "F") fit();
   if (e.key === "b" || e.key === "B") doBuild();
-  if ((e.key === "c" || e.key === "C") && selectedDiv) cmd({ t: "found", unit: selectedDiv });
+  if ((e.key === "c" || e.key === "C") && selectedDiv) askFound(selectedDiv);
   if (e.key === " ") { e.preventDefault(); togglePause(); }
   if (e.key === "+" || e.key === "=") setSpeed(Math.min(SPEEDS.length - 1, (speed || lastSpeed) + 1));
   if (e.key === "-") setSpeed(Math.max(1, (speed || lastSpeed) - 1));
@@ -396,14 +411,13 @@ document.addEventListener("pointerdown", (e) => {
   const d = (e.target as HTMLElement).dataset;
   if (d.build) return doBuild(Number(d.build));
   if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
-  if (d.act === "found" && selectedDiv) return cmd({ t: "found", unit: selectedDiv });
+  if (d.act === "found" && selectedDiv) return askFound(selectedDiv);
   if (d.groupKind) { group = eco.divisions.filter((x) => group.includes(x.id) && x.kind === d.groupKind).map((x) => x.id); selectedDiv = group[0] ?? null; return updateUI(); }
   if (d.act === "identity" && active) return openIdentity();
   if (d.rename) { // "city:3" ou "state:2"
-    const [kind, id] = d.rename.split(":"), cur = kind === "city" ? eco.cities[+id]?.name : eco.states.find((s) => s.id === +id)?.name;
-    const name = prompt(kind === "city" ? "Nome da cidade" : "Nome do estado", cur ?? "");
-    if (name) cmd({ t: "rename", kind: kind as "city" | "state", id: +id, name });
-    return;
+    const [kind, id] = d.rename.split(":") as ["city" | "state", string];
+    const cur = kind === "city" ? eco.cities[+id].name : eco.states.find((s) => s.id === +id)!.name;
+    return openNamer(kind === "city" ? "🏙 Cidade" : "🗺 Estado", cur, kind === "city" ? cityFlag(+id) : stateFlag(+id), () => cmd({ t: "rename", kind, id: +id, name: idIn("name").value, flag: idFlag() }));
   }
   if (d.act === "settlers") return cmd({ t: "settlers" });
   if (d.tech && active) return cmd({ t: "tech", name: d.tech });
@@ -415,7 +429,10 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "cancel-law" && active) return cmd({ t: "cancelLaw" });
   if (d.act === "recruit") return cmd({ t: "recruit", hex: selected });
   if (d.act === "fleet") return cmd({ t: "fleet", hex: selected });
-  if (d.stateNew) return cmd({ t: "stateNew", city: Number(d.stateNew) });
+  if (d.stateNew) {
+    const k = Number(d.stateNew);
+    return openNamer("🗺 Novo estado", `Estado de ${eco.cities[k].name}`, cityFlag(k), () => cmd({ t: "stateNew", city: k, name: idIn("name").value, flag: idFlag() }));
+  }
   if (d.stateJoin) { const [city, st] = d.stateJoin.split("|").map(Number); return cmd({ t: "stateJoin", city, state: st }); }
   if (d.stateLeave) return cmd({ t: "stateLeave", city: Number(d.stateLeave) });
   if (d.stateTax) { const [st, law] = d.stateTax.split("|"); return cmd({ t: "stateTax", state: Number(st), law: law || null }); }
@@ -746,6 +763,13 @@ function drawUnits() {
     units.strokeRect(drag.x0 * dpr, drag.y0 * dpr, (drag.x - drag.x0) * dpr, (drag.y - drag.y0) * dpr); units.setLineDash([]);
   }
   const r = Math.max(4, Math.min(cam.zoom * 0.7, 30));
+  if (r >= 8) eco.cities.forEach((city, k) => { // bandeira da cidade em cima do centro
+    if (city.country !== active && !canSee(city.hex)) return;
+    const [sx, sy] = toScreen(city.hex);
+    if (sx < -2 * r || sy < -2 * r || sx > unitsCanvas.width + 2 * r || sy > unitsCanvas.height + 2 * r) return;
+    drawFlag(units, sx + r * 0.6, sy - r * 1.6, r * 1.1, r * 0.75, cityFlag(k));
+    if (r >= 12) { units.fillStyle = "#fff"; units.font = `bold ${Math.round(r * 0.55)}px sans-serif`; units.textAlign = "center"; units.textBaseline = "top"; units.strokeStyle = "#000"; units.lineWidth = 3; units.strokeText(city.name, sx, sy + r * 0.7); units.fillText(city.name, sx, sy + r * 0.7); }
+  });
   const stack = new Map<number, number>();
   for (const d of eco.divisions) {
     if (d.country !== active && !canSee(d.hex)) continue;

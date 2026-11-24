@@ -46,4 +46,11 @@ const mine = a.e.cities.findIndex((k) => k.country === 1), theirs = a.e.cities.f
 assert.equal(applyCommand(a.w, a.e, 1, { t: "rename", kind: "city", id: mine, name: "Lácio" }), null);
 assert.equal(a.e.cities[mine].name, "Lácio");
 assert.match(applyCommand(a.w, a.e, 1, { t: "rename", kind: "city", id: theirs, name: "Minha" })!, /Não é seu/);
+// estado novo já com nome e bandeira; bandeira inválida é ignorada (fica a do país)
+a.e.countries[0].research.era = 1;
+assert.equal(applyCommand(a.w, a.e, 1, { t: "stateNew", city: mine, name: "Lácio", flag }), null);
+assert.equal(a.e.states.at(-1)!.name, "Lácio");
+assert.deepEqual(a.e.states.at(-1)!.flag, flag);
+assert.equal(applyCommand(a.w, a.e, 1, { t: "rename", kind: "state", id: a.e.states.at(-1)!.id, name: "Roma", flag: { ...flag, symbol: "<script>" } }), null);
+assert.deepEqual(a.e.states.at(-1)!.flag, flag);
 console.log("sim ok");

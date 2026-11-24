@@ -27,7 +27,7 @@ Velocidades: 0,5×, **1×**, 3×, 10× e 30× (máxima).
 
 **Pesquisa:** os pontos por semana seguem a tabela de ganho esperado (tribal ~3,5, clássica ~11, … moderna ~6.750). O custo das tecnologias é calculado para que **cada era dure o seu intervalo de datas** (src/tech.ts, ERA_YEARS e ERA_RESEARCH). Dentro de uma era, as primeiras custam metade da média e as últimas 1,7×. Isso dá custos maiores que os da tabela de custos: a tabela original faria a era tribal acabar em ~2 anos de jogo.
 
-**Tribos:** 1 a cada 1.000 hexes de terra (~350 no mapa padrão). Na era tribal cada uma tem uma *vontade* de 30% a 100% que freia a pesquisa. Cada acordo comercial soma 15%, o que ajuda mas não garante a saída da era.
+**Tribos:** 1 a cada 10.000 hexes de terra (~35 no mapa padrão). Na era tribal cada uma tem uma *vontade* de 30% a 100% que freia a pesquisa. Cada acordo comercial soma 15%, o que ajuda mas não garante a saída da era.
 
 ## Tecnologias (src/tech.ts)
 

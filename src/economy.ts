@@ -4,6 +4,7 @@ import { newResearch, research, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RES
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
+import type { Flag } from "./flags.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
 export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas"];
@@ -125,6 +126,7 @@ export type City = {
   port: boolean; // cidade em rio navegável: exporta mais no comércio
   blockaded?: boolean; // frota inimiga na zona marítima colada: sem comércio exterior, metade do interno, sem porto
   state?: number;       // id do estado da cidade (states.ts)
+  flag?: Flag;          // bandeira própria (sem ela, a do país)
 };
 export type Country = {
   treasury: number; debt: number; tax: number;
