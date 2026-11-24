@@ -34,3 +34,13 @@ assert.ok(popOf(1) < poorBefore && popOf(2) > richBefore);
 assert.ok(poor.migration < 0 && rich.migration > 0);
 assert.ok(Math.abs(e.countries.reduce((s, c) => s + c.migration, 0)) < 1e-6 * before, "saldos migratórios não somam zero");
 console.log("loyalty ok");
+
+// agitação das tecnologias: positiva baixa a lealdade, negativa (ex.: Medicina moderna) sobe
+{
+  const mk = () => { const q = newPops(); q.count[P["Camponeses"]] = 100; q.qol[P["Camponeses"]] = 25; return q; };
+  const calm = mk(), base = mk(), agitated = mk();
+  for (let k = 0; k < 100; k++) { updateLoyalty(calm, 0.5, -5); updateLoyalty(base, 0.5); updateLoyalty(agitated, 0.5, 5); }
+  const l = (q: ReturnType<typeof mk>) => q.loyalty[P["Camponeses"]];
+  assert.ok(l(calm) > l(base) && l(base) > l(agitated), `${l(calm)} ${l(base)} ${l(agitated)}`);
+}
+console.log("unrest ok");

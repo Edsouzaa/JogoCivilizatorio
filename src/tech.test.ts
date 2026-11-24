@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { newResearch, research, available, researchMult, TECHS, ERAS, ERA_WEEKS_PER_SECOND } from "./tech.ts";
+import { newResearch, research, available, researchMult, techSum, TECHS, ERAS, ERA_WEEKS_PER_SECOND } from "./tech.ts";
 
 // toda exigência aponta para uma tecnologia que existe, e de era igual ou anterior
 for (const t of TECHS) for (const q of t.requires) {
@@ -29,8 +29,14 @@ assert.ok(available(r).some((t) => t.era === 1));
 r.known.add("Escrita");
 assert.equal(researchMult(r), 1.25);
 
-// sem tecnologias na próxima era, o país não avança
-for (let k = 0; k < 500; k++) research(r, 5000);
-assert.equal(r.era, 1);
-assert.equal(available(r).length, 0);
+// pesquisando tudo, o país passa por todas as eras até a Atual, e toda era tem tecnologias
+for (let k = 0; k < 5000 && available(r).length; k++) research(r, 1e6);
+assert.equal(r.era, ERAS.length - 1);
+assert.equal(r.known.size, TECHS.length);
+for (let era = 0; era < ERAS.length; era++) assert.ok(TECHS.some((t) => t.era === era), `era ${ERAS[era]} sem tecnologias`);
+
+// efeitos somados: exército, comércio e agitação (que pode ser negativa: acalma)
+assert.ok(techSum(r, "army") > 0 && techSum(r, "trade") > 0 && techSum(r, "manpower") > 0);
+const calm = newResearch(); calm.known.add("Medicina moderna");
+assert.equal(techSum(calm, "unrest"), -5);
 console.log("tech ok");

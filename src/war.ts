@@ -2,6 +2,7 @@
 // Divisões andam hex a hex, lutam contra o hex vizinho que querem entrar, ocupam território inimigo,
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
 import { refresh, GOODS, RULES, type Economy, type Division } from "./economy.ts";
+import { techSum } from "./tech.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
 import { T, TERRAINS, across, riverAt, snowAt, type World } from "./world.ts";
 
@@ -92,7 +93,8 @@ export function crossesRiver(w: World, a: number, b: number) {
   return false;
 }
 
-const power = (ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * d.equip, 0);
+/** Força de combate: soldados × organização × armas × tecnologia militar do país. */
+const power = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army")), 0);
 
 /** Tira baixas das divisões proporcionalmente à força, e a mesma gente da população da capital. */
 function takeLosses(w: World, e: Economy, ds: Division[], losses: number) {
@@ -156,7 +158,7 @@ export function stepWar(w: World, e: Economy) {
     const defenders = attackers.length ? enemiesIn(hex, attackers[0].country) : [];
     if (!defenders.length) continue;
     const riverLine = attackers.some((a) => crossesRiver(w, a.hex, hex)); // atacar atravessando rio é pior
-    const pa = power(attackers), pd = power(defenders) * DEFENSE[w.terrain[hex]] * (riverLine ? 1.25 : 1);
+    const pa = power(e, attackers), pd = power(e, defenders) * DEFENSE[w.terrain[hex]] * (riverLine ? 1.25 : 1);
     takeLosses(w, e, defenders, pa * WAR.casualties);
     takeLosses(w, e, attackers, pd * WAR.casualties);
     for (const d of defenders) d.org = Math.max(0, d.org - WAR.orgLoss * (pa / (pd || 1)));

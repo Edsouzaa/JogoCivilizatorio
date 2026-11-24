@@ -54,6 +54,7 @@ const KIND: Record<string, Kind> = {
   "Acampamento de caça": "hunt",
   "Serraria": "labor", "Trilhas de transporte": "labor", "Mina": "labor", "Galerias escoradas": "labor", "Barreiro": "labor", "Poço": "labor",
   "Fundição de bronze": "industry", "Tecelagem": "industry", "Ferraria": "industry", "Armeiro": "industry",
+  "Siderúrgica": "industry", "Fábrica têxtil": "industry", "Arsenal": "industry",
 };
 
 /** Dono das construções na era: chefes tribais → aristocratas → capitalistas (indústria). */
@@ -69,7 +70,9 @@ export function jobsFor(building: string, e: number): [number, number][] {
   if (kind === "hunt") return [[P[tribal ? "Caçadores-coletores" : "Trabalhadores"], 0.95], owner];
   if (kind === "farm") return tribal ? [[P["Camponeses"], 0.95], owner] : [[P["Fazendeiros"], 0.45], [P["Camponeses"], 0.5], owner];
   if (kind === "labor") return [[P[tribal ? "Camponeses" : "Trabalhadores"], 0.95], owner];
-  return tribal ? [[P["Camponeses"], 0.95], owner] : [[P["Trabalhadores"], 0.85], [P["Comerciantes"], 0.1], owner];
+  if (tribal) return [[P["Camponeses"], 0.95], owner];
+  if (e >= REVOLUTIONS) return [[P["Operários especializados"], 0.6], [P["Trabalhadores"], 0.2], [P["Engenheiros"], 0.05], [P["Comerciantes"], 0.1], owner];
+  return [[P["Trabalhadores"], 0.85], [P["Comerciantes"], 0.1], owner];
 }
 
 /** Quem não tem emprego: caçadores-coletores até a Agricultura, depois camponeses. */
@@ -115,11 +118,11 @@ export const politicalWeight = (p: Pops) => CLASSES.map((_, c) => POP_TYPES.redu
 export const loyaltyTarget = (qol: number, legitimacy: number) => Math.min(100, Math.max(0, 50 + (qol - 25) + (legitimacy - 0.5) * 40));
 
 /** Anda a lealdade de cada tipo em direção ao alvo. Retorna a fração da população que é radical. */
-export function updateLoyalty(p: Pops, legitimacy: number) {
+export function updateLoyalty(p: Pops, legitimacy: number, unrest = 0) {
   let total = 0, radicals = 0;
   for (let k = 0; k < NP; k++) {
     if (!p.count[k]) continue;
-    p.loyalty[k] += (loyaltyTarget(p.qol[k], legitimacy) - p.loyalty[k]) * POP_RULES.loyaltyStep;
+    p.loyalty[k] += (Math.max(0, loyaltyTarget(p.qol[k], legitimacy) - unrest) - p.loyalty[k]) * POP_RULES.loyaltyStep;
     total += p.count[k];
     if (p.loyalty[k] < POP_RULES.radicalBelow) radicals += p.count[k];
   }

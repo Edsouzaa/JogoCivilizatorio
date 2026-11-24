@@ -1,6 +1,6 @@
 import { RESOURCES, TERRAINS, isLand, claim, snowAt, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
-import { newResearch, research, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
+import { newResearch, research, techSum, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 
@@ -56,6 +56,10 @@ add({ name: "Fundição de bronze", for: [], workers: 40, industry: { inputs: [[
 add({ name: "Tecelagem", for: [], workers: 30, industry: { inputs: [[g("Fibras"), 2]], outputs: [[g("Tecidos"), 2]] } });
 add({ name: "Ferraria", for: [], workers: 35, industry: { inputs: [[g("Ferro"), 1], [g("Madeira"), 1]], outputs: [[g("Ferramentas"), 2]] } });
 add({ name: "Armeiro", for: [], workers: 35, industry: { inputs: [[g("Bronze"), 1], [g("Madeira"), 1]], outputs: [[g("Armas"), 1]] } });
+// Revolução Industrial: fábricas grandes, mais produção por trabalhador
+add({ name: "Siderúrgica", for: [], workers: 60, industry: { inputs: [[g("Ferro"), 1], [g("Carvão mineral"), 1]], outputs: [[g("Ferramentas"), 4]] } });
+add({ name: "Fábrica têxtil", for: [], workers: 50, industry: { inputs: [[g("Fibras"), 2]], outputs: [[g("Tecidos"), 5]] } });
+add({ name: "Arsenal", for: [], workers: 60, industry: { inputs: [[g("Ferro"), 1], [g("Carvão mineral"), 1]], outputs: [[g("Armas"), 3]] } });
 const NB = BUILDINGS.length;
 const INDUSTRIES = BUILDINGS.map((_, b) => b).filter((b) => BUILDINGS[b].industry);
 for (const [name] of TECH_FOR_BUILDING) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`tecnologia libera construção inexistente: ${name}`);
@@ -332,13 +336,14 @@ function foreignTrade(w: World, e: Economy) {
       // cada país só exporta para o outro: sobra de um lado, falta do outro
       for (const [from, to] of [[a, b], [b, a]]) {
         let offer = 0, lack = 0;
-        pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * RULES.foreignShare * (k.port ? RULES.portTradeBonus : 1); if (k.country === to && net[i] < 0) lack -= net[i]; });
+        const fs = Math.min(1, RULES.foreignShare * (1 + techSum(e.countries[from - 1].research, "trade")));
+        pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * (k.port ? RULES.portTradeBonus : 1)); if (k.country === to && net[i] < 0) lack -= net[i]; });
         const moved = Math.min(offer, lack);
         if (moved <= 0) continue;
         const value = moved * BASE_PRICE[gi];
         pool.forEach((k, i) => {
           let d = 0;
-          if (k.country === from && net[i] > 0) d = -net[i] * RULES.foreignShare * (k.port ? RULES.portTradeBonus : 1) * (moved / offer);
+          if (k.country === from && net[i] > 0) d = -net[i] * Math.min(1, fs * (k.port ? RULES.portTradeBonus : 1)) * (moved / offer);
           if (k.country === to && net[i] < 0) d = -net[i] * (moved / lack);
           k.market.supply[gi] += d; k.market.trade[gi] += d; net[i] += d;
         });
@@ -359,7 +364,8 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
   for (const [country, cs] of byCountry) {
     if (cs.length < 2) continue;
     const ms = cs.map((c) => c.market), port = cs.map((c) => (c.port ? RULES.portTradeBonus : 1));
-    const share = lawOf(e.countries[country - 1].politics, "Economia").tradeShare!; // lei de Economia
+    const c0 = e.countries[country - 1];
+    const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")); // lei de Economia + tecnologia
     for (let gi = 1; gi < NG; gi++) {
       let offer = 0, lack = 0;
       const net = ms.map((m) => m.supply[gi] - m.used[gi] - need(m, gi));
@@ -530,10 +536,10 @@ export function tick(w: World, e: Economy) {
     }
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
     updatePops(e, c, ci + 1);
-    const cap = c.pop * RULES.manpowerShare - c.pops.count[P["Soldados"]];
+    const cap = c.pop * (RULES.manpowerShare + techSum(c.research, "manpower")) - c.pops.count[P["Soldados"]];
     c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen);
     updatePolitics(c.politics, c.pops, c.research.era);
-    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy);
+    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest"));
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     advanceLaw(c.politics);
     c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic;

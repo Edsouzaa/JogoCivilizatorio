@@ -24,8 +24,10 @@ No protótipo a Clássica vai a 0,5 semana/s, a Medieval a 0,35 e a Colonial a 0
 - Cada país pesquisa uma tecnologia por vez: 1 ponto por semana + 1 a cada 1.000 pessoas. Se o jogador não escolher, o país pega a mais barata.
 - Tecnologias **liberam construções** (as melhorias e as indústrias começam bloqueadas) e dão **bônus de produção**.
 - O país passa para a próxima era quando conhece **todas** as tecnologias da era atual.
-- Hoje existem só as eras Tribal (Agricultura, Domesticação, Tecelagem, Mineração, Metalurgia do bronze) e Clássica (Irrigação, Armas de bronze, Trabalho do ferro, Estradas, Escrita). O país para na Clássica até as próximas eras ganharem tecnologias.
-- A fazer: tecnologias que também **dificultam** coisas e dão **infâmia**, como pedido no design.
+- Todas as 9 eras têm 5 tecnologias (Tribal e Clássica com as originais; Medieval: Feudalismo, Moinhos, Arado pesado, Universidades, Castelos; Colonial: Navegação, Imprensa, Pólvora, Bancos, Mineração profunda; Revoluções: Máquina a vapor, Ferrovias, Iluminismo, Conscrição, Agricultura científica; Imperialismo: Eletricidade, Química industrial, Metralhadora, Telégrafo, Medicina moderna; Guerras: Motor a combustão, Blindados, Produção em massa, Rádio, Aviação; Multipolar: Computadores, Energia nuclear, Revolução verde, Contêineres, Mísseis; Atual: Internet, Automação, Energias renováveis, Biotecnologia, Drones).
+- Efeitos: liberar construções, bônus de produção, pesquisa, **comércio** (mais troca entre cidades e com parceiros), **exército** (força de combate), **manpower** e **agitação** (Imprensa, Iluminismo, Conscrição, Energia nuclear, Internet e Automação baixam a lealdade; Medicina moderna, Rádio e Biotecnologia sobem).
+- Máquina a vapor libera Siderúrgica e Fábrica têxtil; Metralhadora libera o Arsenal. Da era das Revoluções em diante as fábricas empregam Operários especializados e Engenheiros, e os donos são Capitalistas.
+- A fazer: **infâmia** (pedido do design), e tecnologias que liberam unidades novas (navios, aviões).
 
 ## Mapa
 

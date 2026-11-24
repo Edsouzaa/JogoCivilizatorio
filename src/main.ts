@@ -380,6 +380,10 @@ function researchHtml(r: Economy["countries"][number]["research"], perWeek: numb
     ...(t.unlocks ?? []).map((b) => `libera ${b}`),
     ...(t.bonus ?? []).map(([b, v]) => `+${Math.round(v * 100)}% ${b}`),
     ...(t.research ? [`+${Math.round(t.research * 100)}% pesquisa`] : []),
+    ...(t.trade ? [`+${Math.round(t.trade * 100)}% comércio`] : []),
+    ...(t.army ? [`+${Math.round(t.army * 100)}% força do exército`] : []),
+    ...(t.manpower ? [`+${Math.round(t.manpower * 100)}% manpower`] : []),
+    ...(t.unrest ? [t.unrest > 0 ? `−${t.unrest} lealdade (agita o povo)` : `+${-t.unrest} lealdade`] : []),
   ].join(", ");
   const weeks = cur ? Math.ceil(((1 - done) * cur.cost) / Math.max(perWeek, 1e-9)) : 0;
   const opts = available(r).map((t) => `<tr><td><button data-tech="${t.name}" class="${t.name === r.researching ? "on" : ""}">${t.name}</button></td><td style="text-align:left"><small>${effect(t)}</small></td><td>${fmt(t.cost)}</td></tr>`);
