@@ -195,3 +195,21 @@ console.log("units ok");
   assert.match(frontOrder(w8, e8, 1, [999], 2, "attack")!, /exércitos seus/);
 }
 console.log("front ok");
+
+// abastecimento: exército longe de qualquer cidade sua (ou tomada) perde organização e gente
+{
+  const { supplyRange, depotDistance } = await import("../src/war.ts");
+  const w9 = generateWorld(200, 100, 6, 2), e9 = createEconomy(w9);
+  e9.countries[0].manpower = 1e4; e9.countries[0].treasury = 1e4;
+  const home = e9.cities.find((k) => k.country === 1)!;
+  recruit(w9, e9, 1, home.hex);
+  const d = e9.divisions.find((x) => x.country === 1 && x.kind === "army")!;
+  stepWar(w9, e9);
+  assert.equal(d.supplied, true);
+  const far = [...Array(200 * 100).keys()].find((i) => isLand(w9.terrain[i]) && !w9.owner[i] && depotDistance(w9, e9, { ...d, hex: i }) > supplyRange(e9, 1))!;
+  d.hex = far; d.target = null; const s0 = d.strength;
+  stepWar(w9, e9);
+  assert.equal(d.supplied, false);
+  assert.ok(d.strength < s0 && d.org < 1);
+}
+console.log("supply ok");

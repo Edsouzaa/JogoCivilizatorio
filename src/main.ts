@@ -19,7 +19,7 @@ import { unitOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts"
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
-import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, warSupport, WAR, NAVY, AIR } from "./war.ts";
+import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, warSupport, depotDistance, supplyRange, WAR, NAVY, AIR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo, buildBorders } from "./fog.ts";
 import { applyCommand, ACCEPT_COST, type Cmd } from "./commands.ts";
@@ -1040,7 +1040,8 @@ function divisionHtml() {
   const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
   const u = unitOf(d.unit), gen = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined;
   return `<div class="unit"><b><i class=i-military></i> ${u.name} ${d.id}</b> <small>${u.cat} · ataque ${u.atk} · defesa ${u.def}</small> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
-    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} <button data-act="disband">Desfazer</button>` +
+    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} · ` +
+    (d.supplied === false ? `<span class="bad">sem suprimento (depósito a ${depotDistance(world, eco, d)} hexes, alcance ${supplyRange(eco, d.country)})</span>` : `suprimento ok`) + ` <button data-act="disband">Desfazer</button>` +
     (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b>Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`
       : d.country === active ? `<br><button data-act="hire-general">Contratar general (${CHAR.generalCost})</button>` : "") + frontHtml([d.id]) + `</div>`;
 }

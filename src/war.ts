@@ -24,6 +24,8 @@ export const WAR = {
   supportDeadMult: 20, // ...e mais rápido com mortos: 5% da população morta = apoio zero
   supportLegitimacy: 0.003, // legitimidade perdida por semana × (1 − apoio)
   civilLoss: 0.001,    // fração do povo de hex ocupado que morre/foge por semana
+  supplyBase: 6, supplyPerEra: 3, // alcance do abastecimento (hexes) = base + por era
+  noSupplyOrg: 0.05, noSupplyLoss: 0.02, // sem suprimento: organização e soldados perdidos por semana
   siegeBase: 4,        // semanas de cerco para tomar o centro de uma cidade...
   siegePerSize: 2,     // ...mais isto por tamanho da cidade (dividido pelo nº de divisões cercando, até metade)
 };
@@ -441,6 +443,10 @@ export function stepWar(w: World, e: Economy) {
       continue;
     }
     if (d.kind === "air" && controller(w, e, d.hex) !== d.country) { d.hex = e.cities.find((k) => k.country === d.country)!.hex; d.target = null; } // base caiu: muda para a capital
+    if (d.kind === "army" && w.terrain[d.hex] !== T.OCEAN) { // exército longe de qualquer depósito (cidade sua ou tomada) passa fome
+      d.supplied = depotDistance(w, e, d) <= supplyRange(e, d.country);
+      if (!d.supplied) { d.org = Math.max(0, d.org - WAR.noSupplyOrg); d.strength -= d.strength * WAR.noSupplyLoss; continue; }
+    }
     if (fighting.has(d) || d.strength < 1) continue; // morta não se recupera nem recebe reforço
     d.org = Math.min(1, d.org + WAR.orgRecovery);
     const c = e.countries[d.country - 1];
@@ -452,6 +458,16 @@ export function stepWar(w: World, e: Economy) {
   }
   e.divisions = e.divisions.filter((d) => d.strength >= 1);
   if (changed) e.version++;
+}
+
+/** Alcance do abastecimento em hexes: cresce com a era (carroças → ferrovias → caminhões). */
+export const supplyRange = (e: Economy, country: number) => WAR.supplyBase + WAR.supplyPerEra * e.countries[country - 1].research.era;
+/** Distância até o depósito mais perto: cidade do país ou cidade inimiga que ele ocupa (vira base de suprimento). */
+export function depotDistance(w: World, e: Economy, d: Division) {
+  let best = Infinity;
+  for (const k of e.cities) if (k.country === d.country || e.occupier[k.hex] === d.country)
+    best = Math.min(best, hexDistance(d.hex % w.W, (d.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W));
+  return best;
 }
 
 /** Distância (em hexes) dos colonos até a cidade mais próxima do país deles. */

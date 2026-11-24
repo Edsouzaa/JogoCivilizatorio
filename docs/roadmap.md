@@ -82,6 +82,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Economia, abas novas: Produção e Consumo (barras: produção por cidade, empregos por setor, o que falta, o que sobra, o que depende de importação) e Finanças (tesouro, dívida, imposto médio, juros; receitas e despesas em barras, incluindo forças armadas; gráficos de tesouro e dívida). Clicar num cartão de mercadoria abre a página dela: preço dos últimos 24 meses, produção, consumo, importação, exportação, cidades que produzem e que consomem, construções que fazem e que usam.
 
+- Abastecimento: exército em terra precisa estar a até 6 + 3 × era hexes de um depósito (cidade sua ou cidade inimiga que ele ocupa); fora disso perde 5% de organização e 2% dos soldados por semana e não se recupera. O painel da divisão mostra se tem suprimento e a distância.
+
 ## Próximos (nesta ordem)
 
 1. **Interface, fases seguintes** (docs/interface.md): Economia: abas Investimentos e Empresas; Diplomacia com influência e claims; Militar operacional (frentes, logística); camadas que ainda faltam (claims, influência, produção, militares) e tingir sem esconder o terreno; estilo que muda devagar por era; painéis redimensionáveis.
@@ -115,7 +117,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 15. **Militar completo**
     - Papéis especiais (submarino caçando comércio, porta-aviões levando aviões, bombardeiro destruindo indústria), reconhecimento, engenharia; comandantes terrestre/naval/aéreo e exércitos com vários generais.
     - Operações conjuntas.
-    - Logística por rede (terrestre, naval e alcance aéreo).
+    - Logística por rede (estradas, ferrovias, portos e comboios com capacidade), mapa de suprimentos, alcance aéreo por base.
 16. **Árvore tecnológica completa** em 10 ramos. Isso substitui as 5 tecnologias por era de hoje.
 17. **Gráficos (resto)**: comparação entre países, preços, composição cultural ao longo do tempo, modos Cidade/Estado/Mundo.
 

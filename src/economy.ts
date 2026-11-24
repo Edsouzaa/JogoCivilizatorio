@@ -206,6 +206,7 @@ export type Division = {
   siege?: number;                          // semanas cercando a cidade onde está
   unit?: string;                           // tipo de tropa (units.ts); sem = Lanceiros
   general?: number;                        // id do personagem que comanda (characters.ts)
+  supplied?: boolean;                      // exército: tinha suprimento na última semana (war.ts)
   path?: { target: number; steps: number[] }; // caminho calculado (vai no save: o lockstep precisa dele igual em todos)
 };
 /** Números de uma guerra, por país participante. */
