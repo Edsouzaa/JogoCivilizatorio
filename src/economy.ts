@@ -182,6 +182,8 @@ export type Division = {
   siege?: number;                          // semanas cercando a cidade onde está
   path?: { target: number; steps: number[] }; // caminho calculado (vai no save: o lockstep precisa dele igual em todos)
 };
+/** Números de uma guerra, por país participante. */
+export type WarStats = { start: number; dead: Record<number, number>; civil: Record<number, number>; cost: Record<number, number> };
 export type Economy = {
   week: number; levels: Uint8Array[]; producers: Set<number>;
   countries: Country[]; cities: City[];
@@ -193,6 +195,7 @@ export type Economy = {
   states: State[]; nextState: number;
   humans: number[];     // países com jogador (fora da IA)
   aiWarStart: Record<string, number>; // semana em que cada guerra da IA começou (para a paz)
+  warStats?: Record<string, WarStats>; // por guerra ("a-b"): baixas, custo, desde quando
   control: Float32Array; // 0..1: quanto o governo administra o hex (control.ts)
   contacts?: number[][]; // por país: vizinhos de fronteira e parceiros comerciais (recalculado todo mês)
   famine?: boolean[];    // por cidade: passando fome (events.ts)

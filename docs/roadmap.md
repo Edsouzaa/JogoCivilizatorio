@@ -34,6 +34,8 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 
 - Letrados: fração alfabetizada do país, com alvo dado pelas tecnologias de ensino (Escrita, Universidades, Imprensa, Iluminismo...), subindo 1 ponto por ano; pesquisa × (1 + 1,5 × letrados). Aparece na aba Sociedade.
 
+- Painel da guerra (aba Política): mortos em combate, civis perdidos em território ocupado (0,1% por semana), custo de manutenção, duração e apoio do povo. O apoio cai com o tempo (zero em 5 anos) e com os mortos; guerra impopular tira legitimidade.
+
 ## Próximos (nesta ordem)
 
 1. **Recursos**: tipos novos (hoje são os 21 de antes) e um 3º produto por hex.
@@ -54,7 +56,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
    - Disputa de navegação.
 6. **Guerra**
     - Hexes ocupados listrados na cor do ocupante.
-    - Painel da guerra: baixas, custo e apoio.
     - Exploração por unidades terrestres e aéreas.
 7. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
 8. **População**

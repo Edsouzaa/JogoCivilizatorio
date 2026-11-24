@@ -10,7 +10,7 @@ import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, type Politics, 
 import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
-import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, WAR, NAVY, AIR } from "./war.ts";
+import { recruit, orderMove, declareWar, makePeace, warScore, atWar, disband, stepWar, settlerDistance, buildFleet, buildAir, airSuperiority, airRegion, coastOf, siegeWeeks, warSupport, WAR, NAVY, AIR } from "./war.ts";
 import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo, buildBorders } from "./fog.ts";
 import { applyCommand, type Cmd } from "./commands.ts";
@@ -605,10 +605,17 @@ function pactsHtml() {
 function warsHtml() {
   const enemies = world.countries.map((_, k) => k + 1).filter((b) => atWar(eco, active, b));
   const n = eco.divisions.filter((d) => d.country === active && d.kind === "army").length;
-  return `Exército: ${n} divisão(ões)` + (enemies.length ? " · <span class='bad'>Em guerra com</span> " + enemies.map((b) => {
-    const s = warScore(world, eco, active, b);
-    return `${world.countries[b - 1].name} (${s >= 0 ? "+" : ""}${Math.round(s * 100)}) <button data-peace="${b}">Paz</button>`;
-  }).join(" ") : "");
+  return `Exército: ${n} divisão(ões)` + (enemies.length ? "<br><span class='bad'>⚔ Em guerra</span>" + enemies.map((b) => {
+    const s = warScore(world, eco, active, b), st = eco.warStats?.[active < b ? `${active}-${b}` : `${b}-${active}`];
+    const sup = st ? warSupport(eco, active, st) : 1;
+    return `<br><b>${world.countries[b - 1].name}</b> · placar ${s >= 0 ? "+" : ""}${Math.round(s * 100)} <button data-peace="${b}">Paz</button>` + (st ? `<table>
+      <tr><td></td><td>nós</td><td>eles</td></tr>
+      <tr><td>Mortos em combate</td><td>${fmt(st.dead[active] ?? 0)}</td><td>${fmt(st.dead[b] ?? 0)}</td></tr>
+      <tr><td>Civis perdidos</td><td>${fmt(st.civil[active] ?? 0)}</td><td>${fmt(st.civil[b] ?? 0)}</td></tr>
+      <tr><td>Custo (manutenção)</td><td>${fmt(st.cost[active] ?? 0)}</td><td>${fmt(st.cost[b] ?? 0)}</td></tr>
+      <tr><td>Duração</td><td colspan="2">${eco.week - st.start} semanas</td></tr>
+      <tr><td>Apoio do povo</td><td colspan="2" class="${sup < 0.3 ? "up" : "down"}">${pct(sup)}${sup < 0.5 ? " — a guerra está custando legitimidade" : ""}</td></tr></table>` : "");
+  }).join("") : "");
 }
 
 /** O que a lei muda, em texto, comparando com a lei em vigor. */

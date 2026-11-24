@@ -1,7 +1,7 @@
 // Guerra terrestre (estilo HOI4 simplificado, sem customizar divisões).
 // Divisões andam hex a hex, lutam contra o hex vizinho que querem entrar, ocupam território inimigo,
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
-import { refresh, GOODS, RULES, INFAMY, type Economy, type Division } from "./economy.ts";
+import { refresh, GOODS, RULES, INFAMY, type Economy, type Division, type WarStats } from "./economy.ts";
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
@@ -17,6 +17,10 @@ export const WAR = {
   orgLoss: 0.15,       // perda de organização por semana em combate (× poder inimigo / próprio)
   brokenOrg: 0.1,      // abaixo disto a divisão recua
   peaceThreshold: 0.05, // vantagem mínima de pontuação para tomar território na paz
+  supportWeeks: 260,   // apoio à guerra cai a zero em 5 anos...
+  supportDeadMult: 20, // ...e mais rápido com mortos: 5% da população morta = apoio zero
+  supportLegitimacy: 0.003, // legitimidade perdida por semana × (1 − apoio)
+  civilLoss: 0.001,    // fração do povo de hex ocupado que morre/foge por semana
   siegeBase: 4,        // semanas de cerco para tomar o centro de uma cidade...
   siegePerSize: 2,     // ...mais isto por tamanho da cidade (dividido pelo nº de divisões cercando, até metade)
 };
@@ -130,6 +134,7 @@ export function declareWar(e: Economy, a: number, b: number): string | null {
   if (a === b) return "Não dá para declarar guerra a si mesmo";
   if (atWar(e, a, b)) return "Já estão em guerra";
   e.wars.add(key(a, b));
+  (e.warStats ??= {})[key(a, b)] = { start: e.week, dead: { [a]: 0, [b]: 0 }, civil: { [a]: 0, [b]: 0 }, cost: { [a]: 0, [b]: 0 } };
   e.countries[a - 1].infamy += INFAMY.declareWar;
   e.pacts.delete(key(a, b)); // guerra cancela o acordo comercial
   return null;
@@ -224,9 +229,23 @@ function takeLosses(w: World, e: Economy, ds: Division[], losses: number) {
   for (const d of ds) {
     const l = Math.min(d.strength, (losses * d.strength) / total);
     d.strength -= l;
+    for (const s of warsOf(e, d.country)) s.dead[d.country] = (s.dead[d.country] ?? 0) + l;
     const cap = e.cities.find((k) => k.country === d.country)!.hex;
     w.pop[cap] = Math.max(0, w.pop[cap] - l);
   }
+}
+
+/** Estatísticas das guerras em que o país está. */
+const warsOf = (e: Economy, country: number) => {
+  const out: WarStats[] = [];
+  for (const k of e.wars) { const [a, b] = k.split("-").map(Number); if (a === country || b === country) out.push(((e.warStats ??= {})[k] ??= { start: e.week, dead: {}, civil: {}, cost: {} })); }
+  return out;
+};
+
+/** Apoio do povo à guerra (0..1): cai com o tempo e com os mortos (em relação à população). */
+export function warSupport(e: Economy, country: number, s: WarStats) {
+  const c = e.countries[country - 1], dead = (s.dead[country] ?? 0) + (s.civil[country] ?? 0);
+  return Math.max(0, Math.min(1, 1 - (e.week - s.start) / WAR.supportWeeks - (c.pop ? (dead / c.pop) * WAR.supportDeadMult : 0)));
 }
 
 /** Avança a guerra uma semana (chamar depois de tick). */
@@ -244,6 +263,7 @@ export function stepWar(w: World, e: Economy) {
     const fill = m.demand[ARMS] ? Math.min(1, m.supply[ARMS] / m.demand[ARMS]) : 1;
     for (const d of e.divisions) if (d.country === country && d.kind === "army") d.equip = 0.5 + 0.5 * fill;
     c.treasury -= n * WAR.upkeep;
+    for (const s of warsOf(e, country)) s.cost[country] = (s.cost[country] ?? 0) + n * WAR.upkeep;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
   }
 
@@ -294,6 +314,15 @@ export function stepWar(w: World, e: Economy) {
       changed = true;
     }
   }
+
+  // civis: território ocupado perde gente; guerra impopular corrói a legitimidade
+  for (const i of e.owned) if (e.occupier[i]) {
+    const l = w.pop[i] * WAR.civilLoss; w.pop[i] -= l;
+    for (const s of warsOf(e, w.owner[i])) s.civil[w.owner[i]] = (s.civil[w.owner[i]] ?? 0) + l;
+  }
+  e.countries.forEach((c, ci) => {
+    for (const s of warsOf(e, ci + 1)) c.politics.legitimacy = Math.max(0, c.politics.legitimacy - WAR.supportLegitimacy * (1 - warSupport(e, ci + 1, s)));
+  });
 
   // cerco: exército parado no centro de uma cidade inimiga; ao terminar, a cidade e toda a região dela ficam ocupadas
   e.cities.forEach((city, k) => {
@@ -434,6 +463,7 @@ export function makePeace(w: World, e: Economy, a: number, b: number): string | 
   }
   for (const city of e.cities) if (w.owner[city.hex] !== city.country) city.country = w.owner[city.hex];
   e.wars.delete(key(a, b));
+  delete e.warStats?.[key(a, b)];
   // tropas que ficaram em território que agora é do outro voltam para a capital
   for (const d of e.divisions) if (d.kind !== "fleet" && !canEnter(w, e, d.country, d.hex)) { d.hex = e.cities.find((k) => k.country === d.country)!.hex; d.target = null; }
   refresh(w, e);

@@ -130,3 +130,22 @@ console.log("path ok");
   assert.ok(region.every((i) => !e5.occupier[i]), "retomar o centro deveria libertar a região");
 }
 console.log("siege ok");
+
+// números da guerra: duração, civis perdidos em território ocupado, custo; apoio cai e paz apaga tudo
+{
+  const { warSupport } = await import("../src/war.ts");
+  const w6 = generateWorld(200, 100, 6, 2), e6 = createEconomy(w6);
+  tick(w6, e6);
+  declareWar(e6, 1, 2);
+  const st = e6.warStats!["1-2"];
+  const hex = [...e6.owned].find((i) => w6.owner[i] === 2)!;
+  e6.occupier[hex] = 1; w6.pop[hex] = 1000;
+  const leg = e6.countries[1].politics.legitimacy;
+  for (let k = 0; k < 10; k++) stepWar(w6, e6);
+  assert.ok(st.civil[2] > 0, "civis deveriam morrer em hex ocupado");
+  assert.ok(warSupport(e6, 2, st) < 1);
+  assert.ok(e6.countries[1].politics.legitimacy <= leg);
+  makePeace(w6, e6, 1, 2);
+  assert.equal(e6.warStats!["1-2"], undefined);
+}
+console.log("war stats ok");
