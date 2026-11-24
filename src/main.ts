@@ -13,6 +13,7 @@ import { createRenderer } from "./render.ts";
 import { updateFog, buildInfo } from "./fog.ts";
 import { runAI } from "./ai.ts";
 import { saveGame, loadGame } from "./save.ts";
+import { createState, addCityToState, removeCityFromState, setStateTax, statesOf, stateOfCity, statesLocked, STATES } from "./states.ts";
 
 let hudMsg = "", hudMsgUntil = 0; // aviso rápido no topo (salvou, erro ao carregar...)
 const notify = (m: string) => { hudMsg = m; hudMsgUntil = performance.now() + 5000; };
@@ -210,6 +211,10 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "cancel-law" && active) { cancelLaw(eco.countries[active - 1].politics); return updateUI(); }
   if (d.act === "recruit") return act(recruit(world, eco, active, selected));
   if (d.act === "fleet") return act(buildFleet(world, eco, active, selected));
+  if (d.stateNew) return act(createState(eco, active, Number(d.stateNew)));
+  if (d.stateJoin) { const [city, st] = d.stateJoin.split("|").map(Number); return act(addCityToState(eco, city, st)); }
+  if (d.stateLeave) return act(removeCityFromState(eco, Number(d.stateLeave)));
+  if (d.stateTax) { const [st, law] = d.stateTax.split("|"); return act(setStateTax(eco, Number(st), law || null)); }
   if (d.act === "air") return act(buildAir(world, eco, active, selected));
   if (d.act === "war") return act(declareWar(eco, active, world.owner[selected]));
   if (d.peace) return act(makePeace(world, eco, active, Number(d.peace)));
@@ -324,7 +329,8 @@ function divisionHtml() {
       `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="disband">Voltar para casa</button>${message ? ` <span class="bad">${message}</span>` : ""}</div>`;
   }
   if (d.kind === "air") {
-    const region = airRegion(eco, d.target ?? d.hex), name = region >= 0 ? eco.cities[region].name : "—";
+    const region = airRegion(eco, d.target ?? d.hex);
+    const name = region >= STATES.regionBase ? eco.states.find((x) => x.id === region - STATES.regionBase)?.name ?? "—" : region >= 0 ? eco.cities[region].name : "—";
     return `<div class="unit"><b>✈ Esquadrão ${d.id}</b> · ${d.target === null ? "defendendo a base" : "missão"}: região de ${name}` +
       `<br>Pilotos ${Math.round(d.strength)}/${AIR.pilots} · org. ${pct(d.org)} · alcance ${AIR.range} hexes <small>(botão direito = região de missão)</small> <button data-act="disband">Desfazer</button></div>`;
   }
@@ -380,9 +386,18 @@ function politicsHtml(p: Politics, era: number) {
   const voting = p.enacting
     ? `<div>Votando <b>${p.enacting.law}</b> · apoio <span class="${p.support > 0 ? "down" : "up"}">${pct(p.support)}</span>${p.support > 0 ? "" : " <span class='bad'>(travada)</span>"} <button data-act="cancel-law">Cancelar</button>` +
       `<div class="bar"><div style="background:#fa6;width:${Math.min(100, p.enacting.progress * 100)}%"></div></div></div>` : "";
+  const federal = !!lawOf(p, "Estados").federal;
+  const states = statesOf(eco, active).map((x) => {
+    const n = eco.cities.filter((k) => k.state === x.id).length;
+    const taxes = federal ? `<br><small>Imposto: ` + [["", "Nacional"], ...LAWS["Impostos"].filter((l) => l.era <= era).map((l) => [l.name, l.name])]
+      .map(([v, label]) => `<button data-state-tax="${x.id}|${v}" class="${(x.taxLaw ?? "") === v ? "on" : ""}">${label}</button>`).join(" ") + "</small>" : "";
+    return `<tr><td>${x.name} <small>(${n} cidade${n > 1 ? "s" : ""})</small>${taxes}</td><td>${x.interest} ${x.happy ? "😊" : "<span class='bad'>😠</span>"}</td></tr>`;
+  });
+  const statesTable = `<b>Estados</b> <small>(${federal ? "Federação: cada estado escolhe o imposto" : `Centralizado: +${Math.round(STATES.adminPerState * 100)}% de arrecadação por estado`}; crie no hex de uma cidade)</small>` +
+    (states.length ? `<table>${states.join("")}</table>` : "<br><small>Nenhum estado ainda.</small>");
   return voting +
     `<table><tr><td><b>Grupo</b> <small>(🏛 governo)</small></td><td><b title="decide leis e governo">Político</b></td><td><b title="dá legitimidade">Popular</b></td></tr>${groups.join("")}</table>` +
-    `<table class="laws">${laws.join("")}</table>`;
+    `<table class="laws">${laws.join("")}</table>` + statesTable;
 }
 
 function researchHtml(r: Economy["countries"][number]["research"], perWeek: number) {
@@ -436,6 +451,13 @@ function hexHtml() {
     ? ` <button data-act="fleet">Construir frota (${NAVY.cost} + ${NAVY.sailors} manpower)</button>` : ` <small>🔒 frota: ${NAVY.tech}</small>`;
   if (eco.urban[i] && !eco.occupier[i]) h += eco.countries[active - 1].research.known.has(AIR.tech)
     ? ` <button data-act="air">Formar esquadrão (${AIR.cost} + ${AIR.pilots} manpower)</button>` : "";
+  if (city && eco.urban[i]) {
+    const ci = eco.market[i] - 1, st = stateOfCity(eco, ci), lock = statesLocked(eco, active);
+    if (st) h += `<br>🗺 Estado: <b>${st.name}</b> · ${st.interest} ${st.happy ? "😊" : "<span class='bad'>😠 insatisfeito</span>"}` + (lock ? "" : ` <button data-state-leave="${ci}">Sair do estado</button>`);
+    else if (!lock) h += `<br>🗺 Sem estado: <button data-state-new="${ci}">Criar estado</button>` +
+      statesOf(eco, active).map((x) => ` <button data-state-join="${ci}|${x.id}">Juntar a ${x.name}</button>`).join("");
+    if (lock && !st) h += `<br><small>🗺 ${lock}</small>`;
+  }
   if (city?.blockaded) h += `<br><span class="bad">⚓ ${city.name} bloqueada por frota inimiga: sem comércio exterior</span>`;
   if (eco.occupier[i]) h += `<br><span class="bad">Ocupado por ${world.countries[eco.occupier[i] - 1].name}</span>`;
   if (city && eco.urban[i]) {

@@ -3,6 +3,7 @@
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
 import { refresh, GOODS, RULES, INFAMY, type Economy, type Division } from "./economy.ts";
 import { techSum } from "./tech.ts";
+import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
 import { T, TERRAINS, across, riverAt, snowAt, type World } from "./world.ts";
 
@@ -40,7 +41,11 @@ export const AIR = {
   tech: "Aviação",
 };
 /** Região aérea do hex: índice da cidade cujo mercado o atende (−1 = fora de qualquer região). */
-export const airRegion = (e: Economy, i: number) => (e.market[i] ? e.market[i] - 1 : -1);
+export const airRegion = (e: Economy, i: number) => {
+  if (!e.market[i]) return -1;
+  const s = e.cities[e.market[i] - 1].state; // cidade em estado: a região aérea é o estado inteiro
+  return s ? STATES.regionBase + s : e.market[i] - 1;
+};
 const missionOf = (e: Economy, d: Division) => airRegion(e, d.target ?? d.hex);
 
 export function buildAir(w: World, e: Economy, country: number, hex: number): string | null {

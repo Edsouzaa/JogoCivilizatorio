@@ -54,6 +54,7 @@ export type Law = {
   tax?: number;         // Impostos: taxa sobre o PIB
   tradeShare?: number;  // Economia: fração da sobra que circula entre as cidades do país
   singleParty?: boolean; // Governo: só o partido tem Poder Político
+  federal?: boolean;     // Estados: cada estado tem lei de impostos própria
 };
 export const LAWS: Record<string, Law[]> = {
   "Governo": [
@@ -68,6 +69,10 @@ export const LAWS: Record<string, Law[]> = {
     { name: "Dízimo", desc: "Um décimo da produção vai para o governo e o templo.", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Mercadores"], tax: 0.12 },
     { name: "Imposto por cabeça", desc: "Valor fixo por pessoa: arrecada mais, pesa sobre os pobres.", era: era("Clássica"), likes: ["Latifundiários"], dislikes: ["Povo do Campo", "Mercadores"], tax: 0.18 },
     { name: "Imposto proporcional", desc: "Cada um paga conforme a renda.", era: era("Colonial"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Latifundiários"], tax: 0.2 },
+  ],
+  "Estados": [
+    { name: "Centralizado", desc: "Os estados só administram: cada estado dá +2% de arrecadação (até +10%).", era: 0, likes: ["Latifundiários", "Pequena Burguesia"], dislikes: [] },
+    { name: "Federação", desc: "Cada estado escolhe a própria lei de impostos, como nos Estados Unidos.", era: era("Revoluções"), likes: ["Povo do Campo", "Mercadores", "Intelectuais"], dislikes: ["Latifundiários"], federal: true },
   ],
   "Economia": [
     { name: "Subsistência", desc: "Cada comunidade vive do que produz; quase não há troca entre cidades.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [], tradeShare: 0.4 },

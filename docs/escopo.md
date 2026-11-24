@@ -144,4 +144,3 @@ A primeira versão jogável é: economia + cidades + política básica, em uma o
 | Todas as eras de uma vez | Fazer tribal → clássica bem feitas e depois avançar |
 | Cultura, religião e assimilação | Dependem de população com tipos de POP e de leis, que vêm antes |
 | Comércio entre países e rotas com custo | Hoje só as cidades do mesmo país trocam entre si, sem custo de distância; rotas, nós e comércio exterior depois |
-| Estados | Fazem sentido quando o país tiver muitas cidades |

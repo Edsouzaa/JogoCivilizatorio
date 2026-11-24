@@ -3,6 +3,7 @@ import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { newResearch, research, techSum, ERAS, TECHS, TECH_FOR_BUILDING, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
+import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
 export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas"];
@@ -123,6 +124,7 @@ export type City = {
   name: string; country: number; hex: number; size: number; urban: number[]; market: Market;
   port: boolean; // cidade em rio navegável: exporta mais no comércio
   blockaded?: boolean; // frota inimiga na zona marítima colada: sem comércio exterior, metade do interno, sem porto
+  state?: number;       // id do estado da cidade (states.ts)
 };
 export type Country = {
   treasury: number; debt: number; tax: number;
@@ -166,6 +168,7 @@ export type Economy = {
   divisions: Division[]; nextDivision: number;
   wars: Set<string>;    // pares de países em guerra, "a-b" com a < b
   pacts: Set<string>;   // pares com acordo comercial, mesmo formato
+  states: State[]; nextState: number;
   occupier: Uint8Array; // país que ocupa o hex (0 = ninguém); hex ocupado não produz para o dono
 };
 
@@ -218,7 +221,7 @@ export function createEconomy(w: World): Economy {
     })),
     cities: w.countries.map((c, k) => ({ name: `Capital ${k + 1}`, country: k + 1, hex: c.capital, size: 1, urban: [], market: newMarket(), port: false })),
     market: new Uint16Array(N), urban: new Uint8Array(N), owned: new Int32Array(0), version: 0,
-    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), occupier: new Uint8Array(N),
+    divisions: [], nextDivision: 1, wars: new Set(), pacts: new Set(), states: [], nextState: 1, occupier: new Uint8Array(N),
   };
   refresh(w, e);
   for (const i of e.owned) {
@@ -528,15 +531,18 @@ export function tick(w: World, e: Economy) {
   });
 
   e.countries.forEach((c, ci) => {
-    let gdp = 0;
-    for (const city of e.cities) {
-      if (city.country !== ci + 1) continue;
+    let gdp = 0, taxed = 0; // taxed = PIB × imposto de cada cidade (na Federação, o do estado dela)
+    e.cities.forEach((city, k) => {
+      if (city.country !== ci + 1) return;
       const m = city.market;
-      for (let gi = 1; gi < NG; gi++) gdp += m.supply[gi] * BASE_PRICE[gi] * m.price[gi];
-    }
+      let g = 0;
+      for (let gi = 1; gi < NG; gi++) g += m.supply[gi] * BASE_PRICE[gi] * m.price[gi];
+      gdp += g; taxed += g * cityTax(e, k);
+    });
     c.gdpWeek = gdp;
-    c.tax = lawOf(c.politics, "Impostos").tax!;
-    c.income = gdp * c.tax * (RULES.taxBaseEfficiency + c.politics.legitimacy); // governo legítimo arrecada mais
+    c.tax = gdp ? taxed / gdp : lawOf(c.politics, "Impostos").tax!; // imposto médio
+    // governo legítimo arrecada mais; no Centralizado, estados melhoram a administração
+    c.income = taxed * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1));
     c.interest = (c.debt * RULES.interestYear) / 52;
     c.treasury += c.income + c.tariffs - c.upkeep - c.interest;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
@@ -552,6 +558,7 @@ export function tick(w: World, e: Economy) {
     c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen);
     updatePolitics(c.politics, c.pops, c.research.era);
     c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest"));
+    c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     advanceLaw(c.politics);
     c.researchWeek = RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic;

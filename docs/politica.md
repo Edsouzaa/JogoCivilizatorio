@@ -78,3 +78,12 @@ Mais para frente, o jogador poderá dividir o território em **estados**, como o
 - **Partido único:** só o grupo mais forte governa e quem está fora fica com Poder Político zero. Se um grupo de fora tiver mais Poder Popular que o partido, ele vira **rival** (⚠ no painel) e a legitimidade cai 20 pontos.
 - **Leis:** Governo, Impostos (define a taxa) e Economia (quanto as cidades do país trocam entre si). Para mudar uma lei, ela precisa de apoio positivo (Poder Político de quem gosta menos o de quem não gosta); sem apoio, fica travada. Com legitimidade de 50%, leva cerca de 26 semanas.
 - A fazer: as outras categorias de leis (eleições, trabalho, religião, cidadania, exército, educação, saúde, imprensa), radicais e revoltas, e os estados.
+
+### O que já está no protótipo (src/states.ts)
+
+- Estados existem a partir da era **Clássica**. No hex de uma cidade sua: **Criar estado**, **Juntar a** um estado existente ou **Sair do estado** (estado sem cidades deixa de existir).
+- **Travados em crise:** em guerra, falido ou com mais de 30% de radicais não dá para mudar os estados.
+- **Lei "Estados":** *Centralizado* (padrão) = cada estado dá +2% de arrecadação (até +10%); *Federação* (era das Revoluções) = cada estado escolhe a própria lei de impostos (botões na aba Política), sem o bônus de administração.
+- **Interesses:** pelo que o estado produz, ele é *Agrícola* (quer imposto até 12%), *Industrial* ou *Mercantil* (querem lei de Economia com 50%+ de troca). Cada estado insatisfeito (😠) tira 5 pontos de legitimidade (até 20).
+- A **região aérea** de uma cidade que está num estado passa a ser o estado inteiro.
+- A fazer: outras leis estaduais além de impostos, autonomia e separatismo de estados insatisfeitos, desenhar as fronteiras dos estados no mapa.
