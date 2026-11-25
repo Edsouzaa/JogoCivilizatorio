@@ -20,7 +20,9 @@ import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 export const AI = {
   subjectChancePerMonth: 0.05, // chance de propor dependência a um vizinho
   reserve: 1.5,         // só gasta se o tesouro passar de reserve × custo
-  publicQueue: 2,       // obras públicas na fila ao mesmo tempo
+  publicQueue: 2,       // obras públicas na fila ao mesmo tempo...
+  queuePerTreasury: 2000, // ...mais 1 a cada tanto no tesouro...
+  publicQueueMax: 8,    // ...até isto
   privateQueue: 3,      // obras privadas na fila ao mesmo tempo
   maxCitiesBase: 3,     // cidades que a IA quer na era tribal (+2 por era)
   lawSupport: 0.25,     // apoio mínimo para propor uma lei
@@ -120,9 +122,11 @@ function invest(w: World, e: Economy, country: number) {
   // obras paradas por falta de capacidade: amplia o setor de construção na capital
   const cap = e.cities.find((k) => k.country === country);
   if (cap && mine.some((p) => p.waiting === "sem capacidade") && !mine.some((p) => p.b === SECTOR) && c.treasury > buildCost(e, SECTOR, cap.hex) * AI.reserve) queueBuild(w, e, cap.hex, SECTOR);
-  if (mine.filter((p) => !p.priv).length >= AI.publicQueue) return; // não enche a fila: o dinheiro sai aos poucos
-  const best = bestInvestment(w, e, country);
-  if (best && c.treasury > buildCost(e, best[1], best[0]) * AI.reserve) queueBuild(w, e, best[0], best[1]);
+  const room = Math.min(AI.publicQueueMax, AI.publicQueue + Math.floor(c.treasury / AI.queuePerTreasury)) - mine.filter((p) => !p.priv).length; // fila cresce com o tesouro
+  for (let n = 0; n < room; n++) {
+    const best = bestInvestment(w, e, country);
+    if (!best || c.treasury < buildCost(e, best[1], best[0]) * AI.reserve + RULES.settlerCost || queueBuild(w, e, best[0], best[1])) return;
+  }
 }
 
 /** Uma vez por mês, todo país (jogador também): os investidores privados constroem com o fundo deles. */
