@@ -11,6 +11,7 @@ import { MILITARY } from "./wareconomy.ts";
 import { BUDGET_IN, TAX_KINDS, classTaxOf, canTax } from "./budget.ts";
 import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./eramods.ts";
 import { artSVG } from "./art.ts";
+import { TECH_AREAS, TL, techLayout, techEdges } from "./techlayout.ts";
 import { POLICIES, policyOf, MARKET, commerceOf, complexityImpact, complexityCost } from "./markets.ts";
 import { deploy, widthOf, BATTLE, type Battle } from "./battle.ts";
 import { levelName, depotHexes, PRIORITIES } from "./logistics.ts";
@@ -955,31 +956,25 @@ function goodsCardsHtml() {
   }).join("") + "<small>Preço com a variação dos últimos 6 meses. Vermelho = mais caro (falta), verde = mais barato (sobra).</small>";
 }
 
-// ---- Tecnologia em árvore: linhas = áreas, colunas = eras; linhas ligam cada tecnologia aos pré-requisitos
-const TECH_AREAS: [string, (t: (typeof TECHS)[number]) => boolean][] = [
-  ["Militar", (t) => !!(t.army || t.fleet || t.air || t.manpower)],
-  ["Ciência", (t) => !!(t.research || t.unrest)],
-  ["Comércio", (t) => !!t.trade],
-  ["Indústria", (t) => !!(t.unlocks?.some((b) => BUILDINGS.find((x) => x.name === b)?.industry) || t.bonus?.some(([b]) => b !== "Fazenda" && b !== "Pasto"))],
-  ["Agricultura", () => true],
-];
-const techArea = (t: (typeof TECHS)[number]) => TECH_AREAS.findIndex(([, f]) => f(t));
-
 function techTreeHtml(all = false) {
   if (!active) return "";
   const r = eco.countries[active - 1].research, avail = new Set(available(r).map((t) => t.name));
   const lastEra = all ? ERAS.length - 1 : Math.min(ERAS.length - 1, r.era + 1); // tela cheia: todas as eras
-  const cols = Array.from({ length: lastEra + 1 }, (_, e) => e);
-  const cell = (area: number, era: number) => TECHS.filter((t) => t.era === era && techArea(t) === area).map((t) => {
+  const L = techLayout(lastEra);
+  const paths = techEdges(L).map((e) => `<path class="${r.known.has(e.from) ? (r.known.has(e.to) ? "k" : "a") : ""}" d="M${e.pts.map((p) => p.join(",")).join(" L")}"/>`).join("");
+  const eras = Array.from({ length: lastEra + 1 }, (_, e) => e).map((e) => {
+    const x = L.X(L.eraStart[e]) - TL.gx / 2, w = L.X(L.eraStart[e + 1]) - TL.gx / 2 - x;
+    return `<div class="tera${e % 2 ? " odd" : ""}" style="left:${x}px;width:${w}px;height:${L.height}px"><span>${ERAS[e]}</span></div>`;
+  }).join("");
+  const areas = TECH_AREAS.map(([name], a) => `<div class="tband" style="top:${L.bandTop[a]}px;width:${L.width}px"><span>${name}</span></div>`).join("");
+  const cards = L.ts.map((t) => {
     const st = r.known.has(t.name) ? "known" : avail.has(t.name) ? "avail" : "locked";
     const prog = r.progress.get(t.name) ?? 0;
-    return `<div class="tcard ${st}${t.name === r.researching ? " cur" : ""}" data-tnode="${t.name}" ${st === "avail" ? `data-tech="${t.name}"` : ""} title="${t.requires.length ? "Requer: " + t.requires.join(", ") : "Sem pré-requisitos"}">` +
+    return `<div class="tcard ${st}${t.name === r.researching ? " cur" : ""}" style="left:${L.X(L.col.get(t.name)!)}px;top:${L.Y(t.name)}px;width:${TL.cw}px;height:${TL.ch}px" ${st === "avail" ? `data-tech="${t.name}"` : ""} title="${t.requires.length ? "Requer: " + t.requires.join(", ") : "Sem pré-requisitos"}">` +
       `<b>${artSVG("tech", t.name, 18)} ${t.name}</b><small>${st === "known" ? "conhecida" : fmt(t.cost) + " pts"}${prog && st !== "known" ? ` · ${pct(prog / t.cost)}` : ""}</small><small class="fx">${techEffect(t)}</small></div>`;
   }).join("");
   return (all ? "" : researchHtml(r, eco.countries[active - 1].researchWeek, true)) +
-    `<div class="tree" style="grid-template-columns: 110px repeat(${cols.length}, 170px)"><svg class="tlines"></svg>` +
-    `<div></div>${cols.map((e) => `<div class="thead">${ERAS[e]}</div>`).join("")}` +
-    TECH_AREAS.map(([name], a) => `<div class="tarea">${name}</div>${cols.map((e) => `<div class="tcell">${cell(a, e)}</div>`).join("")}`).join("") + `</div>`;
+    `<div class="tscroll"><div class="tree" style="width:${L.width}px;height:${L.height}px">${eras}${areas}<svg class="tlines" width="${L.width}" height="${L.height}">${paths}</svg>${cards}</div></div>`;
 }
 
 let techCam = { x: 16, y: 16, z: 1 };
@@ -1011,29 +1006,12 @@ function techView(cat: HTMLElement) {
     (r ? researchHtml(r, eco.countries[active - 1].researchWeek, true) : "<small>Escolha um país.</small>"));
   const world = cat.querySelector<HTMLElement>(".tworld")!, before = lastHtml.get(world);
   setHtml(world, techTreeHtml(true));
-  if (lastHtml.get(world) !== before) { hydrateIcons(world); drawTechLines(); }
+  if (lastHtml.get(world) !== before) hydrateIcons(world);
   placeTech();
 }
 function placeTech() {
   const world = document.querySelector<HTMLElement>("#catpanel .tworld");
   if (world) world.style.transform = `translate(${techCam.x}px, ${techCam.y}px) scale(${techCam.z})`;
-}
-
-/** Depois de desenhar a árvore: linhas de cada tecnologia até os pré-requisitos (SVG por cima da grade). */
-function drawTechLines() {
-  const tree = document.querySelector(".tree") as HTMLElement | null, svg = tree?.querySelector("svg");
-  if (!tree || !svg) return;
-  const base = tree.getBoundingClientRect(), pos = new Map<string, DOMRect>(), z = tree.closest(".tworld") ? techCam.z : 1; // a árvore em tela cheia está em escala
-  tree.querySelectorAll<HTMLElement>("[data-tnode]").forEach((el) => pos.set(el.dataset.tnode!, el.getBoundingClientRect()));
-  svg.setAttribute("width", String(tree.scrollWidth)); svg.setAttribute("height", String(tree.scrollHeight));
-  let paths = "";
-  for (const t of TECHS) for (const q of t.requires) {
-    const a = pos.get(q), b = pos.get(t.name);
-    if (!a || !b) continue;
-    const x1 = (a.right - base.left) / z, y1 = (a.top + a.height / 2 - base.top) / z, x2 = (b.left - base.left) / z, y2 = (b.top + b.height / 2 - base.top) / z, mx = (x1 + x2) / 2;
-    paths += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
-  }
-  svg.innerHTML = paths;
 }
 
 /** Conteúdo de cada item do menu (no painel ao lado do menu). */
@@ -1326,7 +1304,6 @@ function updateUI() {
   if (performance.now() >= hudMsgUntil) document.getElementById("toast")!.style.display = "none";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
-  if (menuCat !== "tech") drawTechLines();
   const hist = active ? eco.countries[active - 1].history ?? {} : {};
   for (const [id, key] of [["ch-treasury", "Tesouro"], ["ch-debt", "Dívida"], ["ch-good", "$" + goodDetail]] as const) {
     const cv = document.getElementById(id) as HTMLCanvasElement | null;
