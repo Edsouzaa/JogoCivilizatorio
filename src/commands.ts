@@ -1,3 +1,4 @@
+import { setWarEconomy, setConversion } from "./wareconomy.ts";
 import { orderShip, cancelShip } from "./naval.ts";
 import { BUILDINGS } from "./economy.ts";
 // Comandos do jogador. Toda ação que muda a partida passa por aqui, para valer igual no single-player,
@@ -27,6 +28,7 @@ export type Cmd =
   | { t: "build"; i: number; b: number; priv?: boolean }
   | { t: "buildMany"; hexes: number[]; b: number; levels: number; priv?: boolean } // construção em massa
   | { t: "cancelBuild"; id: number } | { t: "pauseBuild"; id: number } | { t: "cancelShip"; id: number }
+  | { t: "warEconomy"; level: number } | { t: "conversion"; on: boolean } // economia de guerra (wareconomy.ts)
   | { t: "method"; hex: number; b: number; cat: number; k: number; all?: boolean } // método de produção (all: todos os edifícios b do país)
   | { t: "privatize"; hex: number; b: number; n: number } | { t: "nationalize"; hex: number; b: number; n: number }
   | { t: "found"; unit: number; name?: string; flag?: Flag }
@@ -165,6 +167,8 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "front": return Array.isArray(c.ids) && c.ids.length <= 500 && c.ids.every((x) => isInt(x)) && isInt(c.enemy, 1) && (c.mode === "defend" || c.mode === "attack") ? frontOrder(w, e, country, c.ids, c.enemy, c.mode) : "Ordem inválida";
     case "general": return own(c.id) ? hireGeneral(w, e, c.id) : "Unidade não é sua";
     case "fleet": return isInt(c.hex) && e.market[c.hex] ? orderShip(w, e, country, e.market[c.hex] - 1, typeof c.unit === "string" ? c.unit : "Galés") : "Escolha uma cidade sua no litoral"; // vai para a fila naval
+    case "warEconomy": return setWarEconomy(e, country, c.level, [...e.wars].some((k) => k.split("-").includes(String(country))));
+    case "conversion": return setConversion(e, country, !!c.on);
     case "cancelShip": return isInt(c.id, 1) ? cancelShip(e, country, c.id) : "Encomenda inválida";
     case "air": return buildAir(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
     case "move": return own(c.id) && isInt(c.target) && c.target < w.W * w.H ? orderMove(w, e, c.id, c.target) : "Unidade não é sua";

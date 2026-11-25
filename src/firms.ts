@@ -12,6 +12,7 @@ import { BUILDINGS, BASE_PRICE, RULES, type Economy } from "./economy.ts";
 import { POP_TYPES, POP_RULES } from "./pops.ts";
 import { lawOf } from "./politics.ts";
 import type { combine } from "./methods.ts";
+import { MILITARY, WAR_ECON } from "./wareconomy.ts";
 import type { World } from "./world.ts";
 
 /** O que o edifício fez na semana (economy.ts tick monta, stepFirms lê). */
@@ -71,7 +72,7 @@ export function addPrivateLevel(e: Economy, hex: number, b: number) { const l = 
 
 /** Uma vez por semana, depois da produção e dos preços. */
 export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
-  for (const c of e.countries) c.ownersTake = 0;
+  for (const c of e.countries) { c.ownersTake = 0; c.warSubsidy = 0; }
   for (const r of runs) {
     const l = ensure(e, r.key), c = e.countries[r.country - 1], m = e.cities[r.city].market;
     l.priv = Math.min(l.priv, r.lv); // níveis perdidos (jazida, insolvência) saem primeiro da parte privada
@@ -87,14 +88,19 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     l.hist.push(l.profit); if (l.hist.length > FIRM.histWeeks) l.hist.shift();
     const def = BUILDINGS[r.b];
     if ((def.industry && !def.industry.outputs.length) || def.boosts !== undefined) continue; // serviço do Estado (administração, construção, estaleiro) ou melhoria (o ganho dela já entra na receita da extratora): só custo
-    const ps = l.priv / r.lv;
+    const ps = l.priv / r.lv, wl = c.warEconomy ?? 0;
+    if (wl && MILITARY.has(def.name)) { // subsídio militar: o tesouro paga uma fração da receita
+      const sub = l.rev * WAR_ECON.subsidy[wl];
+      c.treasury -= sub; if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
+      c.warSubsidy = (c.warSubsidy ?? 0) + sub; l.profit += sub;
+    }
     l.reserve += l.profit;
     if (l.debt > 0 && l.reserve > 0) { const pay = Math.min(l.debt, l.reserve); l.debt -= pay; l.reserve -= pay; } // paga dívida antes de distribuir
     const target = FIRM.reserveWeeks * (l.inputs + l.wages + l.upkeep);
     if (l.reserve > target) {
       const free = l.reserve - target;
       l.reserve = target;
-      if (r.fx.state) { l.toState = free; c.treasury += free; c.ownersTake! += free; } // estatal: tudo ao tesouro
+      if (r.fx.state || wl === 2) { l.toState = free; c.treasury += free; c.ownersTake! += free; } // estatal ou requisitado na guerra total: tudo ao tesouro
       else { // dividendos aos donos; a parte privada reinveste no fundo e os donos põem lá a fração da lei
         l.div = free * r.fx.divShare; l.reinvest = (free - l.div) * ps;
         const toFund = l.reinvest + l.div * ps * fundShare(e, r.country);

@@ -8,6 +8,7 @@ import { BUILDINGS, RULES, build, canBuild, type Economy } from "./economy.ts";
 import { GOODS } from "./economy.ts";
 import { lawOf } from "./politics.ts";
 import { addPrivateLevel } from "./firms.ts";
+import { WAR_ECON } from "./wareconomy.ts";
 import type { World } from "./world.ts";
 
 export type Project = {
@@ -52,7 +53,7 @@ export const methodInputs = (e: Economy, country: number) => inputsOf(sectorMeth
 /** PC de 1 nível da construção b. */
 export const cpCost = (b: number) => Math.max(1, Math.round(BUILDINGS[b].workers * CONSTRUCT.cpPerWorker));
 /** Fração da capacidade que vai para a fila privada (lei de Economia). */
-export const privateShare = (e: Economy, country: number) => lawOf(e.countries[country - 1].politics, "Economia").privateCp ?? 0;
+export const privateShare = (e: Economy, country: number) => (lawOf(e.countries[country - 1].politics, "Economia").privateCp ?? 0) * WAR_ECON.privateCut[e.countries[country - 1].warEconomy ?? 0]; // guerra: o Estado requisita a capacidade
 /** PC por semana de base (sem setores). */
 export const baseCp = (e: Economy, country: number) => CONSTRUCT.baseCp + CONSTRUCT.cpPerCity * e.cities.filter((k) => k.country === country).length;
 export const queueOf = (e: Economy, country: number) => (e.construction ?? []).filter((p) => p.country === country);

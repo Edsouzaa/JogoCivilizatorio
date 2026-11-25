@@ -1,6 +1,7 @@
 import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
+import { warMult, convertedOutputs, exportBlocked, stepWarEconomy } from "./wareconomy.ts";
 import { stepNaval, type ShipOrder } from "./naval.ts";
 import { activeMethods, combine, methodKey, INDUSTRIES as INDUSTRY_NAMES } from "./methods.ts";
 import { stepFirms, privateShareOf, type FirmRun, type Ledger } from "./firms.ts";
@@ -249,6 +250,9 @@ export type Country = {
   cpWeek?: number;      // pontos de construção da última semana (base + setores; construction.ts)
   cpUsed?: number;      // quanto deles as obras usaram
   sectorMethod?: number; // método dos setores de construção na semana (construction.ts)
+  warEconomy?: number;   // 0 paz, 1 guerra, 2 guerra total (wareconomy.ts)
+  conversion?: boolean;  // indústria convertida para a guerra
+  warSubsidy?: number;   // subsídio militar pago na última semana (firms.ts)
   insolvencies?: number; // níveis privados fechados por insolvência (firms.ts)
   ownersTake?: number;   // da renda dos donos, quanto foi ao tesouro (estatais) ou ao fundo na última semana (firms.ts)
   ruler?: number;       // id do governante (characters.ts)
@@ -602,6 +606,7 @@ function foreignTrade(w: World, e: Economy) {
       const net = pool.map((k) => k.market.supply[gi] - k.market.used[gi] - k.market.pop * POP_DEMAND[gi]);
       // cada país só exporta para o outro: sobra de um lado, falta do outro
       for (const [from, to] of [[a, b], [b, a]]) {
+        if (exportBlocked(e, from, gi)) continue; // economia de guerra: bem estratégico não sai
         let offer = 0, lack = 0;
         const fs = Math.min(1, RULES.foreignShare * (1 + techSum(e.countries[from - 1].research, "trade")));
         pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * portMult(e, k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
@@ -806,7 +811,7 @@ export function tick(w: World, e: Economy) {
     }
     for (const r of here) for (const [t, share] of JOBS[c.research.era][r.b]) c.pops.count[t] += r.workers * share; // quem trabalha aqui, por tipo de POP
     for (const r of here) if (BUILDINGS[r.b].industry) {
-      const thr = r.lv * staffing * penalty * (1 + c.bonus[r.b]) * RULES.urbanIndustry;
+      const thr = r.lv * staffing * penalty * (1 + c.bonus[r.b]) * RULES.urbanIndustry * warMult(e, r.country, r.b); // economia de guerra: militar sobe, civil cai
       r.q = thr; throughput[k - 1][r.b] += thr; outMul[k - 1][r.b] += thr * (1 + r.fx.out);
       const mm = mIn[k - 1].get(r.b) ?? new Map<number, number>();
       for (const [gn, q] of r.fx.inputs) mm.set(g(gn), (mm.get(g(gn)) ?? 0) + q * thr);
@@ -840,7 +845,7 @@ export function tick(w: World, e: Economy) {
     for (const b of INDUSTRIES) { // na ordem de BUILDINGS: o bronze feito aqui já serve ao armeiro
       const thr = throughput[k][b];
       if (!thr) continue;
-      const { outputs } = BUILDINGS[b].industry!, inputs: [number, number][] = industryInputs(e, b, city).map(([gi, q]) => [gi, q * thr]);
+      const outputs = convertedOutputs(e, city.country, b) ?? BUILDINGS[b].industry!.outputs, inputs: [number, number][] = industryInputs(e, b, city).map(([gi, q]) => [gi, q * thr]);
       for (const [gi, q] of mIn[k].get(b) ?? []) inputs.push([gi, q]);
       let eff = 1;
       for (const [gi, q] of inputs) { m.demand[gi] += q; if (q > 0) eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / q); }
@@ -857,7 +862,7 @@ export function tick(w: World, e: Economy) {
   });
   for (const r of runs) if (BUILDINGS[r.b].industry) { // conta de cada indústria: a parte dela no que a cidade fez
     const eff = industryEff[r.city][r.b], city = e.cities[r.city], tot = throughput[r.city][r.b], mm = mIn[r.city].get(r.b);
-    for (const [go, q] of BUILDINGS[r.b].industry!.outputs) r.outs.push([go, q * r.q * (1 + r.fx.out) * eff]);
+    for (const [go, q] of convertedOutputs(e, city.country, r.b) ?? BUILDINGS[r.b].industry!.outputs) r.outs.push([go, q * r.q * (1 + r.fx.out) * eff]);
     for (const [gi, q] of industryInputs(e, r.b, city)) r.ins.push([gi, q * r.q * eff]);
     if (mm && tot) for (const [gi, q] of mm) r.ins.push([gi, (q * r.q * eff) / tot]); // extras da cidade divididos pelo peso de cada uma
   }
@@ -875,6 +880,7 @@ export function tick(w: World, e: Economy) {
     }
   });
 
+  stepWarEconomy(e, (k) => [...e.wars].some((key) => key.split("-").includes(String(k)))); // preço tabelado na guerra total; custo político
   for (const c of e.countries) c.tributeWeek = 0;
   e.countries.forEach((c, ci) => {
     let gdp = 0, taxed = 0, nominal = 0; // taxed = PIB × imposto de cada cidade (na Federação, o do estado dela)

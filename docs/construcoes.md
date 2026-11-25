@@ -291,3 +291,29 @@ Navios não aparecem mais na hora. Eles saem de uma **fila naval** própria, sep
 **Ajustes de equilíbrio:**
 - A IA só investe em indústria com margem de pelo menos 15% nos preços locais (produto acima dos insumos) e com os insumos presentes no mercado.
 - Melhorias (Estábulo, Irrigação…) não têm conta de caixa própria, porque o ganho delas já entra na receita da extratora.
+
+## Etapa 7: economia de guerra (wareconomy.ts)
+
+| | Paz | Guerra | Guerra total (só em guerra) |
+|---|---|---|---|
+| Indústria militar (armeiro, arsenal, pólvora, aciaria, estaleiros) | — | +25% e subsídio de 10% da receita | +50% e subsídio de 20% |
+| Indústria de bens civis (olaria, curtume, bebidas, joias, tipografia, plásticos, eletrônicos, telecom, moinho) | — | — | −30% |
+| Exportação de bens estratégicos (armas, pólvora, ferro, aço, carvão, combustível, petróleo, enxofre, salitre, máquinas, cavalos) | livre | proibida | proibida |
+| Fila privada de construção | normal | metade da capacidade | parada (o Estado requisita) |
+| Lucro livre das empresas | donos e fundo | donos e fundo | requisitado pelo tesouro |
+| Preço dos bens estratégicos | mercado | mercado | tabelado (no máximo o preço normal) |
+| Legitimidade por semana | — | −0,0005 | −0,002 |
+
+- **Sem guerra declarada:** manter a economia mobilizada custa o dobro de legitimidade. A guerra total cai sozinha para economia de guerra quando a guerra acaba.
+- **Conversão industrial:** a fábrica usa os mesmos insumos e entrega outro produto.
+
+| Fábrica | Produto convertido |
+|---|---|
+| Fábrica de máquinas | 2 Armas |
+| Oficina de máquinas simples | 1 Armas |
+| Fábrica química | 2 Pólvora |
+| Fábrica têxtil | 4 Tecidos + 0,5 Armas |
+| Fábrica de plásticos | 1 Armas |
+
+- **IA:** mobiliza quando entra em guerra e passa à guerra total se o inimigo tem 1,5× o PIB dela. Desmobiliza na paz.
+- **Gráficos novos:** economia de guerra, subsídio militar, produção militar e produção civil.

@@ -1,5 +1,5 @@
 // Séries históricas por país (1 ponto por mês) para a aba Gráficos.
-import { GOODS, type Economy, type Country } from "./economy.ts";
+import { GOODS, BASE_PRICE, type Economy, type Country } from "./economy.ts";
 import { prestige } from "./diplomacy.ts";
 
 /** Nome da série → valor atual do país. */
@@ -24,6 +24,10 @@ export const SERIES: Record<string, (c: Country, k: number, e?: Economy) => numb
   "Contribuições ao fundo": (c) => (c.investWeek ?? 0) + (c.ownersTake ?? 0),
   "Lucro dos edifícios": (_c, k, e) => { let s = 0; if (e?.ledgers) for (const [key, l] of e.ledgers) if (e.levels[+key.split(":")[1]]?.[+key.split(":")[0]] && ownerOfKey(key, e) === k) s += l.profit; return s; },
   "Insolvências": (c) => c.insolvencies ?? 0,
+  "Economia de guerra": (c) => c.warEconomy ?? 0,
+  "Subsídio militar": (c) => c.warSubsidy ?? 0,
+  "Produção militar": (_c, k, e) => { let s = 0; if (e) for (const x of e.cities) if (x.country === k) for (const n of ["Armas", "Pólvora"]) { const gi = GOODS.indexOf(n); s += x.market.supply[gi] * BASE_PRICE[gi]; } return s; },
+  "Produção civil": (c, k, e) => { let s = 0; if (e) for (const x of e.cities) if (x.country === k) for (const n of ["Armas", "Pólvora"]) { const gi = GOODS.indexOf(n); s += x.market.supply[gi] * BASE_PRICE[gi]; } return Math.max(0, c.gdpWeek - s); },
 };
 const PRICE_KEEP = 24; // 2 anos de preço por mercadoria (tendência nos cartões de Economia)
 const KEEP = 600; // 50 anos de meses (o save leva tudo isto)

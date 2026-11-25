@@ -5,6 +5,7 @@ import {
   proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy,
 } from "./economy.ts";
+import { WAR_ECONOMY, WAR_ECON, CONVERSIONS } from "./wareconomy.ts";
 import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
@@ -576,6 +577,8 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "massbuild") return cmd({ t: "buildMany", hexes: massTargets(), b: mbB, levels: mbLevels, priv: mbPriv });
   if (d.cancelbuild) return cmd({ t: "cancelBuild", id: +d.cancelbuild });
   if (d.cancelship) return cmd({ t: "cancelShip", id: +d.cancelship });
+  if (d.wareco) return cmd({ t: "warEconomy", level: +d.wareco });
+  if (d.conversion) return cmd({ t: "conversion", on: !eco.countries[active - 1].conversion });
   if (d.sheet) { openSheet = openSheet === d.sheet ? "" : d.sheet; return updateUI(); }
   if (d.methall) { const [b, cat, k] = d.methall.split("|").map(Number); return cmd({ t: "method", hex: -1, b, cat, k, all: true }); }
   if (d.privatize) { const [hex, b] = d.privatize.split("|").map(Number); return cmd({ t: "privatize", hex, b, n: 1 }); }
@@ -1023,7 +1026,12 @@ function militaryHtml() {
   if (!active) return "";
   const mine = eco.divisions.filter((d) => d.country === active);
   const rows = mine.map((d) => `<tr><td><button data-select-div="${d.id}">${d.kind === "army" ? unitOf(d.unit).name : KIND_NAMES[d.kind]?.replace(/s$/, "") ?? d.kind} ${d.id}</button>${d.general ? " <small>(general)</small>" : ""}</td><td>${fmt(d.strength)}</td><td>${pct(d.org)}</td><td>${d.target === null ? "parada" : "em marcha"}</td></tr>`).join("");
-  return warsHtml() + `<h3>Forças</h3><table><tr><td><b>Unidade</b></td><td><b>Força</b></td><td><b>Org.</b></td><td><b>Ordem</b></td></tr>${rows}</table>` + (mine.length ? "" : "<small>Sem unidades: recrute numa cidade sua.</small>");
+  const c = eco.countries[active - 1], lv = c.warEconomy ?? 0;
+  const econ = `<h3>Economia de guerra</h3><div class="card">${WAR_ECONOMY.map((n, k) => `<button data-wareco="${k}" class="${k === lv ? "on" : ""}">${n}</button>`).join(" ")}` +
+    `<br><small>${["Mercado livre; produção militar só por encomenda.", `Indústria militar +${WAR_ECON.military[1] * 100}% (subsídio de ${WAR_ECON.subsidy[1] * 100}% da receita), bens estratégicos não são exportados, fila privada com metade da capacidade, legitimidade −${WAR_ECON.legitimacyWeek[1]}/sem (o dobro sem guerra).`, `Indústria militar +${WAR_ECON.military[2] * 100}%, bens civis ${WAR_ECON.civilian[2] * 100}%, fila privada parada, lucro das empresas requisitado pelo tesouro, preços estratégicos tabelados, legitimidade −${WAR_ECON.legitimacyWeek[2]}/sem. Só durante uma guerra.`][lv]}</small>` +
+    (lv ? `<br><label><input type="checkbox" data-conversion="1"${c.conversion ? " checked" : ""}> Converter a indústria: ${Object.entries(CONVERSIONS).map(([b, o]) => `${b} → ${o.map(([n, q]) => `${q} ${n}`).join(" + ")}`).join("; ")}</label>` : "") +
+    `<br><small>Subsídio militar na semana: ${fmt(c.warSubsidy ?? 0)}</small></div>`;
+  return warsHtml() + econ + `<h3>Forças</h3><table><tr><td><b>Unidade</b></td><td><b>Força</b></td><td><b>Org.</b></td><td><b>Ordem</b></td></tr>${rows}</table>` + (mine.length ? "" : "<small>Sem unidades: recrute numa cidade sua.</small>");
 }
 
 function adminHtml() {

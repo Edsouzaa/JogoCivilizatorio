@@ -1,3 +1,4 @@
+import { setWarEconomy, setConversion } from "./wareconomy.ts";
 import { orderShip, navalQueueOf, yardTier, SHIP_YARD } from "./naval.ts";
 // IA dos países que não têm jogador. Decide uma vez por mês, com regras simples e baratas:
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
@@ -21,6 +22,7 @@ import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 export const AI = {
   subjectChancePerMonth: 0.05, // chance de propor dependência a um vizinho
   reserve: 1.5,         // só gasta se o tesouro passar de reserve × custo
+  totalWarRatio: 1.5,   // guerra total quando um inimigo tem 1,5× o PIB
   minMargin: 0.15,      // indústria só se o produto valer 15% a mais que os insumos no mercado local
   guidedPrice: 1.1,     // investimento orientado: só onde o preço local passa disto (falta)
   publicQueue: 2,       // obras públicas na fila ao mesmo tempo...
@@ -174,6 +176,10 @@ function legislate(c: Economy["countries"][number]) {
 
 function military(w: World, e: Economy, country: number, rand: () => number) {
   const c = e.countries[country - 1];
+  // economia de guerra: mobiliza em guerra (total se o inimigo for mais forte), desmobiliza na paz
+  const foes = [...e.wars].filter((k) => k.split("-").includes(String(country))).map((k) => +k.split("-").find((x) => x !== String(country))!);
+  const want = !foes.length ? 0 : foes.some((k) => e.countries[k - 1].gdpWeek > c.gdpWeek * AI.totalWarRatio) ? 2 : 1;
+  if ((c.warEconomy ?? 0) !== want) { setWarEconomy(e, country, want, foes.length > 0); setConversion(e, country, want > 0); }
   const mine = e.cities.filter((k) => k.country === country);
   const armies = e.divisions.filter((d) => d.kind === "army" && d.country === country);
   // defesa: uma divisão por cidade
