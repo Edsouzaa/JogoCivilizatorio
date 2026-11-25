@@ -4,7 +4,8 @@ import { setClassTax, setSpecificTax } from "./budget.ts";
 import { mergeArmies, splitRegiment } from "./war.ts";
 import { setWarEconomy, setConversion } from "./wareconomy.ts";
 import { orderShip, cancelShip } from "./naval.ts";
-import { BUILDINGS } from "./economy.ts";
+import { BUILDINGS, GOODS } from "./economy.ts";
+import { POLICIES } from "./markets.ts";
 // Comandos do jogador. Toda ação que muda a partida passa por aqui, para valer igual no single-player,
 // no servidor e em todos os navegadores do multiplayer (lockstep). Cada comando só age sobre o país de quem mandou.
 import { setMethod, methodKey } from "./methods.ts";
@@ -35,6 +36,7 @@ export type Cmd =
   | { t: "warEconomy"; level: number } | { t: "conversion"; on: boolean } // economia de guerra (wareconomy.ts)
   | { t: "merge"; ids: number[] } | { t: "split"; id: number } // regimentos (war.ts)
   | { t: "priority"; id: number; p: number } // prioridade de abastecimento (logistics.ts)
+  | { t: "tradePolicy"; good: string; policy: string } | { t: "tariff"; rate: number } // comércio exterior (markets.ts)
   | { t: "mission"; id: number; m: string } // missão de frota ou esquadrão (seawar.ts, airwar.ts)
   | { t: "classTax"; cls: number; mode: "pct" | "fixed"; v: number } | { t: "tax"; id: string; rate: number } // orçamento (budget.ts)
   | { t: "method"; hex: number; b: number; cat: number; k: number; all?: boolean } // método de produção (all: todos os edifícios b do país)
@@ -183,6 +185,14 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       if (!ok.includes(c.m)) return "Missão inválida";
       d.mission = c.m; return null;
     }
+    case "tradePolicy": {
+      const co2 = e.countries[country - 1];
+      if (!GOODS.includes(c.good) || !(POLICIES as readonly string[]).includes(c.policy)) return "Política inválida";
+      co2.tradePolicy ??= {};
+      if (c.policy === "Livre") delete co2.tradePolicy[c.good]; else co2.tradePolicy[c.good] = c.policy;
+      return null;
+    }
+    case "tariff": if (!Number.isFinite(c.rate)) return "Tarifa inválida"; e.countries[country - 1].tariffRate = Math.max(0, Math.min(0.5, c.rate)); return null;
     case "merge": return Array.isArray(c.ids) && c.ids.length <= 200 && c.ids.every((x) => isInt(x, 1)) ? mergeArmies(e, country, c.ids) : "Pedido inválido";
     case "split": return isInt(c.id, 1) ? splitRegiment(e, country, c.id) : "Pedido inválido";
     case "warEconomy": return setWarEconomy(e, country, c.level, [...e.wars].some((k) => k.split("-").includes(String(country))));

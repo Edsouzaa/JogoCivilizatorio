@@ -2,6 +2,7 @@ import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, typ
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
 import { econ, debtCap } from "./eramods.ts";
+import { releaseStock, storeSurplus, updateAccess, updateNodes, updateComplexity, policyOf, advantage, powerShare, type TradeNode } from "./markets.ts";
 import { AIRW } from "./airwar.ts";
 import type { Battle } from "./battle.ts";
 import { demandOf, type Supply } from "./logistics.ts";
@@ -67,7 +68,7 @@ type Building = {
   name: string; workers: number;
   for: number[];                 // recursos do hex onde pode ser construída (vazio = qualquer, se industrial)
   boosts?: number; mult?: number; // melhoria: multiplica a extratora `boosts`
-  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number; construction?: boolean; naval?: number };
+  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number; construction?: boolean; naval?: number; commerce?: { storage: number; access: number; power: number } };
   depot?: boolean;               // depósito militar: em qualquer hex de terra do país, não produz (logistics.ts) // só em hex urbano; admin = pontos administrativos por nível; construction = setor de construção (insumos e PC pelo método da era, construction.ts)
 };
 /**
@@ -139,6 +140,15 @@ yard("Estaleiro", 50, [["Madeira", 2], ["Tecidos", 1], ["Ferro", 0.5], ["Ferrame
 yard("Arsenal naval", 80, [["Aço", 2], ["Máquinas", 0.5], ["Combustível", 0.5]], 12);
 // Depósito de suprimentos (logistics.ts): vira fonte de suprimento do exército e soma capacidade de transporte
 add({ name: "Depósito de suprimentos", for: [], workers: 10, depot: true });
+// estruturas comerciais (markets.ts): estoque, acesso ao mercado nacional e poder comercial no nó
+const shop = (name: string, workers: number, storage: number, access: number, power: number) => add({ name, for: [], workers, industry: { inputs: [], outputs: [], commerce: { storage, access, power } } });
+shop("Posto comercial", 15, 20, 0.03, 1);
+shop("Mercado local", 20, 40, 0.05, 1);
+shop("Entreposto comercial", 25, 80, 0.03, 2);
+shop("Companhia comercial", 40, 50, 0.02, 6);
+shop("Centro comercial", 40, 120, 0.08, 4);
+shop("Bolsa de comércio", 30, 0, 0.05, 5);
+shop("Centro logístico comercial", 40, 200, 0.1, 2);
 setPopDemand((gi) => POP_DEMAND[gi]); // budget.ts: tributo sobre consumo
 const NB = BUILDINGS.length;
 /** Insumos de 1 nível da indústria b nesta cidade (o setor de construção usa o método da era do país). */
@@ -257,6 +267,8 @@ export type Market = {
   used: Float64Array;  // consumido por indústrias neste tick
   need: Float64Array;  // consumo da população + insumos a plena carga (para o comércio)
   trade: Float64Array; // > 0 importado de outras cidades do país, < 0 exportado
+  stock?: Float64Array;    // estoque guardado (markets.ts): o que encalhou, até a capacidade
+  released?: Float64Array; // quanto do estoque voltou à venda nesta semana (não conta como produção)
 };
 export type City = {
   name: string; country: number; hex: number; size: number; urban: number[]; market: Market;
@@ -272,6 +284,8 @@ export type City = {
   coast?: boolean;      // algum centro urbano encosta no mar (pode ter porto)
   road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
   bombed?: number;      // bombardeio estratégico: produção menor até esta semana (airwar.ts)
+  access?: number;      // acesso ao mercado nacional 0..1 (markets.ts)
+  node?: string;        // nó comercial (markets.ts)
   popMark?: number;     // população da cidade no último hex ganho (ou na fundação): base do próximo crescimento
   navalWeek?: number;   // pontos navais dos estaleiros da cidade nesta semana (naval.ts)
   picked?: number[];    // centros urbanos comprados, na ordem (o resto do tamanho vem dos hexes mais perto)
@@ -311,6 +325,9 @@ export type Country = {
   taxEff?: number;        // fração do devido que o Estado consegue cobrar
   book?: Record<string, number>; bookLast?: Record<string, number>; // receitas (+) e despesas (−) por categoria: semana atual e anterior
   attritionTotal?: number; // soldados perdidos por atrito (logistics.ts), fora das batalhas
+  tradePolicy?: Record<string, string>; // política por mercadoria (markets.ts POLICIES)
+  complexity?: number;  // Complexidade da Economia 0..1000 (markets.ts)
+  tariffRate?: number;  // tarifa de importação (sem = RULES.tariff)
   ownersTake?: number;   // da renda dos donos, quanto foi ao tesouro (estatais) ou ao fundo na última semana (firms.ts)
   ruler?: number;       // id do governante (characters.ts)
   tributeWeek?: number; // tributo da semana: + recebido (soberano), − pago (súdito)
@@ -378,6 +395,7 @@ export type Economy = {
   outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
   construction?: Project[]; nextProject?: number; // filas de obras (construction.ts)
   battles?: Battle[]; nextBattle?: number;        // batalhas terrestres (battle.ts)
+  tradeNodes?: TradeNode[];                       // nós comerciais e poder de cada país (markets.ts)
   naval?: ShipOrder[]; nextNaval?: number;        // fila de navios (naval.ts)
   methods?: Map<string, number[]>;   // método escolhido por edifício ("hex:b" → índice por categoria; methods.ts)
   ledgers?: Map<string, Ledger>;     // conta financeira de cada edifício ("hex:b"; firms.ts)
@@ -695,22 +713,28 @@ function foreignTrade(w: World, e: Economy) {
       // cada país só exporta para o outro: sobra de um lado, falta do outro
       for (const [from, to] of [[a, b], [b, a]]) {
         if (exportBlocked(e, from, gi)) continue; // economia de guerra: bem estratégico não sai
+        const cf = e.countries[from - 1], ct = e.countries[to - 1], pf = policyOf(cf, gi), pt = policyOf(ct, gi);
+        if (pf === "Proibir exportação" || pt === "Proibir importação") continue; // política do jogador por mercadoria
+        // o que o exportador põe à venda: prioridade à exportação vende até o que o povo comeria; reservar guarda 20% a mais
+        const avail = (k: City, i: number) => pf === "Prioridade à exportação" ? k.market.supply[gi] - k.market.used[gi] : pf === "Reservar consumo interno" ? k.market.supply[gi] - k.market.used[gi] - 1.2 * k.market.pop * POP_DEMAND[gi] : net[i];
         let offer = 0, lack = 0;
-        const fs = Math.min(1, RULES.foreignShare * (1 + techSum(e.countries[from - 1].research, "trade")) * econ(e.countries[from - 1], "trade"));
-        pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * portMult(e, k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
+        // vantagem comercial (eficiência) e parte do poder comercial nos nós em comum decidem quanto do excedente sai
+        const adv = advantage(e, from, econ(cf, "trade"), techSum(cf.research, "trade")), share = 0.5 + powerShare(e, from, to);
+        const fs = Math.min(1, RULES.foreignShare * adv * share);
+        pool.forEach((k, i) => { const v = k.country === from ? avail(k, i) : 0; if (k.country === from && v > 0) offer += v * Math.min(1, fs * portMult(e, k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
         // pouca frota capaz de cruzar o oceano profundo: além-mar sem Navegação só passa uma fração
         const moved = Math.min(offer, lack) * (overseas && !e.countries[from - 1].research.known.has("Navegação") ? RULES.oceanTradeNoNav : 1);
         if (moved <= 0) continue;
         const value = moved * BASE_PRICE[gi];
         pool.forEach((k, i) => {
           let d = 0;
-          if (k.country === from && net[i] > 0) d = -net[i] * Math.min(1, fs * portMult(e, k)) * (moved / offer);
+          if (k.country === from && avail(k, i) > 0) d = -avail(k, i) * Math.min(1, fs * portMult(e, k)) * (moved / offer);
           if (k.country === to && net[i] < 0) d = -net[i] * (moved / lack);
           k.market.supply[gi] += d; k.market.trade[gi] += d; net[i] += d;
         });
         e.countries[from - 1].exports += value;
         e.countries[to - 1].imports += value;
-        e.countries[to - 1].tariffs += value * RULES.tariff;
+        e.countries[to - 1].tariffs += value * (e.countries[to - 1].tariffRate ?? RULES.tariff);
       }
     }
   }
@@ -724,7 +748,7 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
   }
   for (const [country, cs] of byCountry) {
     if (cs.length < 2) continue;
-    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : portMult(e, c)) * (1 + RULES.roadTrade * (c.road ?? 0)));
+    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : portMult(e, c)) * (1 + RULES.roadTrade * (c.road ?? 0)) * (c.access ?? 1)); // acesso ao mercado nacional (markets.ts)
     const c0 = e.countries[country - 1];
     const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")) * econ(c0, "trade"); // lei de Economia + tecnologia + era
     for (let gi = 1; gi < NG; gi++) {
@@ -825,11 +849,12 @@ export function dropHomeless(e: Economy) {
 export function tick(w: World, e: Economy) {
   e.exhausted = []; e.freed = [];
   dropHomeless(e);
-  if (e.week % 4 === 0) { updateExpansion(w, e, borderRadius); updateControl(w, e); e.contacts = contactsOf(w, e); stepRivers(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); expireProposals(e); }
+  if (e.week % 4 === 0) { updateExpansion(w, e, borderRadius); updateControl(w, e); e.contacts = contactsOf(w, e); stepRivers(w, e); updateAccess(w, e); updateNodes(w, e); updateComplexity(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); expireProposals(e); }
   if (e.week % 52 === 26) stepClaims(w, e);
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
+  releaseStock(e); // estoque volta à venda (markets.ts)
   for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); c.adminWeek = 0; c.cpWeek = 0; resetBook(c); }
 
   for (const i of e.owned) {
@@ -976,6 +1001,7 @@ export function tick(w: World, e: Economy) {
       m.price[gi] = priceFactor(m.supply[gi], m.demand[gi]);
     }
   });
+  storeSurplus(e); // encalhe vai para o estoque (markets.ts)
 
   stepWarEconomy(e, (k) => [...e.wars].some((key) => key.split("-").includes(String(k)))); // preço tabelado na guerra total; custo político
   for (const c of e.countries) c.tributeWeek = 0;
@@ -985,7 +1011,7 @@ export function tick(w: World, e: Economy) {
       if (city.country !== ci + 1) return;
       const m = city.market;
       let g = 0;
-      for (let gi = 1; gi < NG; gi++) g += m.supply[gi] * BASE_PRICE[gi] * m.price[gi];
+      for (let gi = 1; gi < NG; gi++) g += (m.supply[gi] - (m.released?.[gi] ?? 0)) * BASE_PRICE[gi] * m.price[gi]; // estoque que volta não é produção nova
       const exempt = hasIncentive(e, k, "Isenção fiscal") ? 0 : 1;
       gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
     });

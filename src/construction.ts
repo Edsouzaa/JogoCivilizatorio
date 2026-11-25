@@ -9,6 +9,7 @@ import { GOODS } from "./economy.ts";
 import { lawOf } from "./politics.ts";
 import { addPrivateLevel } from "./firms.ts";
 import { WAR_ECON } from "./wareconomy.ts";
+import { complexityCost } from "./markets.ts";
 import { econ, debtCap, spend } from "./eramods.ts";
 import type { World } from "./world.ts";
 
@@ -70,7 +71,8 @@ export function queueBuild(w: World, e: Economy, hex: number, b: number, priv = 
   if (queueOf(e, country).length >= CONSTRUCT.maxQueue) return "Fila de construção cheia";
   const lv = e.levels[b][hex] + queuedLevels(e, hex, b);
   e.construction ??= [];
-  e.construction.push({ id: (e.nextProject = (e.nextProject ?? 0) + 1), country, hex, b, cp: cpCost(b), done: 0, cost: RULES.buildCost * (lv + 1), paid: 0, priv, week: e.week });
+  const cm = complexityCost(e.countries[country - 1], b); // economia complexa: construção sofisticada custa mais (markets.ts)
+  e.construction.push({ id: (e.nextProject = (e.nextProject ?? 0) + 1), country, hex, b, cp: Math.round(cpCost(b) * (1 + (cm - 1) / 2)), done: 0, cost: RULES.buildCost * (lv + 1) * cm, paid: 0, priv, week: e.week });
   return null;
 }
 

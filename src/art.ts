@@ -94,6 +94,8 @@ const BUILDING_ART: Record<string, Art> = {
   "Refinaria": ["barrel", "#a35a2a"], "Fundição de alumínio": ["fire", "#cfd6dc"], "Fábrica de plásticos": ["drop", "#5aa6d9"], "Fábrica de eletrônicos": ["chip", "#3aa36a"],
   "Fábrica de baterias": ["battery", "#e0b03a"], "Fábrica de equipamentos de energia": ["panel", "#3a6ad9"], "Fábrica de telecomunicações": ["tower", "#9aa1a8"],
   "Doca": ["ship", "#a08a6a"], "Estaleiro": ["ship", "#8a9099"], "Arsenal naval": ["ship", "#5f6670"], "Depósito de suprimentos": ["container", "#a08a6a"],
+  "Posto comercial": ["tent", "#c2a46a"], "Mercado local": ["basket", "#c2a46a"], "Entreposto comercial": ["container", "#c2a46a"], "Companhia comercial": ["ship", "#c2a46a"],
+  "Centro comercial": ["building", "#c2a46a"], "Bolsa de comércio": ["coin", "#c2a46a"], "Centro logístico comercial": ["rail", "#c2a46a"],
 };
 /** Tecnologias: forma pela palavra-chave do nome; sem palavra-chave, a do setor (cor pelo setor). */
 const TECH_KEYWORDS: [RegExp, string][] = [

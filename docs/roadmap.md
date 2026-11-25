@@ -118,6 +118,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Batalhas e logística terrestre (docs/batalhas.md): frente por terreno com reservas, fases de fogo e choque, 1d10 com modificadores e histórico, organização, moral e baixas separadas, retirada, cerco e perseguição; atrito e fadiga separados das baixas; suprimento por tipo com estoque, capacidade e distância ao depósito.
 - Guerra naval e aérea (docs/batalhas.md): tempo no mar, batalha naval com dados, missões de frota (escolta, bombardeio costeiro...), comboio além-mar com interceptação; missões aéreas (apoio, bombardeio estratégico, reconhecimento, abastecimento) com combustível e tempo.
 - Oceano profundo visível: azul bem escuro no mapa (a faixa rasa do litoral continua clara). Além de barrar navio sem Navegação, atrapalha o comércio além-mar: entre países de continentes diferentes, quem não tem Navegação só consegue exportar 20% do que exportaria.
+- Mercados e comércio (docs/mercados.md): estoque por cidade (encalhe guardado, comida estraga), acesso de cada cidade ao mercado nacional, nós comerciais com poder por país, vantagem comercial, política por mercadoria e tarifa, 7 estruturas comerciais e Complexidade da Economia (encarece construção sofisticada). Página Comércio em 6 abas.
 
 ## Próximos (nesta ordem)
 
@@ -126,7 +127,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 3. **Mercados**
    - Mercado nacional como soma dos metropolitanos.
    - Cada hex compra da cidade mais barata, não só da mais próxima.
-   - Centros comerciais e mercado mundial (Vic3 1.9) no lugar do comércio por pactos.
+   - Comércio pelos nós sem depender de pacto (hoje o comércio exterior ainda exige pacto e cidades perto).
 4. **Infraestrutura**
    - Ferrovias (gastam carvão e locomotivas).
 5. **Rios**

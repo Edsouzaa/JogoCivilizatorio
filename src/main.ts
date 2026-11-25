@@ -11,6 +11,7 @@ import { MILITARY } from "./wareconomy.ts";
 import { BUDGET_IN, TAX_KINDS, classTaxOf, canTax } from "./budget.ts";
 import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./eramods.ts";
 import { artSVG } from "./art.ts";
+import { POLICIES, policyOf, MARKET, commerceOf, complexityImpact, complexityCost } from "./markets.ts";
 import { deploy, widthOf, BATTLE, type Battle } from "./battle.ts";
 import { levelName, depotHexes, PRIORITIES } from "./logistics.ts";
 import { NAVAL_MISSIONS, missionOfFleet, seaWeather } from "./seawar.ts";
@@ -168,6 +169,8 @@ document.addEventListener("change", (ev) => { // construção em massa: escolhas
   queueMicrotask(() => t.blur()); // escolheu: o painel volta a se atualizar
   if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
   else if (t.dataset?.mission) { cmd({ t: "mission", id: +t.dataset.mission, m: t.value }); return; }
+  else if (t.dataset?.tpol) { cmd({ t: "tradePolicy", good: t.dataset.tpol, policy: t.value }); return; }
+  else if (t.id === "tariff") { cmd({ t: "tariff", rate: Math.max(0, +t.value) / 100 }); return; }
   else if (t.dataset?.prio) { cmd({ t: "priority", id: +t.dataset.prio, p: +t.value }); return; }
   else if (t.dataset?.ctaxmode) { const k = +t.dataset.ctaxmode; cmd({ t: "classTax", cls: k, mode: t.value as "pct" | "fixed", v: t.value === "pct" ? eco.countries[active - 1].tax : 1 }); return; }
   else if (t.dataset?.ctax) { const k = +t.dataset.ctax, mode = classTaxOf(eco.countries[active - 1], k).mode; cmd({ t: "classTax", cls: k, mode, v: mode === "pct" ? Math.max(0, +t.value) / 100 : Math.max(0, +t.value) }); return; }
@@ -626,6 +629,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "settlers") return cmd({ t: "settlers" });
   if (d.act === "massmap") { setMode(14); return updateUI(); }
   if (d.btab !== undefined) { bTab = +d.btab; return updateUI(); }
+  if (d.mtab !== undefined) { mTab = +d.mtab; return updateUI(); }
   if (d.bfilter !== undefined) { bFilter = +d.bfilter; bSel.clear(); return updateUI(); }
   if (d.bsort) { bSort = bSort === d.bsort ? `-${d.bsort}` : d.bsort; return updateUI(); }
   if (d.bsel) { if (bSel.has(d.bsel)) bSel.delete(d.bsel); else bSel.add(d.bsel); return updateUI(); }
@@ -1035,7 +1039,7 @@ function drawTechLines() {
 /** Conteúdo de cada item do menu (no painel ao lado do menu). */
 const CAT_VIEWS: Record<string, () => string> = {
   overview: () => overviewHtml(), people: () => societyHtml("pops"), economy: () => economyView(), build: () => buildingsHtml(),
-  trade: () => pactsHtml() + (selected >= 0 && cityOf(selected) ? marketHtml() : "<small>Clique numa cidade sua para ver o mercado dela.</small>"),
+  trade: () => tradeView(),
   diplomacy: () => diplomacyHtml(), politics: () => politicsTab(), tech: () => techTreeHtml(), military: () => militaryHtml(),
   admin: () => adminHtml(), society: () => societyHtml("culture"), charts: () => chartsHtml(),
 };
@@ -1745,6 +1749,61 @@ function hexHtml() {
       (others.length && city.size > 1 ? `<br>Passar 1 de tamanho para: ${others.map(([k, idx]) => `<button data-transfer="${idx}">${k.name}</button>`).join(" ")}` : "");
   }
   return h + (message ? `<br><span class="bad">${message}</span>` : "");
+}
+
+// ---- Mercado e Comércio (markets.ts): nacional, locais, internacional, nós, estruturas e complexidade
+let mTab = 0;
+function tradeView() {
+  const tabs = `<div class="tabs">${["Nacional", "Mercados locais", "Internacional", "Nós comerciais", "Estruturas comerciais", "Complexidade"].map((n, k) => `<button data-mtab="${k}" class="${k === mTab ? "on" : ""}">${n}</button>`).join(" ")}</div>`;
+  const c = eco.countries[active - 1], ks = eco.cities.filter((k) => k.country === active);
+  const sum = (f: (k: (typeof ks)[number]) => number) => ks.reduce((s, k) => s + f(k), 0);
+  if (mTab === 0) {
+    const rows = [];
+    for (let g = 1; g < GOODS.length; g++) {
+      const sup = sum((k) => k.market.supply[g]), dem = sum((k) => k.market.demand[g] + k.market.used[g]), st = sum((k) => k.market.stock?.[g] ?? 0);
+      if (sup < 0.05 && dem < 0.05) continue;
+      const p = sum((k) => k.market.price[g] * k.market.pop) / Math.max(1, sum((k) => k.market.pop));
+      rows.push(`<tr><td>${artSVG("good", GOODS[g], 14)} ${GOODS[g]}</td><td>${fmt(sup)}</td><td>${fmt(dem)}</td><td>${fmt(st)}</td><td class="${p > 1.05 ? "up" : p < 0.95 ? "down" : ""}">${(BASE_PRICE[g] * p).toFixed(1)}</td></tr>`);
+    }
+    return tabs + `<small>Exportações ${fmt(c.exports)} · importações ${fmt(c.imports)} · tarifas ${fmt(c.tariffs)} por semana. Preço médio ponderado pela população das cidades.</small>` +
+      `<table><tr><td><b>Bem</b></td><td><b>Oferta</b></td><td><b>Demanda</b></td><td><b title="guardado nas cidades: volta à venda aos poucos; comida estraga">Estoque</b></td><td><b>Preço</b></td></tr>${rows.join("")}</table>`;
+  }
+  if (mTab === 1) {
+    const list = ks.map((k) => `<tr><td><button data-goto="${k.hex}">${k.name}</button></td><td>${fmt(k.market.pop)}</td><td>${Math.round((k.access ?? 1) * 100)}%</td><td><small>${k.node ?? "—"}</small></td></tr>`).join("");
+    return tabs + `<small>Acesso ao mercado nacional: era, estradas, porto ou rio, estruturas comerciais e distância da capital. Cidade sem acesso vive do que tem.</small>` +
+      `<table><tr><td><b>Cidade</b></td><td><b>Pessoas</b></td><td><b>Acesso</b></td><td><b>Nó</b></td></tr>${list}</table>` + (selected >= 0 && cityOf(selected) ? marketHtml() : "<small>Clique numa cidade sua para ver o mercado dela.</small>");
+  }
+  if (mTab === 2) {
+    const rows = [];
+    for (let g = 1; g < GOODS.length; g++) {
+      const pol = policyOf(c, g), net = sum((k) => k.market.supply[g] - k.market.demand[g] - k.market.used[g]);
+      rows.push(`<tr><td>${artSVG("good", GOODS[g], 14)} ${GOODS[g]}</td><td class="${net > 0 ? "down" : net < 0 ? "up" : ""}">${net >= 0 ? "+" : "−"}${fmt(Math.abs(net))}</td>` +
+        `<td><select data-tpol="${GOODS[g]}">${POLICIES.map((p) => `<option${p === pol ? " selected" : ""}>${p}</option>`).join("")}</select></td></tr>`);
+    }
+    return tabs + pactsHtml() + `<p>Tarifa de importação: <input id="tariff" type="number" min="0" max="50" step="1" value="${Math.round((c.tariffRate ?? RULES.tariff) * 100)}" style="width:4em">% <small>(tarifa alta arrecada mais, mas reduz a vantagem comercial)</small></p>` +
+      `<table><tr><td><b>Bem</b></td><td><b title="oferta menos demanda no país">Saldo</b></td><td><b>Política</b></td></tr>${rows.join("")}</table>`;
+  }
+  if (mTab === 3) {
+    const nodes = (eco.tradeNodes ?? []).filter((n) => n.power[active]).map((n) => {
+      const tot = Object.values(n.power).reduce((s, v) => s + v, 0);
+      const top = Object.entries(n.power).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${world.countries[+k - 1]?.name ?? k} ${Math.round((v / tot) * 100)}%`).join(", ");
+      return `<tr><td>${n.name}<br><small>${n.kind} · ${n.cities} cidades</small></td><td>${Math.round((n.power[active] / tot) * 100)}%</td><td><small>${top}</small></td></tr>`;
+    }).join("");
+    return tabs + `<small>Nó comercial não é mercado: é onde o poder comercial (população, portos, estradas, estruturas) disputa o comércio. Mais parte do poder, mais do excedente sai para os parceiros.</small>` +
+      `<table><tr><td><b>Nó</b></td><td><b>Sua parte</b></td><td><b>Maiores</b></td></tr>${nodes || "<tr><td colspan=3><i>Sem nós ainda.</i></td></tr>"}</table>`;
+  }
+  if (mTab === 4) {
+    const rows = BUILDINGS.map((d, b) => ({ d, b, cm: commerceOf(b) })).filter((r) => r.cm).map(({ d, b, cm }) => {
+      const lv = ks.reduce((s, k) => s + k.urban.reduce((t, j) => t + eco.levels[b][j], 0), 0);
+      return `<tr><td>${artSVG("building", d.name, 16)} ${d.name}</td><td>${lv}</td><td>+${cm!.storage}</td><td>+${Math.round(cm!.access * 100)}%</td><td>+${cm!.power}</td></tr>`;
+    }).join("");
+    return tabs + `<small>Construa pelo menu Construções. Cada nível soma estoque por bem, acesso ao mercado nacional (até +40%) e poder comercial no nó.</small>` +
+      `<table><tr><td><b>Estrutura</b></td><td><b>Níveis</b></td><td><b>Estoque</b></td><td><b>Acesso</b></td><td><b>Poder</b></td></tr>${rows}</table>`;
+  }
+  const cx = c.complexity ?? 0, ex = ["Fazenda", "Serraria", "Siderúrgica", "Fábrica de eletrônicos"].map((n) => BUILDINGS.findIndex((d) => d.name === n)).filter((b) => b >= 0);
+  return tabs + `<h3>Complexidade da Economia: ${Math.round(cx)} / 1000</h3><small>Sobe com tecnologias conhecidas, bens diferentes produzidos e urbanização; anda devagar. Não é ineficiência: economia complexa produz mais coisas, mas construir coisas sofisticadas custa mais.</small>` +
+    `<table><tr><td><b>Construção</b></td><td><b>Impacto</b></td><td><b>Custo a mais agora</b></td></tr>${ex.map((b) => `<tr><td>${BUILDINGS[b].name}</td><td>${Math.round(complexityImpact(b) * 100)}%</td><td>+${Math.round((complexityCost(c, b) - 1) * 100)}%</td></tr>`).join("")}</table>` +
+    `<small>Estoque por bem por tamanho de cidade: ${MARKET.storagePerSize}. Impacto = custo a mais com complexidade 1000.</small>`;
 }
 
 function marketHtml() {
