@@ -13,6 +13,8 @@ import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./er
 import { artSVG } from "./art.ts";
 import { deploy, widthOf, BATTLE, type Battle } from "./battle.ts";
 import { levelName, depotHexes, PRIORITIES } from "./logistics.ts";
+import { NAVAL_MISSIONS, missionOfFleet, seaWeather } from "./seawar.ts";
+import { AIR_MISSIONS, airMissionOf } from "./airwar.ts";
 import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, combine, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
@@ -165,6 +167,7 @@ document.addEventListener("change", (ev) => { // construção em massa: escolhas
   const t = ev.target as HTMLInputElement;
   queueMicrotask(() => t.blur()); // escolheu: o painel volta a se atualizar
   if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
+  else if (t.dataset?.mission) { cmd({ t: "mission", id: +t.dataset.mission, m: t.value }); return; }
   else if (t.dataset?.prio) { cmd({ t: "priority", id: +t.dataset.prio, p: +t.value }); return; }
   else if (t.dataset?.ctaxmode) { const k = +t.dataset.ctaxmode; cmd({ t: "classTax", cls: k, mode: t.value as "pct" | "fixed", v: t.value === "pct" ? eco.countries[active - 1].tax : 1 }); return; }
   else if (t.dataset?.ctax) { const k = +t.dataset.ctax, mode = classTaxOf(eco.countries[active - 1], k).mode; cmd({ t: "classTax", cls: k, mode, v: mode === "pct" ? Math.max(0, +t.value) / 100 : Math.max(0, +t.value) }); return; }
@@ -1253,16 +1256,17 @@ let openBattle = 0;
 function battleHtml(b: Battle) {
   const nameOf = (k: number) => world.countries[k - 1]?.name ?? "?";
   const city = eco.market[b.hex] && eco.cities[eco.market[b.hex] - 1]?.hex === b.hex ? eco.cities[eco.market[b.hex] - 1].name : null;
-  const side = (k: number) => eco.divisions.filter((d) => d.kind === "army" && d.country === k && (d.hex === b.hex || d.target === b.hex));
+  const side = (k: number) => b.naval ? eco.divisions.filter((d) => d.kind === "fleet" && d.country === k && world.seaZone[d.hex] === world.seaZone[b.hex])
+    : eco.divisions.filter((d) => d.kind === "army" && d.country === k && (d.hex === b.hex || d.target === b.hex));
   const line = (k: number) => {
-    const { front, reserve } = deploy(side(k), b.frontage, WAR.divisionSize);
+    const { front, reserve } = b.naval ? { front: side(k), reserve: [] as Division[] } : deploy(side(k), b.frontage, WAR.divisionSize); // no mar não há largura de frente
     const row = (ds: Division[]) => ds.map((d) => `<span title="${statsOf(d).name}: ${Math.round(d.strength)} soldados, org. ${pct(d.org)}, moral ${pct(d.morale ?? 1)}" style="display:inline-block;width:${Math.max(8, Math.min(40, widthOf(d, WAR.divisionSize) * 2))}px;height:12px;margin:1px;background:${d.org >= BATTLE.broken ? "var(--blue)" : "#555"};opacity:${0.4 + 0.6 * d.org}"></span>`).join("") || "<small>—</small>";
     return `<div><small>Frente</small> ${row(front)}</div><div><small>Reserva</small> ${row(reserve)}</div>`;
   };
   const mods = (m: [string, number][]) => m.map(([n, v]) => `${n} ${v > 0 ? "+" : ""}${v}`).join(", ") || "sem modificadores";
   const rows = [...b.log].reverse().map((r) => `<tr><td><small>sem. ${r.week} · ${r.round}ª · ${r.phase}</small></td><td><small>dado ${r.att.roll} (${mods(r.att.mods)}) = <b>${r.att.total}</b></small></td><td><small>dado ${r.def.roll} (${mods(r.def.mods)}) = <b>${r.def.total}</b></small></td><td><small>${r.text}</small></td></tr>`).join("");
-  return `<div class="card"><b>Batalha ${city ? `de ${city}` : `em ${TERRAINS[world.terrain[b.hex]].name.toLowerCase()} (${b.hex % W}, ${(b.hex / W) | 0})`}</b> · ${b.state} <button data-battle="0" style="float:right">Fechar</button>` +
-    `<br><small>Desde a semana ${b.start} · frente de ${Math.round(b.frontage)} (${b.dirs} direç${b.dirs > 1 ? "ões" : "ão"} de ataque) · fogo pesa ${pct(BATTLE.fireShare[Math.max(eco.countries[b.attacker - 1].research.era, eco.countries[b.defender - 1].research.era)])}</small>` +
+  return `<div class="card"><b>${b.naval ? `Batalha naval na zona marítima ${world.seaZone[b.hex]}` : `Batalha ${city ? `de ${city}` : `em ${TERRAINS[world.terrain[b.hex]].name.toLowerCase()} (${b.hex % W}, ${(b.hex / W) | 0})`}`}</b> · ${b.state} <button data-battle="0" style="float:right">Fechar</button>` +
+    `<br><small>Desde a semana ${b.start} · ${b.naval ? `mar ${seaWeather(world, b.hex, eco.week)}` : `frente de ${Math.round(b.frontage)}`} (${b.dirs} direç${b.dirs > 1 ? "ões" : "ão"} de ataque) · fogo pesa ${pct(BATTLE.fireShare[Math.max(eco.countries[b.attacker - 1].research.era, eco.countries[b.defender - 1].research.era)])}</small>` +
     `<table><tr><td><b>Atacante: ${nameOf(b.attacker)}</b><br><small>${Math.round(b.startAtt)} soldados no início · ${Math.round(b.deadAtt)} baixas</small>${line(b.attacker)}</td>` +
     `<td><b>Defensor: ${nameOf(b.defender)}</b><br><small>${Math.round(b.startDef)} soldados no início · ${Math.round(b.deadDef)} baixas</small>${line(b.defender)}</td></tr></table>` +
     `<h3>Rolagens</h3><table><tr><td></td><td><b>Atacante</b></td><td><b>Defensor</b></td><td><b>Resultado</b></td></tr>${rows}</table></div>`;
@@ -1463,10 +1467,12 @@ function divisionHtml() {
     const region = airRegion(eco, d.target ?? d.hex);
     const name = region >= STATES.regionBase ? eco.states.find((x) => x.id === region - STATES.regionBase)?.name ?? "—" : region >= 0 ? eco.cities[region].name : "—";
     return `<div class="unit"><b><i class=i-plane></i> ${craftOf(PLANES, d.unit).name} ${d.id}</b> · ${d.target === null ? "defendendo a base" : "missão"}: região de ${name}` +
-      `<br>Pilotos ${Math.round(d.strength)}/${AIR.pilots} · org. ${pct(d.org)} · alcance ${AIR.range} hexes <small>(botão direito = região de missão)</small> <button data-act="disband">Desfazer</button></div>`;
+      `<br>Pilotos ${Math.round(d.strength)}/${AIR.pilots} · org. ${pct(d.org)} · prontidão ${pct(d.ready ?? 1)} <small>(combustível × tempo)</small> · alcance ${AIR.range} hexes <small>(botão direito = região de missão)</small>` +
+      (d.country === active ? `<br>Missão <select data-mission="${d.id}">${AIR_MISSIONS.map((m) => `<option${airMissionOf(d) === m ? " selected" : ""}>${m}</option>`).join("")}</select>` : "") + ` <button data-act="disband">Desfazer</button></div>`;
   }
   if (d.kind === "fleet") return `<div class="unit"><b><i class=i-ship></i> ${craftOf(SHIPS, d.unit).name} ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
-    `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · <small>leva exércitos nessa zona</small> <button data-act="disband">Desfazer</button></div>`;
+    `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · mar ${seaWeather(world, d.hex, eco.week)} · <small>leva exércitos nessa zona</small>` +
+    (d.country === active ? `<br>Missão <select data-mission="${d.id}">${NAVAL_MISSIONS.map((m) => `<option${missionOfFleet(d) === m ? " selected" : ""}>${m}</option>`).join("")}</select>` : "") + ` <button data-act="disband">Desfazer</button></div>`;
   const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
   const u = statsOf(d), gen = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined;
   return `<div class="unit"><b><i class=i-military></i> ${u.name} ${d.id}</b> <small>${u.cat} · ataque ${u.atk} · defesa ${u.def}</small> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +

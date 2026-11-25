@@ -146,9 +146,68 @@ A ficha do exército mostra o tempo onde ele está.
 - **Prioridade:** cada exército pode ter uma (Emergência, Frente de batalha, Em preparação, Guarnição, Reserva, Treinamento). Sem escolha, quem está em combate é Frente e o resto é Guarnição. Com pouca capacidade, a prioridade maior recebe primeiro.
 - **Camada de mapa "Suprimento"** (grupo Militar): distância ao depósito mais perto pelo alcance. Verde é completo, amarelo é reduzido, laranja é crítico e vermelho está além do alcance.
 
+## Guerra naval (src/seawar.ts)
+
+**Tempo no mar** (por zona marítima, latitude e estação):
+
+| Tempo | Onde e quando |
+|---|---|
+| Tempestade | mais comum em latitude alta no inverno e nos trópicos no verão (ciclones) |
+| Nevoeiro | — |
+| Mar agitado | — |
+| Gelo | perto dos polos no inverno |
+
+**Batalha naval:**
+- É uma batalha como a terrestre: 2 rodadas por semana, 1d10 por lado e histórico de rolagens. Aparece na mesma lista de batalhas, como "Batalha naval na zona X".
+- Modificadores:
+  - tecnologia naval;
+  - emboscada submarina (+1 na 1ª rodada, para o lado com 30% ou mais de submarinos contra quem não tem);
+  - aviação embarcada (+1 com porta-aviões contra quem não tem);
+  - missão de superioridade, que busca o combate (+1);
+  - tempestade (−1 para os dois e perdas pela metade);
+  - nevoeiro (−1).
+- A frota derrotada volta ao porto para reparo. Sem porto para onde ir, afunda.
+
+**Missões de frota** (na ficha da frota):
+
+| Missão | Efeito |
+|---|---|
+| Superioridade naval (padrão) | busca o combate |
+| Patrulha | sem efeito próprio ainda |
+| Escolta de comboios | +30% no suprimento além-mar |
+| Bloqueio | sem efeito próprio ainda (o bloqueio de cidades continua automático) |
+| Bombardeio costeiro | +1 na batalha terrestre de um hex colado à zona |
+| Defesa costeira | sem efeito próprio ainda |
+
+**Suprimento além-mar (comboio):**
+- Vale para o exército num continente diferente do depósito mais perto.
+- Recebe 60% do que receberia, 90% com escolta.
+- Frota inimiga ou submarino por perto interceptam até 60%, e submarino pesa 1,5×.
+- Tempestade na costa corta mais 30%.
+- Tomar uma cidade ou fazer um depósito no próprio continente (abastecimento local) acaba com a dependência.
+
+## Guerra aérea (src/airwar.ts)
+
+**Prontidão de cada esquadrão** = combustível da capital × tempo.
+- Sem combustível, não voa.
+- Chuva, neblina, neve, lama ou tempestade na região reduzem para 60%.
+- O poder no céu e a superioridade aérea usam a prontidão.
+- A IA só forma esquadrão se a capital tiver combustível.
+
+**Missões** (na ficha do esquadrão; a região é a de sempre, com o botão direito):
+
+| Missão | Efeito |
+|---|---|
+| Superioridade aérea (padrão) | disputa o céu |
+| Apoio aéreo | +1 na batalha terrestre da região, com céu de pelo menos metade |
+| Bombardeio estratégico | −15% de produção nas cidades inimigas da região por 2 semanas |
+| Reconhecimento | o país não sofre emboscada na região |
+| Abastecimento aéreo | +0,3 semana de comida no estoque dos exércitos da região |
+
 ## Ainda falta (docs/proximos-sistemas.md)
 
-- **Rotas:** com capacidade própria por estrada, ferrovia ou rio e interrupção por ocupação. Hoje a distância é em linha reta até o depósito, e a capacidade é do país.
-- **Exército:** reconhecimento como atributo e engenheiros.
-- **Naval e aéreo:** comboios, bloqueio de abastecimento ultramarino, bases e combustível de avião.
-- **Interface:** painel de atrito com filtros e caminho do suprimento até o exército selecionado.
+- **Rotas:** com capacidade por estrada, ferrovia ou rio e interrupção por ocupação.
+- **Navios novos:** de transporte, cargueiros, navios-tanque e contratorpedeiros (hoje só os 6 navios existentes). Minas.
+- **Avião:** alcance por combustível, bombardeiro separado do caça e defesa antiaérea.
+- **Missões:** efeito próprio para patrulha, bloqueio e defesa costeira.
+- **Interface:** painel de atrito com filtros e caminho do suprimento.

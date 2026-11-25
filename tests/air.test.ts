@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createEconomy, tick } from "../src/economy.ts";
+import { createEconomy, tick, GOODS } from "../src/economy.ts";
 import { buildAir, orderMove, stepWar, declareWar, recruit, airSuperiority, airRegion, AIR, WAR } from "../src/war.ts";
 import { generateWorld, isLand } from "../src/world.ts";
 import { forNeighbors, hexDistance } from "../src/hex.ts";
@@ -32,6 +32,7 @@ const fight = (withAir: boolean) => {
   const atk = (recruit(w, e, B, capB), e.divisions.filter((d) => d.kind === "army" && d.country === B).at(-1)!);
   atk.hex = from; orderMove(w, e, atk.id, defendHex);
   const def = e.divisions.find((d) => d.kind === "army" && d.country === A)!;
+  e.cities[0].market.supply[GOODS.indexOf("Combustível")] = 100; // sem combustível o avião não voa (airwar.ts)
   stepWar(w, e);
   return WAR.divisionSize - atk.strength; // baixas do atacante
 };
@@ -45,6 +46,7 @@ assert.equal(buildAir(w, e, B, capB), null);
 const airB = e.divisions.find((d) => d.kind === "air" && d.country === B)!;
 airB.hex = capA; // base perto, só para o teste
 assert.equal(orderMove(w, e, airB.id, capA), null);
+for (const k of e.cities) k.market.supply[GOODS.indexOf("Combustível")] = 100; // os dois lados com combustível
 stepWar(w, e);
 assert.ok(air.strength < AIR.pilots && airB.strength < AIR.pilots, "combate aéreo sem perdas");
 // base em cidade que não é sua (aqui, a de A): o esquadrão volta para a capital e para de voar a missão

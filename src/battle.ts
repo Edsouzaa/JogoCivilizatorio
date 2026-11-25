@@ -44,12 +44,18 @@ export const BATTLE = {
   inspireMorale: 0.7,    // general inspirador: moral cai mais devagar
 };
 
+/** Ganchos de outros módulos (war.ts liga): modificadores extras por lado e reconhecimento aéreo do atacante. */
+export const BATTLE_HOOKS = {
+  extra: [] as ((w: World, e: Economy, b: Battle, country: number, side: "att" | "def") => [string, number][])[],
+  recon: (_e: Economy, _hex: number, _country: number) => false,
+};
 export type SideRoll = { roll: number; mods: [string, number][]; total: number };
 export type RoundLog = { week: number; round: number; phase: "fogo" | "choque"; att: SideRoll; def: SideRoll; text: string };
 export type Battle = {
   id: number; hex: number; attacker: number; defender: number; start: number; last: number;
   dirs: number; frontage: number; state: "combate" | "vitória do atacante" | "vitória do defensor" | "encerrada";
   startAtt: number; startDef: number; deadAtt: number; deadDef: number; log: RoundLog[];
+  naval?: boolean; // batalha de frotas numa zona marítima (seawar.ts)
 };
 
 /** Largura que a divisão ocupa na frente (pela categoria e pelo tamanho em divisões cheias). */
@@ -104,6 +110,7 @@ function modsOf(w: World, e: Economy, b: Battle, ds: Division[], side: "att" | "
   if ((wx === "neblina" || wx === "neve") && side === "att") mods.push([wx === "neve" ? "Neve" : "Neblina", -1]);
   if (wx === "lama" && phase === "choque" && shareOf(ds, ["Montaria", "Blindados"]) > 0.3) mods.push(["Lama", -1]);
   if (wx === "calor" && side === "att") mods.push(["Calor", -1]);
+  for (const f of BATTLE_HOOKS.extra) mods.push(...f(w, e, b, ds[0].country, side));
   const tech = (x: Division[]) => Math.max(0, ...x.map((d) => techSum(e.countries[d.country - 1].research, "army")));
   const dt = Math.round((tech(ds) - tech(enemy)) * 2);
   if (dt) mods.push(["Tecnologia", Math.max(-3, Math.min(3, dt))]);
@@ -130,10 +137,10 @@ function modsOf(w: World, e: Economy, b: Battle, ds: Division[], side: "att" | "
 }
 
 /** Eventos de combate da fase: só acontecem se a situação permitir; cada um vira um modificador no histórico. */
-function events(w: World, b: Battle, phase: "fogo" | "choque", round: number, att: Division[], def: Division[], rand: () => number, ma: [string, number][], md: [string, number][]) {
+function events(w: World, e: Economy, b: Battle, phase: "fogo" | "choque", round: number, att: Division[], def: Division[], rand: () => number, ma: [string, number][], md: [string, number][]) {
   const terr = w.terrain[b.hex], open = [T.PLAINS, T.GRASS, T.STEPPE, T.SAVANNA].includes(terr), cover = [T.FOREST, T.JUNGLE, T.HILLS, T.TAIGA].includes(terr);
   const out: string[] = [];
-  if (round === 0 && phase === "fogo" && b.log.length === 0 && cover && shareOf(att, ["Montaria"]) === 0 && rand() < BATTLE.ambush.chance) { ma.push(["Emboscada", BATTLE.ambush.mod]); out.push("Emboscada!"); }
+  if (round === 0 && phase === "fogo" && b.log.length === 0 && cover && shareOf(att, ["Montaria"]) === 0 && !BATTLE_HOOKS.recon(e, b.hex, b.attacker) && rand() < BATTLE.ambush.chance) { ma.push(["Emboscada", BATTLE.ambush.mod]); out.push("Emboscada!"); }
   const sides: [Division[], [string, number][], Division[], string][] = [[att, ma, def, "atacante"], [def, md, att, "defensor"]];
   for (const [ds, mods, enemy, who] of sides) {
     if (phase === "choque" && open && shareOf(ds, ["Montaria"]) >= BATTLE.charge.share && rand() < BATTLE.charge.chance) {
@@ -182,7 +189,7 @@ export function resolveBattles(w: World, e: Economy, battles: Map<number, Divisi
         const air = airMod(hex, A, D); // superioridade aérea: −1..+1 para o atacante
         const ma = modsOf(w, e, b, att.front, "att", def.front, riverAtt, phase), md = modsOf(w, e, b, def.front, "def", att.front, riverAtt, phase);
         if (air) { ma.push(["Céu", air]); md.push(["Céu", -air]); }
-        const happened = events(w, b, phase, r, att.front, def.front, rand, ma, md);
+        const happened = events(w, e, b, phase, r, att.front, def.front, rand, ma, md);
         const ra = 1 + Math.floor(rand() * 10), rd = 1 + Math.floor(rand() * 10);
         const ta = Math.max(1, ra + ma.reduce((s, [, v]) => s + v, 0)), td = Math.max(1, rd + md.reduce((s, [, v]) => s + v, 0));
         const pa = phasePower(e, att.front, "atk", phase), pd = phasePower(e, def.front, "def", phase);

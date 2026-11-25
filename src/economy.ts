@@ -2,6 +2,7 @@ import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, typ
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
 import { econ, debtCap } from "./eramods.ts";
+import { AIRW } from "./airwar.ts";
 import type { Battle } from "./battle.ts";
 import { demandOf, type Supply } from "./logistics.ts";
 import { collectTaxes, record, resetBook, setPopDemand, type ClassTax, type ActiveTax } from "./budget.ts";
@@ -270,6 +271,7 @@ export type City = {
   harbor?: number;      // nível do porto (0 = sem porto): mais comércio, até o máximo da era
   coast?: boolean;      // algum centro urbano encosta no mar (pode ter porto)
   road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
+  bombed?: number;      // bombardeio estratégico: produção menor até esta semana (airwar.ts)
   popMark?: number;     // população da cidade no último hex ganho (ou na fundação): base do próximo crescimento
   navalWeek?: number;   // pontos navais dos estaleiros da cidade nesta semana (naval.ts)
   picked?: number[];    // centros urbanos comprados, na ordem (o resto do tamanho vem dos hexes mais perto)
@@ -346,6 +348,8 @@ export type Division = {
   fatigue?: number;                        // 0..1: cansaço da marcha (logistics.ts)
   supply?: Supply;                         // abastecimento da semana (logistics.ts)
   stock?: { food: number; ammo: number; fuel: number }; // estoque do exército em semanas
+  mission?: string;                        // frota (seawar.ts NAVAL_MISSIONS) ou esquadrão (airwar.ts AIR_MISSIONS)
+  ready?: number;                          // esquadrão: prontidão da semana (combustível × tempo)
   priority?: number;                       // prioridade de abastecimento 1..6 (logistics.ts PRIORITIES); sem = automática
   general?: number;                        // id do personagem que comanda (characters.ts)
   supplied?: boolean;                      // exército: tinha suprimento na última semana (war.ts)
@@ -878,7 +882,7 @@ export function tick(w: World, e: Economy) {
       } else mult += lv * def.mult!;
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
-    const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals) * (0.5 + 0.5 * (c.upkeepPaid ?? 1)); // sem manutenção paga, produz menos
+    const penalty = ((e.cities[k - 1].bombed ?? -1) >= e.week ? 1 - AIRW.bombing : 1) * (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals) * (0.5 + 0.5 * (c.upkeepPaid ?? 1)); // sem manutenção paga, produz menos
     const natural = (hasIncentive(e, k - 1, "Isenção fiscal") ? 1.15 : 1) * (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // pouco controle: parte some no caminho
     const f = mult * staffing * penalty * natural;
     for (const [gi, q] of out) m.supply[gi] += q * f;
@@ -962,6 +966,8 @@ export function tick(w: World, e: Economy) {
 
   const ARMS = g("Armas"); // exércitos compram armas no mercado da capital
   for (const d of e.divisions) if (d.kind === "army") { const m = e.cities.find((k) => k.country === d.country)?.market; if (!m) continue; m.demand[ARMS] += ARMS_PER_DIVISION; for (const [gi, q] of demandOf(e, d)) m.demand[gi] += q; } // armas e suprimentos do exército (logistics.ts)
+  const FUEL = g("Combustível");
+  for (const d of e.divisions) if (d.kind === "air") { const m = e.cities.find((k) => k.country === d.country)?.market; if (m) m.demand[FUEL] += AIRW.fuel; } // aviões queimam combustível
 
   e.cities.forEach((city) => {
     const m = city.market;

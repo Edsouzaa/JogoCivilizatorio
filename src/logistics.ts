@@ -55,7 +55,7 @@ export function demandOf(e: Economy, d: Division): [number, number][] {
  * Uma vez por semana, depois do mercado: distribui o suprimento. Exércitos em batalha recebem primeiro, depois os mais perto
  * do depósito. `depotDist` = distância ao depósito; `range` = alcance da logística do país; `fighting` = em combate.
  */
-export function stepSupply(w: World, e: Economy, depotDist: (d: Division) => number, range: (country: number) => number, fighting: Set<Division>) {
+export function stepSupply(w: World, e: Economy, depotDist: (d: Division) => number, range: (country: number) => number, fighting: Set<Division>, seaRoute: (d: Division) => number = () => 1) {
   const armies = e.divisions.filter((d) => d.kind === "army" && w.terrain[d.hex] !== T.OCEAN);
   const byCountry = new Map<number, Division[]>();
   for (const d of armies) { if (!byCountry.has(d.country)) byCountry.set(d.country, []); byCountry.get(d.country)!.push(d); }
@@ -74,7 +74,7 @@ export function stepSupply(w: World, e: Economy, depotDist: (d: Division) => num
     for (const { d, dist } of order) {
       const gen = d.general ? e.characters?.find((x) => x.id === d.general) : undefined, logi = gen && styleOf(gen) === "Logístico" ? LOGI.logisticStyle : 0;
       const wx = weatherAt(w, d.hex, e.week), mud = wx === "lama" || wx === "neve" ? LOGI.badWeather : 0; // lama e neve atrasam carroças e caminhões
-      const r = range(country), eff = dist <= r ? Math.min(1, (1 - LOGI.rangeLoss * dist / Math.max(1, r)) * (1 + rail + logi) * (1 - mud)) : 0;
+      const r = range(country), eff = dist <= r ? Math.min(1, (1 - LOGI.rangeLoss * dist / Math.max(1, r)) * (1 + rail + logi) * (1 - mud)) * seaRoute(d) : 0; // além-mar: comboio
       const share = Math.min(1, capacity / Math.max(1, d.strength)); // capacidade de transporte do país (não se usa duas vezes)
       capacity = Math.max(0, capacity - d.strength * eff);
       const reserve = LOGI.reserveWeeks + c.research.era / 2, s = (d.stock ??= { food: reserve / 2, ammo: reserve / 2, fuel: reserve / 2 });

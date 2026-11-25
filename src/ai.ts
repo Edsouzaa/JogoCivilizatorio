@@ -1,3 +1,4 @@
+import { AIRW } from "./airwar.ts";
 import { setWarEconomy, setConversion } from "./wareconomy.ts";
 import { orderShip, navalQueueOf, yardTier, SHIP_YARD } from "./naval.ts";
 // IA dos países que não têm jogador. Decide uma vez por mês, com regras simples e baratas:
@@ -7,7 +8,7 @@ import { queueBuild, queueOf, privateShare } from "./construction.ts";
 import {
   build, buildCost, buildingsFor, outputOf, buildRoad, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
-  SECTOR, BASE_PRICE,
+  SECTOR, BASE_PRICE, GOODS,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { LAWS, lawSupport, proposeLaw, lawOf } from "./politics.ts";
@@ -199,7 +200,7 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
 
   // força aérea: um esquadrão a cada 3 cidades
   const wings = e.divisions.filter((d) => d.kind === "air" && d.country === country);
-  if (c.research.known.has(AIR.tech) && wings.length < Math.ceil(mine.length / 3) && c.treasury > AIR.cost * AI.reserve && c.manpower >= AIR.pilots) buildAir(w, e, country, mine[0].hex, bestCraft(PLANES, c.research.known).name);
+  if (c.research.known.has(AIR.tech) && wings.length < Math.ceil(mine.length / 3) && c.treasury > AIR.cost * AI.reserve && c.manpower >= AIR.pilots && mine[0].market.supply[GOODS.indexOf("Combustível")] > AIRW.fuel * (wings.length + 1)) buildAir(w, e, country, mine[0].hex, bestCraft(PLANES, c.research.known).name); // sem combustível, avião não voa (airwar.ts)
 
   const enemies = e.countries.map((_, k) => k + 1).filter((b) => atWar(e, country, b));
   for (const b of enemies) { // paz quando decidiu ou se arrastou

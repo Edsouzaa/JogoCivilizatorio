@@ -1,4 +1,6 @@
-import { resolveBattles, entrench, setRiverCheck } from "./battle.ts";
+import { resolveNaval, convoyFactor, bombardMods } from "./seawar.ts";
+import { stepAir, airSupport, airRecon, AIRW } from "./airwar.ts";
+import { resolveBattles, entrench, setRiverCheck, BATTLE_HOOKS } from "./battle.ts";
 import { stepSupply, attrition, depotHexes } from "./logistics.ts";
 import { lawFx } from "./politics.ts";
 import { econ, spend } from "./eramods.ts";
@@ -84,7 +86,7 @@ export function buildAir(w: World, e: Economy, country: number, hex: number, pla
   return null;
 }
 
-const airPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "air")) * craftOf(PLANES, d.unit).power, 0);
+const airPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (d.ready ?? 1) * (1 + techSum(e.countries[d.country - 1].research, "air")) * craftOf(PLANES, d.unit).power, 0); // sem combustível ou com tempo ruim, voa menos
 
 /** Superioridade aérea de `a` sobre `b` numa região (0..1; 0,5 se ninguém voa lá). */
 export function airSuperiority(e: Economy, region: number, a: number, b: number) {
@@ -238,6 +240,13 @@ export function nextStep(w: World, from: number, target: number, ok: (i: number)
 
 /** Há rio na borda entre dois hexes vizinhos? */
 setRiverCheck(crossesRiver); // battle.ts usa sem importar war.ts (função declarada: já existe aqui)
+// batalha terrestre: bombardeio naval e apoio aéreo dão modificador; reconhecimento aéreo evita emboscada
+BATTLE_HOOKS.extra.push((w, e, b, country) => bombardMods(w, e, b, country));
+BATTLE_HOOKS.extra.push((_w, e, b, country) => {
+  const r = airRegion(e, b.hex), enemy = country === b.attacker ? b.defender : b.attacker;
+  return airSupport(e, r, country, (h) => airRegion(e, h)) && airSuperiority(e, r, country, enemy) >= 0.5 ? [["Apoio aéreo", AIRW.support]] : [];
+});
+BATTLE_HOOKS.recon = (e, hex, country) => airRecon(e, airRegion(e, hex), country, (h) => airRegion(e, h));
 export function crossesRiver(w: World, a: number, b: number) {
   for (let k = 0; k < 6; k++) if (across(w.W, w.H, a, k) === b) return riverAt(w, a, k) === 1;
   return false;
@@ -274,7 +283,6 @@ export function splitRegiment(e: Economy, country: number, id: number): string |
 }
 
 /** Força de combate: soldados × organização × armas × tecnologia militar do país. */
-const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "fleet")) * craftOf(SHIPS, d.unit).power, 0);
 
 /** Tira baixas das divisões proporcionalmente à força, e a mesma gente da população da capital. */
 function takeLosses(w: World, e: Economy, ds: Division[], losses: number) {
@@ -391,6 +399,7 @@ export function stepWar(w: World, e: Economy) {
     changed = true;
   });
 
+  stepAir(w, e, (h) => airRegion(e, h), (a, b) => atWar(e, a, b)); // prontidão (combustível, tempo) e missões (airwar.ts)
   // combate aéreo: em cada região, esquadrões de países em guerra se derrubam
   const airIn = new Map<number, Division[]>();
   for (const d of e.divisions) if (d.kind === "air") { const r = missionOf(e, d); if (!airIn.has(r)) airIn.set(r, []); airIn.get(r)!.push(d); }
@@ -420,28 +429,10 @@ export function stepWar(w: World, e: Economy) {
     (hex, a, b) => Math.round((2 * airSuperiority(e, airRegion(e, hex), a, b) - 1) * 10) / 10);
   for (const d of landFights) fighting.add(d);
 
-  // combate naval: em cada zona marítima, frotas de países em guerra lutam entre si
+  // combate naval com dados, tempo do mar, submarinos e porta-aviões (seawar.ts)
+  for (const f of resolveNaval(w, e, (a, b) => atWar(e, a, b), (ds, n) => takeLosses(w, e, ds, n), (k) => homePort(w, e, k))) fighting.add(f);
   const fleetsIn = new Map<number, Division[]>();
   for (const d of e.divisions) if (d.kind === "fleet") { const z = w.seaZone[d.hex]; if (!fleetsIn.has(z)) fleetsIn.set(z, []); fleetsIn.get(z)!.push(d); }
-  for (const fs of fleetsIn.values()) {
-    const cs = [...new Set(fs.map((f) => f.country))];
-    for (const a of cs) for (const b of cs) {
-      if (a >= b || !atWar(e, a, b)) continue;
-      const A = fs.filter((f) => f.country === a && f.strength >= 1), B = fs.filter((f) => f.country === b && f.strength >= 1);
-      if (!A.length || !B.length) continue;
-      const pa = fleetPower(e, A), pb = fleetPower(e, B);
-      takeLosses(w, e, B, pa * WAR.casualties);
-      takeLosses(w, e, A, pb * WAR.casualties);
-      for (const f of A) f.org = Math.max(0, f.org - WAR.orgLoss * (pb / (pa || 1)));
-      for (const f of B) f.org = Math.max(0, f.org - WAR.orgLoss * (pa / (pb || 1)));
-      for (const f of [...A, ...B]) {
-        fighting.add(f);
-        if (f.org >= WAR.brokenOrg) continue;
-        const home = homePort(w, e, f.country); // frota derrotada volta para o porto, ou afunda
-        if (home < 0 || w.seaZone[home] === w.seaZone[f.hex]) f.strength = 0; else { f.hex = home; f.target = null; }
-      }
-    }
-  }
   // exército no mar sem frota própria na zona e com frota inimiga: afunda
   for (const d of e.divisions) {
     if (d.kind !== "army" || w.terrain[d.hex] !== T.OCEAN) continue;
@@ -459,7 +450,7 @@ export function stepWar(w: World, e: Economy) {
     }
   }
 
-  stepSupply(w, e, (d) => depotDistance(w, e, d), (k) => supplyRange(e, k), fighting); // logística terrestre (logistics.ts)
+  stepSupply(w, e, (d) => depotDistance(w, e, d), (k) => supplyRange(e, k), fighting, (d) => convoyFactor(w, e, d, nearestDepot(w, e, d), (a, b) => atWar(e, a, b))); // logística terrestre; além-mar depende de comboio (seawar.ts)
   for (const d of e.divisions) {
     if (d.kind === "settler") { // colonos longe das cidades ficam sem suprimentos e vão morrendo
       if (settlerDistance(w, e, d) > RULES.settlerSupplyRange) d.strength -= Math.max(0.5, d.strength * RULES.settlerAttrition);
@@ -489,6 +480,15 @@ export function stepWar(w: World, e: Economy) {
 /** Alcance do abastecimento em hexes: cresce com a era (carroças → ferrovias → caminhões). */
 export const supplyRange = (e: Economy, country: number) => WAR.supplyBase + WAR.supplyPerEra * e.countries[country - 1].research.era;
 /** Distância até o depósito mais perto: cidade do país ou cidade inimiga que ele ocupa (vira base de suprimento). */
+/** Depósito mais perto do exército (hex), ou −1. */
+export function nearestDepot(w: World, e: Economy, d: Division) {
+  let best = -1, bd = Infinity;
+  for (const h of [...e.cities.filter((k) => k.country === d.country || e.occupier[k.hex] === d.country).map((k) => k.hex), ...depotHexes(w, e, d.country), ...(e.outposts ?? []).filter((o) => o.country === d.country).map((o) => o.hex)]) {
+    const dd = hexDistance(d.hex % w.W, (d.hex / w.W) | 0, h % w.W, (h / w.W) | 0, w.W);
+    if (dd < bd) { bd = dd; best = h; }
+  }
+  return best;
+}
 export function depotDistance(w: World, e: Economy, d: Division) {
   let best = Infinity;
   const hexes = [...e.cities.filter((k) => k.country === d.country || e.occupier[k.hex] === d.country).map((k) => k.hex), ...depotHexes(w, e, d.country),

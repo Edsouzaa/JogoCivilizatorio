@@ -1,3 +1,5 @@
+import { NAVAL_MISSIONS } from "./seawar.ts";
+import { AIR_MISSIONS } from "./airwar.ts";
 import { setClassTax, setSpecificTax } from "./budget.ts";
 import { mergeArmies, splitRegiment } from "./war.ts";
 import { setWarEconomy, setConversion } from "./wareconomy.ts";
@@ -33,6 +35,7 @@ export type Cmd =
   | { t: "warEconomy"; level: number } | { t: "conversion"; on: boolean } // economia de guerra (wareconomy.ts)
   | { t: "merge"; ids: number[] } | { t: "split"; id: number } // regimentos (war.ts)
   | { t: "priority"; id: number; p: number } // prioridade de abastecimento (logistics.ts)
+  | { t: "mission"; id: number; m: string } // missão de frota ou esquadrão (seawar.ts, airwar.ts)
   | { t: "classTax"; cls: number; mode: "pct" | "fixed"; v: number } | { t: "tax"; id: string; rate: number } // orçamento (budget.ts)
   | { t: "method"; hex: number; b: number; cat: number; k: number; all?: boolean } // método de produção (all: todos os edifícios b do país)
   | { t: "privatize"; hex: number; b: number; n: number } | { t: "nationalize"; hex: number; b: number; n: number }
@@ -173,6 +176,13 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "classTax": return (c.mode === "pct" || c.mode === "fixed") && Number.isFinite(c.v) ? setClassTax(e.countries[country - 1], c.cls, { mode: c.mode, v: c.v }) : "Imposto inválido";
     case "tax": return typeof c.id === "string" && Number.isFinite(c.rate) ? setSpecificTax(e, e.countries[country - 1], c.id, c.rate) : "Tributo inválido";
     case "priority": { const d = own(c.id); if (!d) return "Unidade não é sua"; d.priority = isInt(c.p, 1) && c.p <= 6 ? c.p : undefined; return null; }
+    case "mission": {
+      const d = own(c.id);
+      if (!d || (d.kind !== "fleet" && d.kind !== "air")) return "Frota ou esquadrão inválido";
+      const ok = (d.kind === "fleet" ? NAVAL_MISSIONS : AIR_MISSIONS) as readonly string[];
+      if (!ok.includes(c.m)) return "Missão inválida";
+      d.mission = c.m; return null;
+    }
     case "merge": return Array.isArray(c.ids) && c.ids.length <= 200 && c.ids.every((x) => isInt(x, 1)) ? mergeArmies(e, country, c.ids) : "Pedido inválido";
     case "split": return isInt(c.id, 1) ? splitRegiment(e, country, c.id) : "Pedido inválido";
     case "warEconomy": return setWarEconomy(e, country, c.level, [...e.wars].some((k) => k.split("-").includes(String(country))));
