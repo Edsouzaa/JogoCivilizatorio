@@ -10,7 +10,7 @@ import { stepFirms, privateShareOf, type FirmRun, type Ledger } from "./firms.ts
 import { stepConstruction, methodInputs, sectorMethod, CONSTRUCTION_METHODS, type Project } from "./construction.ts";
 import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, computeQol, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
-import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
+import { lawFx, newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 import type { Flag } from "./flags.ts";
 import { makeName } from "./names.ts";
@@ -158,7 +158,7 @@ export function growPopulation(w: World, e: Economy) {
     for (const f of FOOD) { have += m.supply[f]; need += m.pop * POP_DEMAND[f]; }
     const ratio = need > 0 ? have / need : 0, c = e.countries[k.country - 1];
     const food = Math.max(0, Math.min(1, (ratio - GROWTH.foodMin) / (GROWTH.foodFull - GROWTH.foodMin)));
-    return (food * GROWTH.yearly * (1 + techSum(c.research, "growth")) * (e.plague?.[ci] ? 0 : 1)) / 13; // 13 meses de 4 semanas
+    return (food * GROWTH.yearly * (1 + techSum(c.research, "growth") + lawFx(c.politics, "growth", c.control)) * (e.plague?.[ci] ? 0 : 1)) / 13; // 13 meses de 4 semanas
   });
   for (const i of e.owned) {
     const k = e.market[i];
@@ -167,7 +167,7 @@ export function growPopulation(w: World, e: Economy) {
     if (!k) { // sem cidade: só a comida da própria terra (subsistência) conta
       const c = e.countries[w.owner[i] - 1];
       const ratio = TERRAINS[w.terrain[i]].fertility * RULES.subsistence * (1 + techSum(c.research, "subsistence")) * (w.river[i] ? 1.25 : 1);
-      r = (Math.max(0, Math.min(1, (ratio - GROWTH.foodMin) / (GROWTH.foodFull - GROWTH.foodMin))) * GROWTH.yearly * (1 + techSum(c.research, "growth"))) / 13;
+      r = (Math.max(0, Math.min(1, (ratio - GROWTH.foodMin) / (GROWTH.foodFull - GROWTH.foodMin))) * GROWTH.yearly * (1 + techSum(c.research, "growth") + lawFx(c.politics, "growth", c.control))) / 13;
     }
     if (!r) continue;
     const cap = popCap(w, e, i);
@@ -756,14 +756,15 @@ function updatePops(e: Economy, c: Country, country: number) {
 // shortcut: qualquer distância e para um único destino; trocar por vizinhos/rotas quando houver fronteiras e comércio exterior.
 export function migrate(w: World, e: Economy) {
   const qol = e.countries.map((c) => lowerClassQol(c.pops));
+  const open = e.countries.map((c) => 1 + lawFx(c.politics, "immigration")); // lei de Imigração: 0 = fronteiras fechadas
   const dest = e.countries.map((_, a) => {
     let best = -1;
-    e.countries.forEach((_, b) => { if (b !== a && (best < 0 || qol[b] > qol[best])) best = b; });
+    e.countries.forEach((_, b) => { if (b !== a && open[b] > 0 && (best < 0 || qol[b] > qol[best])) best = b; });
     return best;
   });
   const rate = e.countries.map((_, a) => {
     const diff = dest[a] < 0 ? 0 : qol[dest[a]] - qol[a];
-    return diff < RULES.migrationMinQol ? 0 : RULES.migrationMonth * Math.min(1, diff / 50);
+    return diff < RULES.migrationMinQol ? 0 : RULES.migrationMonth * Math.min(1, diff / 50) * Math.min(1.5, open[dest[a]]);
   });
   const inflow = new Float64Array(e.countries.length), outflow = new Float64Array(e.countries.length);
   for (const i of e.owned) {
@@ -999,10 +1000,10 @@ export function tick(w: World, e: Economy) {
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
     updatePops(e, c, ci + 1);
     c.control = c.pop ? ctrlCountry[ci] / c.pop : 1;
-    const cap = c.pop * c.control * (RULES.manpowerShare + techSum(c.research, "manpower")) - c.pops.count[P["Soldados"]];
+    const cap = c.pop * c.control * Math.max(0.05, RULES.manpowerShare + techSum(c.research, "manpower") + lawFx(c.politics, "manpower", c.control)) - c.pops.count[P["Soldados"]];
     c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen);
     updatePolitics(c.politics, c.pops, c.research.era);
-    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest") + (c.culturePenalty ?? 0)); // + minorias não aceitas
+    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest") + lawFx(c.politics, "unrest", c.control) + (c.culturePenalty ?? 0)); // + leis + minorias não aceitas
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     const ideas = Math.min(0.3, 0.1 * (e.incentives ?? []).filter((x) => x.kind === "Impor ideias" && e.cities[x.city]?.country === ci + 1).length);
@@ -1011,7 +1012,7 @@ export function tick(w: World, e: Economy) {
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
     const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01);
     c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);
-    c.researchWeek = (1 + RULES.literacyResearch * c.literacy) * (RULES.researchBase + Math.sqrt(c.pop / RULES.researchPerPop) + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
+    c.researchWeek = (1 + RULES.literacyResearch * c.literacy + lawFx(c.politics, "research", c.control)) * (RULES.researchBase + Math.sqrt(c.pop / RULES.researchPerPop) + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
     if (c.research.era === 0) { // comércio puxa a tribo para fora do isolamento, mas não garante
       let partners = 0;
       for (const key of e.pacts) if (key.split("-").includes(String(ci + 1))) partners++;

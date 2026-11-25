@@ -1471,6 +1471,13 @@ function lawEffect(l: Law, cat: string, p: Politics) {
   }
   if (l.invest !== undefined) parts.push(`investidores privados recebem ${pct(l.invest)} do PIB para construir (agora ${pct(cur.invest ?? 0)})`);
   if (l.tradeShare !== undefined) parts.push(`cidades trocam ${pct(l.tradeShare)} da sobra por semana (agora ${pct(cur.tradeShare!)})`);
+  const FX: Record<string, (v: number) => string> = { control: (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}% controle`, unrest: (v) => (v > 0 ? `−${v} lealdade` : `+${-v} lealdade`),
+    growth: (v) => `+${Math.round(v * 100)}% crescimento`, research: (v) => `+${Math.round(v * 100)}% pesquisa`, manpower: (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}% recrutas`,
+    army: (v) => `+${Math.round(v * 100)}% força do exército`, immigration: (v) => (v <= -1 ? "ninguém imigra" : `${v > 0 ? "+" : ""}${Math.round(v * 100)}% imigração`) };
+  for (const [k, v] of Object.entries(l.fx ?? {})) parts.push(FX[k](v));
+  const econFx = ECON_LAW[l.name];
+  if (econFx) parts.push(Object.entries(econFx).map(([k, v]) => `+${Math.round(v! * 100)} pontos em ${k === "tax" ? "eficiência tributária" : k === "admin" ? "administração" : k === "trade" ? "comércio" : k === "industry" ? "produtividade" : k}`).join(", "));
+  if (l.fx || econFx) parts.push("<small>(o efeito chega aos poucos onde o controle é baixo)</small>");
   return `${l.desc ?? ""}${parts.length ? "<br>" + parts.join(" · ") : ""}`;
 }
 
@@ -1528,7 +1535,7 @@ function politicsHtml(p: Politics, era: number) {
   const laws = Object.entries(LAWS).map(([cat, list]) => {
     const cur = lawOf(p, cat);
     const opts = list.filter((l) => l.name !== cur.name).map((l) => {
-      if (l.era > era) return `<tr><td colspan="2"><small style="opacity:.55"><i class=i-lock></i> ${l.name} — era ${ERAS[l.era]}</small></td></tr>`;
+      if (l.era > era || (l.tech && !eco.countries[active - 1].research.known.has(l.tech))) return `<tr><td colspan="2"><small style="opacity:.55"><i class=i-lock></i> ${l.name} — ${l.era > era ? `era ${ERAS[l.era]}` : ""}${l.tech ? ` ${l.era > era ? "e " : ""}${l.tech}` : ""}</small></td></tr>`;
       const s = lawSupport(p, l);
       return `<tr><td>${p.enacting ? `<b>${l.name}</b>` : `<button data-law="${cat}|${l.name}">${l.name}</button>`}<br><small class="${s > 0 ? "down" : "up"}" title="Gostam: ${l.likes.join(", ") || "—"} · Não gostam: ${l.dislikes.join(", ") || "—"}">apoio ${s > 0 ? "+" : ""}${pct(s)}</small></td>` +
         `<td style="text-align:left"><small>${lawEffect(l, cat, p)}</small></td></tr>`;

@@ -1,3 +1,4 @@
+import { lawFx } from "./politics.ts";
 import { techSum } from "./tech.ts";
 // Controle (estilo EU5): quanto o governo realmente administra cada hex, de 0 a 1.
 // O máximo vem da proximidade de uma sede (capital ou a primeira cidade de cada estado, o "governador");
@@ -43,7 +44,7 @@ export function updateControl(w: World, e: Economy, start = false) {
     const k = e.market[i] - 1;
     const integ = k >= 0 ? (hasIncentive(e, k, "Integração") ? INTEGRATION : 0) + RULES.roadControl * (e.cities[k].road ?? 0) : 0;
     const iso = k >= 0 && e.cities[k].isolated ? EXPAND.isolation : 1; // cidade sem ligação com a capital: difícil de administrar
-    const max = e.occupier[i] ? 0 : Math.min(1, (maxControl(w, e, i, cache.get(c)!) + integ + techSum(e.countries[c - 1].research, "control")) * iso); // + tecnologias de governo
+    const max = e.occupier[i] ? 0 : Math.min(1, (maxControl(w, e, i, cache.get(c)!) + integ + techSum(e.countries[c - 1].research, "control") + lawFx(e.countries[c - 1].politics, "control", e.countries[c - 1].control)) * iso); // + tecnologias de governo
     e.control[i] = start ? max : e.control[i] > max ? max : Math.min(max, e.control[i] + CONTROL.risePerMonth);
   }
 }

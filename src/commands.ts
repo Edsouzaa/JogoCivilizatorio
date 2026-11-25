@@ -163,7 +163,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       co.research.researching = c.name;
       return null;
     }
-    case "law": return proposeLaw(co.politics, c.cat, c.name, co.research.era);
+    case "law": return proposeLaw(co.politics, c.cat, c.name, co.research.era, co.research.known);
     case "cancelLaw": cancelLaw(co.politics); return null;
     case "recruit": return recruit(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
     case "front": return Array.isArray(c.ids) && c.ids.length <= 500 && c.ids.every((x) => isInt(x)) && isInt(c.enemy, 1) && (c.mode === "defend" || c.mode === "attack") ? frontOrder(w, e, country, c.ids, c.enemy, c.mode) : "Ordem inválida";

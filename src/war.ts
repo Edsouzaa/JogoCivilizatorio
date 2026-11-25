@@ -1,3 +1,4 @@
+import { lawFx } from "./politics.ts";
 import { econ, spend } from "./eramods.ts";
 // Guerra terrestre (estilo HOI4 simplificado, sem customizar divisões).
 // Divisões andam hex a hex, lutam contra o hex vizinho que querem entrar, ocupam território inimigo,
@@ -277,7 +278,7 @@ const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.str
 /** Força de combate: soldados × organização × armas × tecnologia × tipo (ataque ou defesa) × governante × general. */
 const power = (e: Economy, ds: Division[], role: "atk" | "def") => ds.reduce((s, d) => {
   const r = rulerOf(e, d.country), g = d.general ? e.characters?.find((c) => c.id === d.general) : undefined, u = statsOf(d);
-  return s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army")) * u[role]
+  return s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army") + lawFx(e.countries[d.country - 1].politics, "army", e.countries[d.country - 1].control)) * u[role]
     * (1 + (r ? CHAR.milArmy * attrMod(r.mil) : 0)) * (1 + (g ? CHAR.generalArmy * attrMod(g.mil) + CHAR.generalBase : 0));
 }, 0);
 

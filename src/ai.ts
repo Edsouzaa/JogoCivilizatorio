@@ -160,11 +160,11 @@ function legislate(c: Economy["countries"][number]) {
   if (p.enacting) return;
   let best: [string, string] | null = null, bestS = AI.lawSupport;
   for (const [cat, laws] of Object.entries(LAWS)) for (const l of laws) {
-    if (l.era > c.research.era || l.name === p.laws[cat]) continue;
+    if (l.era > c.research.era || (l.tech && !c.research.known.has(l.tech)) || l.name === p.laws[cat]) continue;
     const s = lawSupport(p, l);
     if (s > bestS) { bestS = s; best = [cat, l.name]; }
   }
-  if (best) proposeLaw(p, best[0], best[1], c.research.era);
+  if (best) proposeLaw(p, best[0], best[1], c.research.era, c.research.known);
 }
 
 function military(w: World, e: Economy, country: number, rand: () => number) {
