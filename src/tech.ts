@@ -113,6 +113,7 @@ for (const [tech, building] of [
   ["Eletricidade", "Usina termelétrica"], ["Energia nuclear", "Usina nuclear"], ["Química industrial", "Fábrica química"], ["Química industrial", "Fábrica de fertilizantes"],
   ["Medicina moderna", "Fábrica de medicamentos"], ["Química industrial", "Refinaria"], ["Eletricidade", "Fundição de alumínio"], ["Produção em massa", "Fábrica de plásticos"],
   ["Rádio", "Fábrica de eletrônicos"], ["Computadores", "Fábrica de baterias"], ["Energias renováveis", "Fábrica de equipamentos de energia"], ["Computadores", "Fábrica de telecomunicações"],
+  ["Galés", "Doca"], ["Navegação", "Estaleiro"], ["Eletricidade", "Arsenal naval"],
 ] as const) (TECHS.find((t) => t.name === tech)!.unlocks ??= []).push(building);
 
 /** Tecnologia exigida por cada construção (só as que alguma tecnologia libera). */

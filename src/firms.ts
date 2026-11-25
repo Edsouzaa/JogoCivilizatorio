@@ -86,7 +86,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     l.div = l.reinvest = l.toState = 0;
     l.hist.push(l.profit); if (l.hist.length > FIRM.histWeeks) l.hist.shift();
     const def = BUILDINGS[r.b];
-    if (def.industry && !def.industry.outputs.length) continue; // serviço do Estado (administração, construção): só custo, já pago pelo tesouro
+    if ((def.industry && !def.industry.outputs.length) || def.boosts !== undefined) continue; // serviço do Estado (administração, construção, estaleiro) ou melhoria (o ganho dela já entra na receita da extratora): só custo
     const ps = l.priv / r.lv;
     l.reserve += l.profit;
     if (l.debt > 0 && l.reserve > 0) { const pay = Math.min(l.debt, l.reserve); l.debt -= pay; l.reserve -= pay; } // paga dívida antes de distribuir

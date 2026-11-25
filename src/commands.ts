@@ -1,3 +1,4 @@
+import { orderShip, cancelShip } from "./naval.ts";
 import { BUILDINGS } from "./economy.ts";
 // Comandos do jogador. Toda ação que muda a partida passa por aqui, para valer igual no single-player,
 // no servidor e em todos os navegadores do multiplayer (lockstep). Cada comando só age sobre o país de quem mandou.
@@ -25,7 +26,7 @@ import type { World } from "./world.ts";
 export type Cmd =
   | { t: "build"; i: number; b: number; priv?: boolean }
   | { t: "buildMany"; hexes: number[]; b: number; levels: number; priv?: boolean } // construção em massa
-  | { t: "cancelBuild"; id: number } | { t: "pauseBuild"; id: number }
+  | { t: "cancelBuild"; id: number } | { t: "pauseBuild"; id: number } | { t: "cancelShip"; id: number }
   | { t: "method"; hex: number; b: number; cat: number; k: number; all?: boolean } // método de produção (all: todos os edifícios b do país)
   | { t: "privatize"; hex: number; b: number; n: number } | { t: "nationalize"; hex: number; b: number; n: number }
   | { t: "found"; unit: number; name?: string; flag?: Flag }
@@ -163,7 +164,8 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "recruit": return recruit(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
     case "front": return Array.isArray(c.ids) && c.ids.length <= 500 && c.ids.every((x) => isInt(x)) && isInt(c.enemy, 1) && (c.mode === "defend" || c.mode === "attack") ? frontOrder(w, e, country, c.ids, c.enemy, c.mode) : "Ordem inválida";
     case "general": return own(c.id) ? hireGeneral(w, e, c.id) : "Unidade não é sua";
-    case "fleet": return buildFleet(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
+    case "fleet": return isInt(c.hex) && e.market[c.hex] ? orderShip(w, e, country, e.market[c.hex] - 1, typeof c.unit === "string" ? c.unit : "Galés") : "Escolha uma cidade sua no litoral"; // vai para a fila naval
+    case "cancelShip": return isInt(c.id, 1) ? cancelShip(e, country, c.id) : "Encomenda inválida";
     case "air": return buildAir(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
     case "move": return own(c.id) && isInt(c.target) && c.target < w.W * w.H ? orderMove(w, e, c.id, c.target) : "Unidade não é sua";
     case "disband": if (!own(c.id)) return "Unidade não é sua"; disband(w, e, c.id); return null;

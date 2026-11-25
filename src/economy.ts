@@ -1,6 +1,7 @@
 import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
+import { stepNaval, type ShipOrder } from "./naval.ts";
 import { activeMethods, combine, methodKey, INDUSTRIES as INDUSTRY_NAMES } from "./methods.ts";
 import { stepFirms, privateShareOf, type FirmRun, type Ledger } from "./firms.ts";
 import { stepConstruction, methodInputs, sectorMethod, CONSTRUCTION_METHODS, type Project } from "./construction.ts";
@@ -60,7 +61,7 @@ type Building = {
   name: string; workers: number;
   for: number[];                 // recursos do hex onde pode ser construída (vazio = qualquer, se industrial)
   boosts?: number; mult?: number; // melhoria: multiplica a extratora `boosts`
-  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number; construction?: boolean }; // só em hex urbano; admin = pontos administrativos por nível; construction = setor de construção (insumos e PC pelo método da era, construction.ts)
+  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number; construction?: boolean; naval?: number }; // só em hex urbano; admin = pontos administrativos por nível; construction = setor de construção (insumos e PC pelo método da era, construction.ts)
 };
 /**
  * Construções. Extratora: produz o recurso do hex. Melhoria: multiplica uma extratora.
@@ -123,6 +124,12 @@ ind("Fábrica de eletrônicos", 80, [["Areia de quartzo", 2], ["Terras raras", 0
 ind("Fábrica de baterias", 70, [["Lítio", 1], ["Química básica", 0.5], ["Alumínio", 0.2]], [["Baterias", 1]]);
 ind("Fábrica de equipamentos de energia", 80, [["Areia de quartzo", 1], ["Aço", 1], ["Terras raras", 0.3]], [["Equipamentos de energia", 1]]);
 ind("Fábrica de telecomunicações", 70, [["Vidro", 1], ["Eletrônicos", 0.5]], [["Equipamentos de telecomunicações", 1]]);
+// Etapa 6: estaleiros (naval.ts) — indústria em hex colado no mar; naval = pontos navais por nível
+const yard = (name: string, workers: number, inputs: [string, number][], naval: number) =>
+  add({ name, for: [], workers, industry: { inputs: inputs.map(([n, q]) => [g(n), q]), outputs: [], naval } });
+yard("Doca", 30, [["Madeira", 2], ["Tecidos", 0.5]], 3);
+yard("Estaleiro", 50, [["Madeira", 2], ["Tecidos", 1], ["Ferro", 0.5], ["Ferramentas", 0.5]], 6);
+yard("Arsenal naval", 80, [["Aço", 2], ["Máquinas", 0.5], ["Combustível", 0.5]], 12);
 const NB = BUILDINGS.length;
 /** Insumos de 1 nível da indústria b nesta cidade (o setor de construção usa o método da era do país). */
 const industryInputs = (e: Economy, b: number, city: City) => (b === SECTOR ? methodInputs(e, city.country) : BUILDINGS[b].industry!.inputs);
@@ -217,6 +224,7 @@ export type City = {
   harbor?: number;      // nível do porto (0 = sem porto): mais comércio, até o máximo da era
   coast?: boolean;      // algum centro urbano encosta no mar (pode ter porto)
   road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
+  navalWeek?: number;   // pontos navais dos estaleiros da cidade nesta semana (naval.ts)
   picked?: number[];    // centros urbanos comprados, na ordem (o resto do tamanho vem dos hexes mais perto)
 };
 export type Country = {
@@ -298,6 +306,7 @@ export type Economy = {
   influence?: Uint16Array;            // área de influência: país que influencia cada hex livre (expansion.ts)
   outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
   construction?: Project[]; nextProject?: number; // filas de obras (construction.ts)
+  naval?: ShipOrder[]; nextNaval?: number;        // fila de navios (naval.ts)
   methods?: Map<string, number[]>;   // método escolhido por edifício ("hex:b" → índice por categoria; methods.ts)
   ledgers?: Map<string, Ledger>;     // conta financeira de cada edifício ("hex:b"; firms.ts)
   closedRivers?: Record<number, number>; // rio navegável → país que o fechou ao comércio dos outros
@@ -463,6 +472,7 @@ export function canBuild(w: World, e: Economy, i: number, b: number, queued = 0)
   if (!def) return "Construção inválida";
   if (def.industry ? !e.urban[i] : !def.for.includes(w.resource[i]) && !(w.resource2[i] && def.for.includes(w.resource2[i]))) return def.industry ? "Indústria só em hex de cidade" : "Construção não serve para este recurso";
   if (def.boosts !== undefined && !e.levels[def.boosts][i] && !queued) return `Precisa de ${BUILDINGS[def.boosts].name} antes`;
+  if (def.industry?.naval) { let sea = false; forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { if (w.terrain[j] === T.OCEAN) sea = true; }); if (!sea) return "Estaleiro só em hex de cidade colado no mar"; }
   if (e.levels[b][i] + queued >= 255) return "Nível máximo";
   const c = e.countries[w.owner[i] - 1], tech = techFor(b);
   if (tech && !c.research.known.has(tech)) return `Precisa pesquisar ${tech}`;
@@ -840,6 +850,8 @@ export function tick(w: World, e: Economy) {
       industryEff[k][b] = eff;
       const adm = BUILDINGS[b].industry!.admin;
       if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * om * eff; }
+      const nav = BUILDINGS[b].industry!.naval;
+      if (nav) city.navalWeek = (city.navalWeek ?? 0) + nav * om * eff; // naval.ts
       if (b === SECTOR) { const c = e.countries[city.country - 1]; c.cpWeek = (c.cpWeek ?? 0) + CONSTRUCTION_METHODS[sectorMethod(e, city.country)].cp * om * eff; }
     }
   });
@@ -927,6 +939,7 @@ export function tick(w: World, e: Economy) {
   payTribute(e);
   stepFirms(w, e, runs);
   stepConstruction(w, e);
+  stepNaval(w, e);
   e.week++;
 }
 

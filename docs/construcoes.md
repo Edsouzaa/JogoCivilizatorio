@@ -272,3 +272,22 @@ Propriedade:
 - **Escolha do método:** o setor usa o método mais avançado cujos materiais o país produziu na semana anterior. Assim a construção não trava quando falta cimento ou aço.
 - **Indústrias novas:** ganham métodos genéricos de artesanal a automatizada.
 - **Saves:** o formato subiu para a versão 6 (lista de bens nova), e saves antigos não abrem mais.
+
+## Etapa 6: construção naval (naval.ts)
+
+Navios não aparecem mais na hora. Eles saem de uma **fila naval** própria, separada das obras, e andam com **pontos navais (PN)** feitos pelos estaleiros da cidade.
+
+| Estaleiro | Tecnologia | Materiais por nível | PN por nível | Navios |
+|---|---|---|---|---|
+| Doca | Galés | 2 Madeira + 0,5 Tecidos | 3 | Galés |
+| Estaleiro | Navegação | 2 Madeira + 1 Tecidos + 0,5 Ferro + 0,5 Ferramentas | 6 | Caravelas, Navios de linha |
+| Arsenal naval | Eletricidade | 2 Aço + 0,5 Máquinas + 0,5 Combustível | 12 | Couraçados, Submarinos, Porta-aviões |
+
+- **Onde:** estaleiro só em hex de cidade colado no mar. Ele é uma indústria urbana: compra os materiais no mercado e, sem material, faz menos PN.
+- **Custo:** um navio custa 25 PN × o custo relativo dele (Galés 25, Porta-aviões 100). O dinheiro sai aos poucos.
+- **Tripulação:** os marinheiros saem do manpower quando o navio fica pronto. Sem gente, ele espera no cais.
+- **IA:** constrói uma doca na cidade do porto e depois encomenda o melhor navio que o estaleiro dela faz.
+
+**Ajustes de equilíbrio:**
+- A IA só investe em indústria com margem de pelo menos 15% nos preços locais (produto acima dos insumos) e com os insumos presentes no mercado.
+- Melhorias (Estábulo, Irrigação…) não têm conta de caixa própria, porque o ganho delas já entra na receita da extratora.

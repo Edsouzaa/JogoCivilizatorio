@@ -1,3 +1,4 @@
+import { orderShip, navalQueueOf, yardTier, SHIP_YARD } from "./naval.ts";
 // IA dos países que não têm jogador. Decide uma vez por mês, com regras simples e baratas:
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
@@ -5,7 +6,7 @@ import { queueBuild, queueOf, privateShare } from "./construction.ts";
 import {
   build, buildCost, buildingsFor, outputOf, urbanize, urbanCost, buildRoad, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
-  SECTOR,
+  SECTOR, BASE_PRICE,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { LAWS, lawSupport, proposeLaw, lawOf } from "./politics.ts";
@@ -14,12 +15,13 @@ import { relation, DIPLO } from "./diplomacy.ts";
 import { proposeSubject } from "./subjects.ts";
 import { personality, PERSONALITIES } from "./claims.ts";
 import { anchors, pathDistance, buildOutpost } from "./expansion.ts";
-import { bestUnit, bestCraft, SHIPS, PLANES } from "./units.ts";
+import { bestUnit, bestCraft, craftsFor, SHIPS, PLANES } from "./units.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 
 export const AI = {
   subjectChancePerMonth: 0.05, // chance de propor dependência a um vizinho
   reserve: 1.5,         // só gasta se o tesouro passar de reserve × custo
+  minMargin: 0.15,      // indústria só se o produto valer 15% a mais que os insumos no mercado local
   guidedPrice: 1.1,     // investimento orientado: só onde o preço local passa disto (falta)
   publicQueue: 2,       // obras públicas na fila ao mesmo tempo...
   queuePerTreasury: 2000, // ...mais 1 a cada tanto no tesouro...
@@ -119,7 +121,11 @@ function bestInvestment(w: World, e: Economy, country: number, priv = false): [n
       const workersOk = w.pop[i] * RULES.hexLaborShare >= def.workers * (e.levels[b][i] + 1) * 0.5;
       if (policy === "orientado" && city.market.price[out] < AI.guidedPrice) continue; // lei: só onde falta mercadoria
       const margin = rev[b] > 0 ? Math.max(-0.9, prof[b] / rev[b]) : 0;
-      const v = (city.market.price[out] * (workersOk ? 1 : 0.2) * (1 + margin)) / buildCost(e, b, i);
+      // indústria: margem por nível com os preços locais (produto − insumos); sem margem, não vale
+      const val = (list: [number, number][]) => list.reduce((s, [gi, q]) => s + q * BASE_PRICE[gi] * city.market.price[gi], 0);
+      const unit = def.industry ? (val(def.industry.outputs) - val(def.industry.inputs)) / Math.max(1e-9, val(def.industry.outputs)) : 1;
+      if (unit <= AI.minMargin) continue;
+      const v = (city.market.price[out] * unit * (workersOk ? 1 : 0.2) * (1 + margin)) / buildCost(e, b, i);
       if (v > bestV) { bestV = v; best = [i, b]; }
     }
   }
@@ -176,7 +182,12 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   // marinha: uma frota se tiver litoral e a tecnologia
   const port = mine.flatMap((k) => k.urban).find((j) => coastOf(w, j) >= 0);
   if (port !== undefined && c.research.known.has(NAVY.tech) && !e.divisions.some((d) => d.kind === "fleet" && d.country === country) &&
-      c.treasury > NAVY.cost * AI.reserve && c.manpower >= NAVY.sailors) buildFleet(w, e, country, port, bestCraft(SHIPS, c.research.known).name);
+      !navalQueueOf(e, country).length && c.treasury > NAVY.cost * AI.reserve && c.manpower >= NAVY.sailors) {
+    const city = e.market[port] - 1, ship = craftsFor(SHIPS, c.research.known).filter((s) => (SHIP_YARD[s.name] ?? 1) <= Math.max(1, yardTier(e, city))).reduce((a, s) => (s.power / s.cost > a.power / a.cost ? s : a), SHIPS[0]);
+    // sem estaleiro: constrói a doca na cidade do porto (uma obra por vez); com estaleiro: encomenda o melhor navio que ele faz
+    if (!yardTier(e, city)) { const dock = BUILDINGS.findIndex((b) => b.name === "Doca"); if (!queueOf(e, country).some((p) => p.b === dock)) queueBuild(w, e, port, dock); }
+    else orderShip(w, e, country, city, ship.name);
+  }
 
   // força aérea: um esquadrão a cada 3 cidades
   const wings = e.divisions.filter((d) => d.kind === "air" && d.country === country);

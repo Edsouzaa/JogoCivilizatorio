@@ -5,6 +5,7 @@ import {
   proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy,
 } from "./economy.ts";
+import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
 import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, sectorMethod, CONSTRUCTION_METHODS, CONSTRUCT } from "./construction.ts";
@@ -574,6 +575,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "settlers") return cmd({ t: "settlers" });
   if (d.act === "massbuild") return cmd({ t: "buildMany", hexes: massTargets(), b: mbB, levels: mbLevels, priv: mbPriv });
   if (d.cancelbuild) return cmd({ t: "cancelBuild", id: +d.cancelbuild });
+  if (d.cancelship) return cmd({ t: "cancelShip", id: +d.cancelship });
   if (d.sheet) { openSheet = openSheet === d.sheet ? "" : d.sheet; return updateUI(); }
   if (d.methall) { const [b, cat, k] = d.methall.split("|").map(Number); return cmd({ t: "method", hex: -1, b, cat, k, all: true }); }
   if (d.privatize) { const [hex, b] = d.privatize.split("|").map(Number); return cmd({ t: "privatize", hex, b, n: 1 }); }
@@ -988,7 +990,9 @@ function buildingsHtml() {
     `<br><small>${BUILDINGS[mbB].industry ? "Indústria: só em centro urbano." : BUILDINGS[mbB].boosts !== undefined ? `Melhoria: precisa de ${BUILDINGS[BUILDINGS[mbB].boosts!].name} no hex.` : `Extratora: hex com ${BUILDINGS[mbB].for.map((g) => GOODS[g]).join(", ")}.`} ${BUILDINGS[mbB].workers} trabalhadores e ${cpCost(mbB)} PC por nível.${locked ? ` <span class="bad">Precisa pesquisar ${tech}.</span>` : ""}</small>` +
     `<br>Hexes elegíveis: <b>${targets.length}</b> · obras: <b>${n}</b> · custo ${fmt(money)} · ${fmt(cps)} PC · ~${Number.isFinite(weeks) ? weeks : "∞"} semanas com a capacidade atual` +
     (n ? ` <button data-act="massbuild">Pôr ${n} obra${n > 1 ? "s" : ""} na fila</button>` : "") + `</div>`;
-  return cap + queue + mass + `<h3>Construções do país</h3><table><tr><td><b>Construção</b></td><td><b>Níveis</b></td><td><b>Vagas</b></td></tr>${rows}</table>` +
+  const ships = navalQueueOf(eco, active).map((o) => `<tr><td>${o.ship}<br><small>${eco.cities[o.city]?.name ?? "—"}</small></td><td>${Math.round((o.done / o.np) * 100)}%<br><small>${fmt(o.np - o.done)} PN</small></td><td>${fmt(o.cost - o.paid)}</td><td><small>${o.waiting ?? ""}</small></td><td><button data-cancelship="${o.id}">Cancelar</button></td></tr>`).join("");
+  const naval = ships ? `<h3>Estaleiros: navios encomendados</h3><table><tr><td><b>Navio</b></td><td><b>Progresso</b></td><td><b>Falta pagar</b></td><td></td><td></td></tr>${ships}</table>` : "";
+  return cap + queue + naval + mass + `<h3>Construções do país</h3><table><tr><td><b>Construção</b></td><td><b>Níveis</b></td><td><b>Vagas</b></td></tr>${rows}</table>` +
     `<br><button data-act="settlers" title="Cria um grupo de colonos na capital">Treinar colonos (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>`;
 }
 
@@ -1382,7 +1386,7 @@ function hexHtml() {
   if (eco.urban[i] && !eco.occupier[i]) h += `<br><small>Recrutar (${WAR.divisionSize} manpower):</small> ` + unitsFor(eco.countries[active - 1].research.known)
     .map((u) => `<button data-recruit="${u.name}" title="${u.cat} · ataque ${u.atk} · defesa ${u.def} · velocidade ${u.speed} · cerco ${u.siege}">${u.name} (${Math.round(WAR.recruitCost * u.cost)})</button>`).join(" ");
   if (eco.urban[i] && !eco.occupier[i] && coastOf(world, i) >= 0) h += eco.countries[active - 1].research.known.has(NAVY.tech)
-    ? ` <small>Frota (${NAVY.sailors} manpower):</small> ` + craftsFor(SHIPS, eco.countries[active - 1].research.known).map((u) => `<button data-fleet="${u.name}" title="força ${u.power}">${u.name} (${Math.round(NAVY.cost * u.cost)})</button>`).join(" ") : ` <small><i class=i-lock></i> frota: ${NAVY.tech}</small>`;
+    ? ` <small>Encomendar navio (${NAVY.sailors} marinheiros quando ficar pronto; estaleiro da cidade: ${YARDS[yardTier(eco, eco.market[selected] - 1) - 1] ?? "nenhum"}):</small> ` + craftsFor(SHIPS, eco.countries[active - 1].research.known).map((u) => `<button data-fleet="${u.name}" title="força ${u.power} · precisa de ${YARDS[(SHIP_YARD[u.name] ?? 1) - 1]} · ${Math.round(NAVAL.pointsPerCost * u.cost)} pontos navais">${u.name} (${Math.round(NAVY.cost * u.cost)})</button>`).join(" ") : ` <small><i class=i-lock></i> frota: ${NAVY.tech}</small>`;
   if (eco.urban[i] && !eco.occupier[i]) h += eco.countries[active - 1].research.known.has(AIR.tech)
     ? ` <small>Esquadrão (${AIR.pilots} manpower):</small> ` + craftsFor(PLANES, eco.countries[active - 1].research.known).map((u) => `<button data-air="${u.name}" title="força ${u.power}">${u.name} (${Math.round(AIR.cost * u.cost)})</button>`).join(" ") : "";
   if (city && eco.urban[i]) {
