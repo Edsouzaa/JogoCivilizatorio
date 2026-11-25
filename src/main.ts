@@ -2,7 +2,7 @@ import { holdsMouth } from "./navigation.ts";
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, generateRiverSystems, HEX_MODES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
-  proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
+  proposePact, cancelPact, hasPact, INFAMY, popCap, cityName, cityReach, maxRoad, maxHarbor,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy,
 } from "./economy.ts";
 import { WAR_ECONOMY, WAR_ECON, CONVERSIONS } from "./wareconomy.ts";
@@ -592,7 +592,6 @@ document.addEventListener("pointerdown", (e) => {
   }
   if (d.harbor) return cmd({ t: "harbor", city: Number(d.harbor) });
   if (d.road) return cmd({ t: "road", city: Number(d.road) });
-  if (d.urbanize) return cmd({ t: "urbanize", city: Number(d.urbanize), hex: selected });
   if (d.groupKind) { group = eco.divisions.filter((x) => group.includes(x.id) && x.kind === d.groupKind).map((x) => x.id); selectedDiv = group[0] ?? null; return updateUI(); }
   if (d.act === "identity" && active) return openIdentity();
   if (d.rename) { // "city:3" ou "state:2"
@@ -1526,7 +1525,7 @@ function hexHtml() {
   h += ` · cabem ${fmt(popCap(world, eco, i))}` + (world.owner[i] ? ` · controle ${pct(eco.control[i])}` : "");
   if (active && world.owner[i] === active && !eco.urban[i] && isLand(world.terrain[i])) { // comprar como centro urbano da cidade vizinha
     const k = eco.cities.findIndex((cc) => cc.country === active && cc.urban.some((u) => hexDistance(u % W, (u / W) | 0, i % W, (i / W) | 0, W) === 1));
-    if (k >= 0) h += `<br><button data-urbanize="${k}"><i class=i-city></i> Virar centro urbano de ${eco.cities[k].name} (${fmt(urbanCost(eco.cities[k]))})</button> <small>cidade +1 tamanho; menos recurso natural, mais indústria</small>`;
+    if (k >= 0) h += `<br><small><i class=i-city></i> A cidade ${eco.cities[k].name} cresce sozinha: ganha um centro urbano quando a gente urbana passa de ${fmt(eco.cities[k].size * RULES.cityGrowthPop)}.</small>`;
   }
   const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
   if (hst) { // estado: população, PIB (valor do que os mercados oferecem) e qualidade de vida

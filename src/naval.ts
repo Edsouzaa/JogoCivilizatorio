@@ -1,3 +1,4 @@
+import { spend } from "./eramods.ts";
 // Construção naval (Etapa 6): estaleiros fazem pontos navais (PN) e navios saem de uma fila própria, separada das obras.
 //   Doca (Galés): embarcações pequenas e primitivas.   Estaleiro (Navegação): navios oceânicos, de linha e de transporte.
 //   Arsenal naval (Eletricidade): couraçados, submarinos e porta-aviões.
@@ -60,10 +61,11 @@ export function stepNaval(w: World, e: Economy) {
         if (c.manpower >= NAVY.sailors) done.push(o); else o.waiting = "sem marinheiros";
         continue;
       }
-      const give = Math.min(pool, o.np - o.done);
+      let give = Math.min(pool, o.np - o.done);
       if (give <= 0) { o.waiting = yardTier(e, ci) ? "sem capacidade" : "sem estaleiro"; continue; }
-      const pay = (o.cost * give) / o.np;
-      c.treasury -= pay; if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
+      let pay = (o.cost * give) / o.np;
+      const got = spend(c, pay); give *= got; pay *= got;
+      if (give <= 1e-9) { o.waiting = "sem dinheiro"; continue; }
       o.paid += pay; o.done += give; pool -= give; o.waiting = undefined;
       if (o.done >= o.np - 1e-9) { if (c.manpower >= NAVY.sailors) done.push(o); else o.waiting = "sem marinheiros"; }
     }

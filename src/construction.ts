@@ -9,6 +9,7 @@ import { GOODS } from "./economy.ts";
 import { lawOf } from "./politics.ts";
 import { addPrivateLevel } from "./firms.ts";
 import { WAR_ECON } from "./wareconomy.ts";
+import { econ, debtCap } from "./eramods.ts";
 import type { World } from "./world.ts";
 
 export type Project = {
@@ -103,7 +104,7 @@ export function stepConstruction(w: World, e: Economy) {
   const done: Project[] = [];
   e.countries.forEach((c, ci) => {
     const country = ci + 1, list = queueOf(e, country).filter((p) => !p.paused);
-    c.cpWeek = (c.cpWeek ?? 0) + baseCp(e, country);
+    c.cpWeek = ((c.cpWeek ?? 0) + baseCp(e, country)) * econ(c, "construction"); // eficiência de construção da era
     c.cpUsed = 0;
     if (!list.length) return;
     const share = privateShare(e, country), hasPriv = list.some((p) => p.priv), hasPub = list.some((p) => !p.priv);
@@ -113,8 +114,12 @@ export function stepConstruction(w: World, e: Economy) {
       const key = String(p.priv);
       let give = Math.min(p.cp - p.done, perProject, pool[key]);
       if (give <= 0) { p.waiting = "sem capacidade"; continue; }
-      let pay = (p.cost * give) / p.cp;
-      if (p.priv && (c.investPool ?? 0) < pay) { // fundo sem dinheiro: anda só o que dá para pagar
+      let pay = (p.cost * give * econ(c, "monetization")) / p.cp; // só a parte monetizada da obra sai em dinheiro
+      const can = p.priv ? Math.max(0, c.investPool ?? 0) : Math.max(0, c.treasury) + Math.max(0, debtCap(c) - c.debt);
+      if (!p.priv && can < pay) { // tesouro vazio e sem crédito: anda só o que dá para pagar
+        give *= can / pay; pay = can; p.waiting = "sem dinheiro";
+        if (give <= 1e-9) continue;
+      } else if (p.priv && (c.investPool ?? 0) < pay) { // fundo sem dinheiro: anda só o que dá para pagar
         give *= Math.max(0, c.investPool ?? 0) / pay; pay = Math.max(0, c.investPool ?? 0);
         p.waiting = "fundo sem dinheiro";
         if (give <= 1e-9) continue;

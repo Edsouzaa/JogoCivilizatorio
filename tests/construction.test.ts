@@ -3,6 +3,7 @@ import { generateWorld } from "../src/world.ts";
 import { createEconomy, tick, buildingsFor, BUILDINGS, GOODS, SECTOR, RULES } from "../src/economy.ts";
 import { queueBuild, queueOf, stepConstruction, cancelProject, cpCost, baseCp, CONSTRUCTION_METHODS, sectorMethod } from "../src/construction.ts";
 import { applyCommand } from "../src/commands.ts";
+import { econ } from "../src/eramods.ts";
 
 const w = generateWorld(200, 100, 5, 2), e = createEconomy(w), c = e.countries[0];
 const cap = e.cities[0].hex;
@@ -24,7 +25,7 @@ assert.ok(p.done > 0 && p.done <= baseCp(e, 1) + 1e-9, "anda só com a capacidad
 assert.ok(Math.abs(c.treasury - (1e4 - p.paid)) < 1e-6 && p.paid < p.cost, "paga aos poucos");
 for (let k = 0; k < 50 && queueOf(e, 1).length; k++) { c.cpWeek = 0; stepConstruction(w, e); }
 assert.equal(e.levels[b][hex], lv0 + 1, "obra terminada vira nível");
-assert.ok(Math.abs(c.treasury - (1e4 - RULES.buildCost * (lv0 + 1))) < 1e-6, "custo total = 100 × nível");
+assert.ok(Math.abs(c.treasury - (1e4 - RULES.buildCost * (lv0 + 1) * econ(c, "monetization"))) < 1e-6, "custo total = 100 × nível × parte monetizada da era");
 
 // cancelar tira da fila
 queueBuild(w, e, hex, b);
@@ -66,8 +67,8 @@ const near = [...e.owned].filter((i) => w.owner[i] === 1 && !e.urban[i] && e.mar
 tick(w, e);
 const method = CONSTRUCTION_METHODS[sectorMethod(e, 1)];
 assert.ok(m.used[wood] > 0, "setor consome madeira");
-assert.ok((c.cpWeek ?? 0) > baseCp(e, 1), "setor soma pontos de construção");
-assert.ok((c.cpWeek ?? 0) <= baseCp(e, 1) + 5 * method.cp * RULES.urbanIndustry * 2 + 1e-9);
+assert.ok((c.cpWeek ?? 0) > baseCp(e, 1) * econ(c, "construction"), "setor soma pontos de construção (× eficiência de construção da era)");
+assert.ok((c.cpWeek ?? 0) <= (baseCp(e, 1) + 5 * method.cp * RULES.urbanIndustry * 2) * econ(c, "construction") + 1e-9);
 assert.equal(BUILDINGS[SECTOR].name, "Setor de construção");
 // era industrial sem aço nem cimento: o setor volta ao melhor método cujos materiais o país tem
 {

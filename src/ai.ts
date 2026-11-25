@@ -5,7 +5,7 @@ import { orderShip, navalQueueOf, yardTier, SHIP_YARD } from "./naval.ts";
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
 import { queueBuild, queueOf, privateShare } from "./construction.ts";
 import {
-  build, buildCost, buildingsFor, outputOf, urbanize, urbanCost, buildRoad, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
+  build, buildCost, buildingsFor, outputOf, buildRoad, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
   SECTOR, BASE_PRICE,
 } from "./economy.ts";
@@ -22,12 +22,13 @@ import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 export const AI = {
   subjectChancePerMonth: 0.05, // chance de propor dependência a um vizinho
   reserve: 1.5,         // só gasta se o tesouro passar de reserve × custo
+  upkeepOk: 0.95,       // só constrói se pagou pelo menos isto da manutenção na última semana
   totalWarRatio: 1.5,   // guerra total quando um inimigo tem 1,5× o PIB
   minMargin: 0.15,      // indústria só se o produto valer 15% a mais que os insumos no mercado local
   guidedPrice: 1.1,     // investimento orientado: só onde o preço local passa disto (falta)
   publicQueue: 2,       // obras públicas na fila ao mesmo tempo...
   queuePerTreasury: 2000, // ...mais 1 a cada tanto no tesouro...
-  publicQueueMax: 8,    // ...até isto
+  publicQueueMax: 20,   // ...até isto
   privateQueue: 3,      // obras privadas na fila ao mesmo tempo
   maxCitiesBase: 3,     // cidades que a IA quer na era tribal (+2 por era)
   lawSupport: 0.25,     // apoio mínimo para propor uma lei
@@ -87,15 +88,6 @@ function expand(w: World, e: Economy, country: number, era: number) {
   e.cities.forEach((city, k) => { // estrada: quando sobra dinheiro
     if (city.country === country && c.treasury > RULES.roadCost * ((city.road ?? 0) + 1) * AI.reserve * 2) buildRoad(e, k);
   });
-  e.cities.forEach((city, k) => { // cidade cheia: compra o vizinho mais povoado como centro urbano novo
-    if (city.country !== country || c.treasury < urbanCost(city) * AI.reserve) return;
-    if (city.urban.reduce((s, j) => s + w.pop[j], 0) < city.size * RULES.cityGrowthPop) return;
-    let best = -1;
-    for (const u of city.urban) forNeighbors(u % w.W, (u / w.W) | 0, w.W, w.H, (j) => {
-      if (w.owner[j] === country && !e.urban[j] && isLand(w.terrain[j]) && (best < 0 || w.pop[j] > w.pop[best])) best = j;
-    });
-    if (best >= 0) urbanize(w, e, k, best);
-  });
   if (cities + settlersOf(e, country) < AI.maxCitiesBase + 2 * era && c.treasury > RULES.settlerCost * AI.reserve) trainSettlers(w, e, country);
 }
 
@@ -142,6 +134,7 @@ function invest(w: World, e: Economy, country: number) {
   const room = Math.min(AI.publicQueueMax, AI.publicQueue + Math.floor(c.treasury / AI.queuePerTreasury)) - mine.filter((p) => !p.priv).length; // fila cresce com o tesouro
   for (let n = 0; n < room; n++) {
     const best = bestInvestment(w, e, country);
+    if ((c.upkeepPaid ?? 1) < AI.upkeepOk) return; // manutenção atrasada: não aumenta o que já não consegue pagar
     if (!best || c.treasury < buildCost(e, best[1], best[0]) * AI.reserve + RULES.settlerCost || queueBuild(w, e, best[0], best[1])) return;
   }
 }

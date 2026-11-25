@@ -9,7 +9,7 @@ import { privatize, nationalize } from "./firms.ts";
 import { queueBuild, cancelProject, pauseProject } from "./construction.ts";
 import { toggleRiver } from "./navigation.ts";
 import {
-  build, foundCity, trainSettlers, transferSize, urbanize, buildRoad, buildHarbor, proposePact, cancelPact, type Economy,
+  build, foundCity, trainSettlers, transferSize, buildRoad, buildHarbor, proposePact, cancelPact, type Economy,
 } from "./economy.ts";
 import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disband, frontOrder } from "./war.ts";
 import { proposeLaw, cancelLaw } from "./politics.ts";
@@ -37,7 +37,6 @@ export type Cmd =
   | { t: "outpost"; unit: number } // colonos viram posto avançado
   | { t: "settlers" }
   | { t: "transfer"; from: number; to: number }
-  | { t: "urbanize"; city: number; hex: number }
   | { t: "road"; city: number }
   | { t: "harbor"; city: number }
   | { t: "acceptCulture"; culture: number; off?: boolean }
@@ -156,7 +155,6 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     }
     case "harbor": return ownCity(c.city) ? buildHarbor(e, c.city) : "Cidade não é sua";
     case "road": return ownCity(c.city) ? buildRoad(e, c.city) : "Cidade não é sua";
-    case "urbanize": return ownCity(c.city) && isInt(c.hex) && c.hex < w.W * w.H ? urbanize(w, e, c.city, c.hex) : "Cidade não é sua";
     case "transfer": return ownCity(c.from) && ownCity(c.to) ? transferSize(w, e, c.from, c.to) : "Cidade não é sua";
     case "tech": {
       if (!available(co.research).some((t) => t.name === c.name)) return "Tecnologia indisponível";

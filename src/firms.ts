@@ -1,3 +1,4 @@
+import { econ, spend } from "./eramods.ts";
 // Finanças e propriedade de cada edifício (estilo Victoria 3). Cada "hex:b" (construção b no hex) tem uma conta:
 //   receita = o que produziu × preço do mercado da cidade (venda real da semana)
 //   − insumos comprados − salários (trabalhadores × salário médio do país) − manutenção − impostos = lucro
@@ -80,7 +81,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     l.rev = value(r.outs); l.inputs = value(r.ins); l.workers = r.workers; l.produced = r.outs.reduce((s, [, q]) => s + q, 0);
     const added = Math.max(0, l.rev - l.inputs); // valor agregado: dividido entre salários e donos como na renda das POPs
     l.wages = added * (1 - POP_RULES.ownerShare);
-    l.upkeep = r.lv * RULES.upkeepPerLevel * r.fx.upkeep;
+    l.upkeep = r.lv * RULES.upkeepPerLevel * r.fx.upkeep * econ(c, "upkeep") * econ(c, "monetization"); // a mesma conta do tesouro (eramods.ts)
     const before = l.rev - l.inputs - l.wages - l.upkeep;
     l.tax = Math.max(0, before) * c.tax;
     l.profit = before - l.tax;
@@ -91,7 +92,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     const ps = l.priv / r.lv, wl = c.warEconomy ?? 0;
     if (wl && MILITARY.has(def.name)) { // subsídio militar: o tesouro paga uma fração da receita
       const sub = l.rev * WAR_ECON.subsidy[wl];
-      c.treasury -= sub; if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
+      spend(c, sub);
       c.warSubsidy = (c.warSubsidy ?? 0) + sub; l.profit += sub;
     }
     l.reserve += l.profit;
@@ -109,7 +110,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     } else if (l.reserve < 0) {
       const gap = -l.reserve;
       l.reserve = 0;
-      if (r.fx.state) { c.treasury -= gap; l.toState = -gap; if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; } } // o Estado cobre
+      if (r.fx.state) { l.toState = -gap * spend(c, gap); } // o Estado cobre (até o crédito)
       else {
         l.debt += gap;
         if (e.week - l.built > FIRM.insolventWeeks && l.debt > FIRM.insolventWeeks * Math.max(l.rev, l.upkeep, 1)) { // insolvência (depois da carência): fecha um nível (privado primeiro)

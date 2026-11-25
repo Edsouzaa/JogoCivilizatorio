@@ -36,7 +36,7 @@ console.log(`ai ok (${cities0} → ${e.cities.length} cidades, ${e.divisions.fil
   const w2 = gw(200, 100, 3, 2), e2 = ce(w2), c = e2.countries[0];
   tk(w2, e2);
   assert.equal(c.investWeek, 0, "Subsistência não investe");
-  c.politics.laws["Economia"] = "Livre comércio";
+  c.politics.laws["Economia"] = "Livre comércio"; c.research.era = 5; // era tribal não tem investimento privado formal (eramods.ts)
   tk(w2, e2);
   assert.ok((c.investWeek ?? 0) > 0);
   c.investPool = 1e5; c.treasury = 50;

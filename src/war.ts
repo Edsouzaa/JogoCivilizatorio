@@ -1,3 +1,4 @@
+import { econ, spend } from "./eramods.ts";
 // Guerra terrestre (estilo HOI4 simplificado, sem customizar divisões).
 // Divisões andam hex a hex, lutam contra o hex vizinho que querem entrar, ocupam território inimigo,
 // e a paz entrega ao vencedor o que ele ocupou (menos a capital do perdedor).
@@ -29,6 +30,7 @@ export const WAR = {
   civilLoss: 0.001,    // fração do povo de hex ocupado que morre/foge por semana
   supplyBase: 6, supplyPerEra: 3, // alcance do abastecimento (hexes) = base + por era
   noSupplyOrg: 0.05, noSupplyLoss: 0.02, // sem suprimento: organização e soldados perdidos por semana
+  unpaidOrg: 0.05,       // sem soldo pago: organização perdida por semana (eramods.ts spend)
   siegeBase: 4,        // semanas de cerco para tomar o centro de uma cidade...
   siegePerSize: 2,     // ...mais isto por tamanho da cidade (dividido pelo nº de divisões cercando, até metade)
 };
@@ -311,16 +313,16 @@ export function stepWar(w: World, e: Economy) {
   for (const d of e.divisions) if (d.kind === "army") count.set(d.country, (count.get(d.country) ?? 0) + 1);
   for (const d of e.divisions) if (d.kind === "fleet" || d.kind === "air") { // manutenção de frotas e esquadrões
     const c = e.countries[d.country - 1];
-    c.treasury -= d.kind === "air" ? AIR.upkeep : NAVY.upkeep;
-    if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
+    if (spend(c, (d.kind === "air" ? AIR.upkeep : NAVY.upkeep) * econ(c, "monetization")) < 1) d.org = Math.max(0, d.org - WAR.unpaidOrg); // sem soldo: desorganiza
   }
   for (const [country, n] of count) { // armas e manutenção
     const c = e.countries[country - 1], m = e.cities.find((k) => k.country === country)!.market;
     const fill = m.demand[ARMS] ? Math.min(1, m.supply[ARMS] / m.demand[ARMS]) : 1;
     for (const d of e.divisions) if (d.country === country && d.kind === "army") d.equip = 0.5 + 0.5 * fill;
-    c.treasury -= n * WAR.upkeep;
-    for (const s of warsOf(e, country)) s.cost[country] = (s.cost[country] ?? 0) + n * WAR.upkeep;
-    if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
+    const cost = n * WAR.upkeep * econ(c, "monetization"); // exército tribal vive do que leva: só a parte monetizada é soldo
+    const paidShare = spend(c, cost);
+    for (const s of warsOf(e, country)) s.cost[country] = (s.cost[country] ?? 0) + cost * paidShare;
+    if (paidShare < 1) for (const d of e.divisions) if (d.country === country && d.kind === "army") d.org = Math.max(0, d.org - WAR.unpaidOrg * (1 - paidShare)); // sem soldo: desorganiza
   }
 
   // no mar anda mais rápido: passos extras para frotas e exércitos embarcados (sem combate no meio)

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   priceFactor, createEconomy, tick, build, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel,
-  BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius, settlersOf, urbanize, popCap,
+  BUILDINGS, GOODS, RULES, MIN_PRICE, MAX_PRICE, borderRadius, settlersOf, growCities, cityReach, popCap,
 } from "../src/economy.ts";
 import { generateWorld, isLand, claim, T, RESOURCES } from "../src/world.ts";
 import { forNeighbors } from "../src/hex.ts";
@@ -145,22 +145,19 @@ console.log("territory ok");
 }
 console.log("reserves ok");
 
-// cidade só cresce comprando centro urbano vizinho; centro urbano tem teto de gente
+// cidade cresce sozinha quando a gente urbana enche; o campo longe dela é só território do país
 {
-  const w4 = generateWorld(200, 100, 3, 2), e4 = createEconomy(w4), city = e4.cities[0], c = e4.countries[0];
-  for (let k = 0; k < 8; k++) tick(w4, e4);
-  assert.equal(city.size, 1, "cidade cresceu sozinha");
-  const touches = (j: number) => { let t = false; forNeighbors(j % 200, (j / 200) | 0, 200, 100, (n) => { if (e4.urban[n]) t = true; }); return t; };
-  const far = [...e4.owned].find((j) => w4.owner[j] === 1 && isLand(w4.terrain[j]) && !e4.urban[j] && !touches(j));
-  let next = -1;
-  forNeighbors(city.hex % 200, (city.hex / 200) | 0, 200, 100, (j) => { if (next < 0 && w4.owner[j] === 1 && isLand(w4.terrain[j])) next = j; });
-  c.treasury = 0;
-  assert.match(urbanize(w4, e4, 0, next)!, /Faltam/);
-  c.treasury = 1e4;
-  if (far !== undefined) assert.match(urbanize(w4, e4, 0, far)!, /encostar/);
-  assert.equal(urbanize(w4, e4, 0, next), null);
-  assert.equal(city.size, 2); assert.ok(city.urban.includes(next) && e4.urban[next]);
-  assert.equal(c.treasury, 1e4 - RULES.urbanCost);
-  assert.ok(popCap(w4, e4, next) > popCap(w4, e4, [...e4.owned].find((j) => !e4.urban[j] && isLand(w4.terrain[j]))!));
+  const w4 = generateWorld(200, 100, 3, 2), e4 = createEconomy(w4), city = e4.cities[0];
+  tick(w4, e4);
+  assert.equal(city.size, 1);
+  for (const j of city.urban) w4.pop[j] = RULES.cityGrowthPop * 2; // cheia
+  growCities(w4, e4);
+  assert.equal(city.size, 2, "cidade cheia ganha um centro urbano");
+  assert.ok(city.urban.length === 2 && city.urban.every((j) => e4.urban[j]));
+  assert.ok(popCap(w4, e4, city.urban[1]) > popCap(w4, e4, [...e4.owned].find((j) => !e4.urban[j] && isLand(w4.terrain[j]))!));
+  // hex do país além do alcance da cidade: sem mercado, mas a gente conta no país
+  const far = [...e4.owned].find((j) => w4.owner[j] === 1 && !e4.market[j] && isLand(w4.terrain[j]));
+  if (far !== undefined) { w4.pop[far] = 5000; tick(w4, e4); assert.ok(e4.countries[0].pop >= 5000, "território sem cidade conta na população"); }
+  assert.ok(cityReach(1) >= 4);
 }
 console.log("urban ok");

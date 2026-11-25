@@ -1,6 +1,7 @@
 import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
+import { econ, debtCap } from "./eramods.ts";
 import { warMult, convertedOutputs, exportBlocked, stepWarEconomy } from "./wareconomy.ts";
 import { stepNaval, type ShipOrder } from "./naval.ts";
 import { activeMethods, combine, methodKey, INDUSTRIES as INDUSTRY_NAMES } from "./methods.ts";
@@ -159,9 +160,16 @@ export function growPopulation(w: World, e: Economy) {
   });
   for (const i of e.owned) {
     const k = e.market[i];
-    if (!k || !rate[k - 1] || !isLand(w.terrain[i])) continue;
+    if (!isLand(w.terrain[i])) continue;
+    let r = k ? rate[k - 1] : 0;
+    if (!k) { // sem cidade: só a comida da própria terra (subsistência) conta
+      const c = e.countries[w.owner[i] - 1];
+      const ratio = TERRAINS[w.terrain[i]].fertility * RULES.subsistence * (1 + techSum(c.research, "subsistence")) * (w.river[i] ? 1.25 : 1);
+      r = (Math.max(0, Math.min(1, (ratio - GROWTH.foodMin) / (GROWTH.foodFull - GROWTH.foodMin))) * GROWTH.yearly * (1 + techSum(c.research, "growth"))) / 13;
+    }
+    if (!r) continue;
     const cap = popCap(w, e, i);
-    if (w.pop[i] < cap) w.pop[i] = Math.min(cap, w.pop[i] * (1 + rate[k - 1]) + GROWTH.seed * rate[k - 1] / GROWTH.yearly);
+    if (w.pop[i] < cap) w.pop[i] = Math.min(cap, w.pop[i] * (1 + r) + GROWTH.seed * r / GROWTH.yearly);
   }
 }
 export const GROWTH = {
@@ -209,14 +217,14 @@ export const RULES = {
   portTradeBonus: 1.5,      // cidade em rio navegável exporta esta vezes mais
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
-  cityGrowthPop: 300,       // a IA compra centro urbano quando a população urbana passa disto × tamanho
+  cityGrowthPop: 300,       // a cidade ganha um centro urbano quando a gente urbana passa disto × tamanho (growCities)
+  cityReachBase: 4,         // alcance do mercado da cidade em hexes (+1 a cada 3 de tamanho); além é só território do país
   oceanTradeNoNav: 0.2,     // comércio exterior além-mar sem Navegação: só isto passa (oceano profundo)
   harborCost: 120,          // porto nível n custa isto × n
   harborTrade: 0.25,        // cada nível: +25% do que a cidade troca
   roadCost: 80,             // estrada nível n custa isto × n
   roadTrade: 0.1,           // cada nível: +10% do que a cidade manda/recebe no comércio terrestre (mais barato levar)
   roadControl: 0.05,        // cada nível: +5% de controle máximo na região da cidade
-  urbanCost: 150,           // centro urbano novo: isto × tamanho atual da cidade
   popCapRural: 600,         // teto de população de um hex rural (× fertilidade do terreno)
   popCapUrban: 2500,        // teto de um centro urbano...
   popCapPerEra: 0.25,       // ...que sobe isto por era (saneamento, técnicas)
@@ -281,6 +289,7 @@ export type Country = {
   conversion?: boolean;  // indústria convertida para a guerra
   warSubsidy?: number;   // subsídio militar pago na última semana (firms.ts)
   insolvencies?: number; // níveis privados fechados por insolvência (firms.ts)
+  upkeepPaid?: number;   // fração da manutenção paga na última semana (sem crédito, fica atrasada; eramods.ts)
   ownersTake?: number;   // da renda dos donos, quanto foi ao tesouro (estatais) ou ao fundo na última semana (firms.ts)
   ruler?: number;       // id do governante (characters.ts)
   tributeWeek?: number; // tributo da semana: + recebido (soberano), − pago (súdito)
@@ -389,12 +398,17 @@ export function refresh(w: World, e: Economy) {
     c.coast = c.urban.some((j) => { let s = false; forNeighbors(j % w.W, (j / w.W) | 0, w.W, w.H, (n) => { if (w.terrain[n] === T.OCEAN) s = true; }); return s; });
     e.market[c.hex] = k + 1; queue.push(c.hex);
   });
-  // cada hex do país compra/vende no mercado da cidade mais próxima (por caminho dentro do país)
-  while (queue.length) {
+  // cada hex do país compra/vende no mercado da cidade mais próxima (por caminho dentro do país), até o alcance dela;
+  // além disso é só território do país: tem gente, mas não pertence a nenhuma cidade (sem mercado nem imposto)
+  for (let step = 1; queue.length; step++) {
     const next: number[] = [];
-    for (const i of queue) forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => {
-      if (!e.market[j] && w.owner[j] === w.owner[i]) { e.market[j] = e.market[i]; next.push(j); }
-    });
+    for (const i of queue) {
+      const reach = cityReach(e.cities[e.market[i] - 1].size);
+      if (step > reach) continue;
+      forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => {
+        if (!e.market[j] && w.owner[j] === w.owner[i]) { e.market[j] = e.market[i]; next.push(j); }
+      });
+    }
     queue = next;
   }
 }
@@ -471,26 +485,27 @@ export function buildRoad(e: Economy, k: number): string | null {
 }
 
 /** Custo do próximo centro urbano da cidade. */
-export const urbanCost = (city: City) => RULES.urbanCost * city.size;
+/** Alcance da cidade (hexes de caminho dentro do país): até aqui o campo compra e vende no mercado dela. */
+export const cityReach = (size: number) => RULES.cityReachBase + Math.floor(size / 3);
 
-/** Compra o hex `i` (vizinho de um centro urbano da cidade) como centro urbano novo: a cidade cresce 1. */
-export function urbanize(w: World, e: Economy, k: number, i: number): string | null {
-  const city = e.cities[k];
-  if (!city) return "Cidade inválida";
-  if (city.size >= RULES.maxCitySize) return "Cidade no tamanho máximo";
-  if (w.owner[i] !== city.country || !isLand(w.terrain[i])) return "O hex precisa ser terra do país";
-  if (e.urban[i]) return "Já é centro urbano";
-  let near = false;
-  forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { if (city.urban.includes(j)) near = true; });
-  if (!near) return "Precisa encostar num centro urbano da cidade";
-  const c = e.countries[city.country - 1], cost = urbanCost(city);
-  if (c.treasury < cost) return `Faltam ${Math.ceil(cost - c.treasury)} de dinheiro`;
-  c.treasury -= cost;
-  city.size++;
-  city.picked = [...(city.picked ?? []), i];
-  claim(w, city.country, city.hex, borderRadius(city.size)); // a fronteira cresce com a cidade
-  refresh(w, e);
-  return null;
+/**
+ * Uma vez por mês: a cidade cresce sozinha quando a gente dos centros urbanos passa de cityGrowthPop × tamanho.
+ * O novo centro urbano é o vizinho mais povoado (terra do país). Não se compra mais: cidade é gente, não decreto.
+ */
+export function growCities(w: World, e: Economy) {
+  let changed = false;
+  for (const city of e.cities) {
+    if (city.size >= RULES.maxCitySize || city.urban.reduce((s, j) => s + w.pop[j], 0) < city.size * RULES.cityGrowthPop) continue;
+    let best = -1;
+    for (const u of city.urban) forNeighbors(u % w.W, (u / w.W) | 0, w.W, w.H, (j) => {
+      if (w.owner[j] === city.country && !e.urban[j] && isLand(w.terrain[j]) && !e.occupier[j] && (best < 0 || w.pop[j] > w.pop[best])) best = j;
+    });
+    if (best < 0) continue;
+    city.size++; city.picked = [...(city.picked ?? []), best]; e.urban[best] = 1; // marca já: outra cidade não pega o mesmo hex
+    claim(w, city.country, city.hex, borderRadius(city.size)); // a fronteira cresce com a cidade
+    changed = true;
+  }
+  if (changed) refresh(w, e);
 }
 
 export const borderRadius = (size: number) => Math.min(3, 1 + Math.floor(size / 2));
@@ -637,7 +652,7 @@ function foreignTrade(w: World, e: Economy) {
       for (const [from, to] of [[a, b], [b, a]]) {
         if (exportBlocked(e, from, gi)) continue; // economia de guerra: bem estratégico não sai
         let offer = 0, lack = 0;
-        const fs = Math.min(1, RULES.foreignShare * (1 + techSum(e.countries[from - 1].research, "trade")));
+        const fs = Math.min(1, RULES.foreignShare * (1 + techSum(e.countries[from - 1].research, "trade")) * econ(e.countries[from - 1], "trade"));
         pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * portMult(e, k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
         // pouca frota capaz de cruzar o oceano profundo: além-mar sem Navegação só passa uma fração
         const moved = Math.min(offer, lack) * (overseas && !e.countries[from - 1].research.known.has("Navegação") ? RULES.oceanTradeNoNav : 1);
@@ -667,7 +682,7 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
     if (cs.length < 2) continue;
     const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : portMult(e, c)) * (1 + RULES.roadTrade * (c.road ?? 0)));
     const c0 = e.countries[country - 1];
-    const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")); // lei de Economia + tecnologia
+    const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")) * econ(c0, "trade"); // lei de Economia + tecnologia + era
     for (let gi = 1; gi < NG; gi++) {
       let offer = 0, lack = 0;
       const net = ms.map((m) => m.supply[gi] - m.used[gi] - need(m, gi));
@@ -772,7 +787,11 @@ export function tick(w: World, e: Economy) {
 
   for (const i of e.owned) {
     const k = e.market[i];
-    if (!k) continue;
+    if (!k) { // território sem cidade: a gente conta no país (vive da terra, fora do mercado e do imposto)
+      if (!isLand(w.terrain[i])) continue;
+      e.countries[w.owner[i] - 1].pop += w.pop[i]; ctrlCountry[w.owner[i] - 1] += w.pop[i] * e.control[i];
+      continue;
+    }
     const city = e.cities[k - 1];
     if (!e.urban[i] && w.pop[i] > 1) { // cidades atraem a população em volta, enquanto houver lugar
       const to = city.urban[(e.week + i) % city.urban.length];
@@ -785,7 +804,7 @@ export function tick(w: World, e: Economy) {
     if (e.occupier[i]) continue; // ocupado: a população continua, mas não produz para o dono
     // subsistência: caça, coleta e roças sem construção; fazendas vêm por cima disso
     const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence * (1 + techSum(c.research, "subsistence"))
-      * (w.river[i] ? 1.25 : 1) * (snowAt(w, i, e.week) ? 0.5 : 1); // rio rega; neve cobre o campo
+      * (w.river[i] ? 1.25 : 1) * (snowAt(w, i, e.week) ? 0.5 : 1) * (1 - econ(c, "foodLoss") / 4); // rio rega; neve cobre o campo; armazenamento perde (por mês ÷ 4)
     for (const f of FOOD) { city.market.supply[f] += food; c.subsistence += food * BASE_PRICE[f] * city.market.price[f]; }
   }
 
@@ -816,7 +835,7 @@ export function tick(w: World, e: Economy) {
       } else mult += lv * def.mult!;
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
-    const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals);
+    const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals) * (0.5 + 0.5 * (c.upkeepPaid ?? 1)); // sem manutenção paga, produz menos
     const natural = (hasIncentive(e, k - 1, "Isenção fiscal") ? 1.15 : 1) * (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // pouco controle: parte some no caminho
     const f = mult * staffing * penalty * natural;
     for (const [gi, q] of out) m.supply[gi] += q * f;
@@ -840,7 +859,7 @@ export function tick(w: World, e: Economy) {
     }
     for (const r of here) for (const [t, share] of JOBS[c.research.era][r.b]) c.pops.count[t] += r.workers * share; // quem trabalha aqui, por tipo de POP
     for (const r of here) if (BUILDINGS[r.b].industry) {
-      const thr = r.lv * staffing * penalty * (1 + c.bonus[r.b]) * RULES.urbanIndustry * warMult(e, r.country, r.b); // economia de guerra: militar sobe, civil cai
+      const thr = r.lv * staffing * penalty * (1 + c.bonus[r.b]) * RULES.urbanIndustry * warMult(e, r.country, r.b) * econ(c, "industry"); // economia de guerra; produtividade da era
       r.q = thr; throughput[k - 1][r.b] += thr; outMul[k - 1][r.b] += thr * (1 + r.fx.out);
       const mm = mIn[k - 1].get(r.b) ?? new Map<number, number>();
       for (const [gn, q] of r.fx.inputs) mm.set(g(gn), (mm.get(g(gn)) ?? 0) + q * thr);
@@ -883,7 +902,7 @@ export function tick(w: World, e: Economy) {
       for (const [go, q] of outputs) m.supply[go] += q * om * eff;
       industryEff[k][b] = eff;
       const adm = BUILDINGS[b].industry!.admin;
-      if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * om * eff; }
+      if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * om * eff * econ(c, "admin"); }
       const nav = BUILDINGS[b].industry!.naval;
       if (nav) city.navalWeek = (city.navalWeek ?? 0) + nav * om * eff; // naval.ts
       if (b === SECTOR) { const c = e.countries[city.country - 1]; c.cpWeek = (c.cpWeek ?? 0) + CONSTRUCTION_METHODS[sectorMethod(e, city.country)].cp * om * eff; }
@@ -922,14 +941,21 @@ export function tick(w: World, e: Economy) {
       gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
     });
     c.gdpWeek = gdp;
-    c.investWeek = gdp * (lawOf(c.politics, "Economia").invest ?? 0); // o dinheiro é dos donos, não do tesouro
+    c.investWeek = gdp * (lawOf(c.politics, "Economia").invest ?? 0) * econ(c, "privateInvest") * econ(c, "monetization"); // o dinheiro é dos donos, não do tesouro
     c.investPool = (c.investPool ?? 0) + c.investWeek;
     c.tax = gdp ? nominal / gdp : lawOf(c.politics, "Impostos").tax!; // imposto médio
     // governo legítimo arrecada mais; no Centralizado, estados melhoram a administração
     const ruler = rulerOf(e, ci + 1);
-    c.income = taxed * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1)) * (1 + (ruler ? CHAR.admTax * attrMod(ruler.adm) : 0)); // governante bom administrador arrecada mais
+    c.income = taxed * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1)) * (1 + (ruler ? CHAR.admTax * attrMod(ruler.adm) : 0)) // governante bom administrador arrecada mais
+      * econ(c, "tax"); // era: só parte do devido é cobrada (eramods.ts; a monetização reduz os custos pagos em dinheiro)
     c.interest = (c.debt * RULES.interestYear) / 52;
-    c.treasury += c.income + c.tariffs - c.upkeep - c.interest;
+    // manutenção em dinheiro: só a parte monetizada (o resto é trabalho e material da comunidade), × o custo relativo da era
+    c.upkeep *= econ(c, "upkeep") * econ(c, "monetization");
+    c.treasury += c.income + c.tariffs - c.interest;
+    const room = Math.max(0, c.treasury) + Math.max(0, debtCap(c) - c.debt); // sem crédito, o que não cabe no tesouro fica sem pagar
+    const paid = Math.min(c.upkeep, room);
+    c.upkeepPaid = c.upkeep > 0 ? paid / c.upkeep : 1; // manutenção atrasada: as construções rendem menos na semana que vem
+    c.treasury -= paid;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
     else if (c.debt > 0) { const pay = Math.min(c.debt, c.treasury * 0.5); c.debt -= pay; c.treasury -= pay; }
     if (c.bankruptWeeks > 0) c.bankruptWeeks--;
@@ -968,7 +994,7 @@ export function tick(w: World, e: Economy) {
     if (c.infamy >= INFAMY.pactsBreak) for (const k of [...e.pacts]) if (k.split("-").map(Number).includes(ci + 1)) e.pacts.delete(k); // ninguém quer negócio
   });
 
-  if (e.week % 4 === 0) { migrate(w, e); growPopulation(w, e); }
+  if (e.week % 4 === 0) { migrate(w, e); growPopulation(w, e); growCities(w, e); }
 
   stepAdmin(e);
   payTribute(e);
