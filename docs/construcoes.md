@@ -317,3 +317,43 @@ Navios não aparecem mais na hora. Eles saem de uma **fila naval** própria, sep
 
 - **IA:** mobiliza quando entra em guerra e passa à guerra total se o inimigo tem 1,5× o PIB dela. Desmobiliza na paz.
 - **Gráficos novos:** economia de guerra, subsídio militar, produção militar e produção civil.
+
+## Etapa 8: interface
+
+- **Menu Construções, aba "Obras e construção em massa":**
+  - capacidade de construção e método dos setores;
+  - fila de obras com progresso, quanto falta pagar, previsão, pausar e cancelar;
+  - navios encomendados;
+  - construção em massa.
+  - O botão "Ver no mapa" liga a camada **Construção**: verde é elegível, amarelo é limite atingido ou já tem/está na fila, vermelho é inválido e cinza está fora da cidade escolhida.
+- **Menu Construções, aba "Edifícios e Produção":**
+  - todos os edifícios do país, com filtros (Todos, Agricultura, Extração, Indústria, Infraestrutura, Administração, Naval, Militar, Estatais, Privadas);
+  - ordenação por coluna: nome, local, nível, empregos, ocupação, produção, lucro e estado;
+  - seleção de vários edifícios para trocar um método de produção em massa, com o impacto estimado em trabalhadores e produção antes de aplicar;
+  - o nome do edifício leva ao hex e abre a ficha.
+- **Ficha do edifício** (painel do hex):
+  - métodos por categoria, com o efeito de cada um;
+  - dono (níveis estatais e privados), privatizar e nacionalizar;
+  - conta da semana, reserva, dívida, dividendos e gráfico do lucro;
+  - histórico de mudanças.
+- **Gráficos:** as séries novas aparecem na aba Gráficos com os dados reais do jogo.
+
+## Etapa 9: testes
+
+| Teste | O que cobre |
+|---|---|
+| `tests/construction.test.ts` | Fila, pagamento aos poucos, fila privada, construção em massa, setor de construção, escolha do método pelos materiais, olaria |
+| `tests/firms.test.ts` | Métodos (tecnologias e bens válidos), insumos dos métodos, conta e salários, reserva, estatal, privatizar/nacionalizar, leis econômicas |
+| `tests/naval.test.ts` | Estaleiros, fila naval, pagamento, tripulação |
+| `tests/wareconomy.test.ts` | Níveis, subsídio, exportação, conversão, preço tabelado, custo político |
+| `tests/eras.test.ts` | Todas as indústrias em 4 eras com todas as tecnologias: sem números inválidos nem tesouro negativo |
+
+## O que ainda falta deste pedido
+
+- **Investimento estrangeiro:** fundos de um país construindo em outro.
+- **Contratação por qualificação:** hoje os empregos seguem a tabela de POPs por era (pops.ts). Não há vagas não preenchidas por profissão.
+- **Estoques de mercadoria:** sem comprador, o preço cai até o mínimo e a produção continua. Nada fica guardado.
+- **Subsídios por edifício escolhidos pelo jogador e prioridade produtiva.**
+- **Grupos de interesse reagindo a cada medida:** hoje a nacionalização custa legitimidade, e a guerra total custa legitimidade por semana.
+- **Métodos navais detalhados:** estrutura, propulsão e equipamentos. Os estaleiros usam os métodos genéricos de indústria.
+- **Ferrovias**, que continuam no roadmap.

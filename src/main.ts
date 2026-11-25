@@ -6,8 +6,9 @@ import {
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy,
 } from "./economy.ts";
 import { WAR_ECONOMY, WAR_ECON, CONVERSIONS } from "./wareconomy.ts";
+import { MILITARY } from "./wareconomy.ts";
 import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
-import { methodsOf, activeMethods, methodKey, CATEGORIES, type Method } from "./methods.ts";
+import { methodsOf, activeMethods, methodKey, combine, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
 import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, sectorMethod, CONSTRUCTION_METHODS, CONSTRUCT } from "./construction.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available } from "./tech.ts";
@@ -158,7 +159,9 @@ document.addEventListener("change", (ev) => { // construção em massa: escolhas
   const t = ev.target as HTMLInputElement;
   if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
   else if (t.dataset?.meth) { const [hex, b, cat] = t.dataset.meth.split("|").map(Number); cmd({ t: "method", hex, b, cat, k: +t.value }); return; }
-  else if (t.id === "mb-levels") mbLevels = Math.max(1, Math.min(50, Math.round(+t.value) || 1)); else if (t.id === "mb-priv") mbPriv = t.checked; else return;
+  else if (t.id === "mb-levels") mbLevels = Math.max(1, Math.min(50, Math.round(+t.value) || 1)); else if (t.id === "mb-priv") mbPriv = t.checked;
+  else if (t.id === "bp-cat") { bpCat = +t.value; bpK = -1; } else if (t.id === "bp-k") bpK = +t.value; else return;
+  if (mode === 14) recolor();
   updateUI();
 });
 fileInput.addEventListener("change", () => { if (fileInput.files?.[0]) doLoad(fileInput.files[0]); fileInput.value = ""; });
@@ -242,6 +245,16 @@ function hexLayer(): ((i: number) => readonly number[] | null) | undefined {
     if (mode === 11) { const v = Math.min(1, (c.literacy ?? 0) / 0.6); return [40 + 60 * v, 60 + 100 * v, 90 + 150 * v]; } // azul: mais letrados
     const v = Math.min(1, ((k.road ?? 0) + (k.harbor ?? 0)) / 6); return [70 + 150 * v, 70 + 110 * v, 60 + 30 * v]; // dourado: mais estrada e porto
   });
+  if (mode === 14) { // construção em massa: verde elegível, amarelo limite/já existe, vermelho inválido, cinza fora
+    const ok = new Set(active ? massTargets() : []);
+    return (i) => {
+      if (!active || world.owner[i] !== active || !isLand(world.terrain[i])) return null;
+      if (mbCity >= 0 && eco.market[i] - 1 !== mbCity) return [95, 95, 95];
+      if (ok.has(i)) return [70, 170, 80];
+      if (eco.levels[mbB][i] || queuedLevels(eco, i, mbB)) return [210, 180, 60];
+      return [170, 70, 60];
+    };
+  }
   if (mode === 13) return (i) => { // expansão: território, área de influência (claro) e cidades isoladas (vermelho)
     if (world.owner[i]) { const k = eco.market[i]; return k && eco.cities[k - 1].isolated ? [200, 70, 60] : world.countries[world.owner[i] - 1].color; }
     const f = eco.influence?.[i]; return f ? world.countries[f - 1].color.map((v) => (v + 70 * 2) / 3) : null;
@@ -574,6 +587,14 @@ document.addEventListener("pointerdown", (e) => {
     return openNamer(kind === "city" ? "<i class=i-city></i> Cidade" : "<i class=i-map></i> Estado", cur, kind === "city" ? cityFlag(+id) : stateFlag(+id), () => cmd({ t: "rename", kind, id: +id, name: idIn("name").value, flag: idFlag() }));
   }
   if (d.act === "settlers") return cmd({ t: "settlers" });
+  if (d.act === "massmap") { setMode(14); return updateUI(); }
+  if (d.btab !== undefined) { bTab = +d.btab; return updateUI(); }
+  if (d.bfilter !== undefined) { bFilter = +d.bfilter; bSel.clear(); return updateUI(); }
+  if (d.bsort) { bSort = bSort === d.bsort ? `-${d.bsort}` : d.bsort; return updateUI(); }
+  if (d.bsel) { if (bSel.has(d.bsel)) bSel.delete(d.bsel); else bSel.add(d.bsel); return updateUI(); }
+  if (d.act === "bselall") { for (const r of buildingRows()) bSel.add(r.key); return updateUI(); }
+  if (d.act === "bselnone") { bSel.clear(); return updateUI(); }
+  if (d.act === "bapply") { for (const key of bSel) { const [hex, b] = key.split(":").map(Number); cmd({ t: "method", hex, b, cat: bpCat, k: bpK }); } return; }
   if (d.act === "massbuild") return cmd({ t: "buildMany", hexes: massTargets(), b: mbB, levels: mbLevels, priv: mbPriv });
   if (d.cancelbuild) return cmd({ t: "cancelBuild", id: +d.cancelbuild });
   if (d.cancelship) return cmd({ t: "cancelShip", id: +d.cancelship });
@@ -609,7 +630,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
   if (d.econ) { econTab = Number(d.econ); goodDetail = null; return updateUI(); }
   if (d.good !== undefined) { goodDetail = d.good || null; return updateUI(); }
-  if (d.goto) { selected = Number(d.goto); const [x, y] = hexCenter(selected % W, (selected / W) | 0); cam.x = x; cam.y = y; cam.zoom = Math.max(cam.zoom, 8); return updateUI(); }
+  if (d.goto) { selected = Number(d.goto); if (d.sheetkey) openSheet = d.sheetkey; const [x, y] = hexCenter(selected % W, (selected / W) | 0); cam.x = x; cam.y = y; cam.zoom = Math.max(cam.zoom, 8); return updateUI(); }
   if (d.menu) { menuCat = menuCat === d.menu ? null : d.menu; return updateUI(); }
   if (d.notes) return showNotes(d.notes);
   if (d.selectDiv) { selectedDiv = Number(d.selectDiv); group = [selectedDiv]; const u = eco.divisions.find((x) => x.id === selectedDiv); if (u) selected = u.hex; return updateUI(); }
@@ -665,7 +686,7 @@ const LAYERS: [string, [number, string][]][] = [
   ["Geografia", [[0, "Terreno"], [5, "Clima"], [3, "Recursos"]]],
   ["Território", [[1, "Político"], [4, "Controle"], [13, "Expansão"]]],
   ["Sociedade", [[2, "População"], [7, "Satisfação"], [8, "Cultura"], [9, "Língua"], [10, "Religião"], [11, "Alfabetização"]]],
-  ["Economia", [[12, "Infraestrutura"]]],
+  ["Economia", [[12, "Infraestrutura"], [14, "Construção"]]],
   ["Ciência", [[6, "Tecnologia"]]],
 ];
 const flagCache = new Map<string, string>();
@@ -962,8 +983,83 @@ function sheetHtml(i: number, b: number) {
     `<small>Lucro das últimas ${l.hist.length} semanas</small>${hist}` + (l.log?.length ? `<small>${l.log.join("<br>")}</small>` : "") + `</div>`;
 }
 
+// ---- Edifícios e Produção (Etapa 8): lista de todos os edifícios do país, filtros, ordenação e métodos em massa
+let bTab = 0, bFilter = 0, bSort = "-profit", bpCat = 3, bpK = -1;
+const bSel = new Set<string>();
+const B_FILTERS = ["Todos", "Agricultura", "Extração", "Indústria", "Infraestrutura", "Administração", "Naval", "Militar", "Estatais", "Privadas"] as const;
+const AGRI = new Set(["Fazenda", "Irrigação", "Pasto", "Estábulo", "Acampamento de caça"]);
+type BRow = { key: string; hex: number; b: number; lv: number; city: string; workers: number; vagas: number; prod: number; productivity: number; profit: number; owner: string; status: string; priv: number };
+function buildingRows(): BRow[] {
+  const known = eco.countries[active - 1].research.known, out: BRow[] = [];
+  for (const i of eco.owned) {
+    if (world.owner[i] !== active) continue;
+    for (let b = 0; b < BUILDINGS.length; b++) {
+      const lv = eco.levels[b][i];
+      if (!lv) continue;
+      const def = BUILDINGS[b], key = methodKey(i, b), l = ledgerOf(eco, key), name = def.name;
+      const ind = !!def.industry, naval = !!def.industry?.naval, admin = !!def.industry && !def.industry.outputs.length && !naval;
+      const f = B_FILTERS[bFilter], priv = l?.priv ?? 0;
+      if (f === "Agricultura" && !AGRI.has(name)) continue;
+      if (f === "Extração" && (ind || AGRI.has(name))) continue;
+      if (f === "Indústria" && (!ind || naval || admin)) continue;
+      if (f === "Infraestrutura" && name !== "Setor de construção" && def.boosts === undefined) continue;
+      if (f === "Administração" && name !== "Centro administrativo") continue;
+      if (f === "Naval" && !naval) continue;
+      if (f === "Militar" && !MILITARY.has(name)) continue;
+      if (f === "Estatais" && priv) continue;
+      if (f === "Privadas" && !priv) continue;
+      const org = activeMethods(eco, key, name, known, lawOf(eco.countries[active - 1].politics, "Economia").defaultOrg)[3];
+      const vagas = lv * def.workers * combine(activeMethods(eco, key, name, known)).workers;
+      const status = !l ? "novo" : l.workers < vagas * 0.05 ? "parado (sem gente)" : l.debt > 0 ? "endividado" : l.profit < 0 ? "prejuízo" : "operando";
+      out.push({ key, hex: i, b, lv, city: eco.cities[eco.market[i] - 1]?.name ?? "—", workers: l?.workers ?? 0, vagas, prod: l?.produced ?? 0,
+        productivity: l && vagas ? l.workers / vagas : 0, profit: l?.profit ?? 0, owner: `${priv ? (priv === lv ? "privado" : "misto") : "estatal/comunitário"} · ${org.name}`, status, priv });
+    }
+  }
+  const [desc, col] = bSort.startsWith("-") ? [-1, bSort.slice(1)] : [1, bSort];
+  const val = (r: BRow) => (col === "name" ? BUILDINGS[r.b].name : (r as unknown as Record<string, number | string>)[col]);
+  return out.sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * desc; });
+}
+function edificiosHtml() {
+  const rows = buildingRows(), shown = rows.slice(0, 150);
+  const known = eco.countries[active - 1].research.known;
+  const th = (col: string, n: string) => `<td><b data-bsort="${col}" style="cursor:pointer">${n}${bSort.replace("-", "") === col ? (bSort.startsWith("-") ? " ▼" : " ▲") : ""}</b></td>`;
+  const table = `<table><tr><td></td>${th("name", "Edifício")}${th("city", "Local")}${th("lv", "Nv")}${th("workers", "Empregos")}${th("productivity", "Ocupação")}${th("prod", "Produção")}${th("profit", "Lucro")}<td><b>Dono · organização</b></td>${th("status", "Estado")}</tr>` +
+    shown.map((r) => `<tr><td><input type="checkbox" data-bsel="${r.key}"${bSel.has(r.key) ? " checked" : ""}></td><td><button data-goto="${r.hex}" data-sheetkey="${r.key}" title="Ver no mapa e abrir a ficha">${BUILDINGS[r.b].name}</button></td><td><small>${r.city}</small></td><td>${r.lv}</td>` +
+      `<td>${fmt(r.workers)}/${fmt(r.vagas)}</td><td>${pct(r.productivity)}</td><td>${fmt(r.prod)}</td><td class="${r.profit < 0 ? "up" : "down"}">${signed(r.profit)}</td><td><small>${r.owner}</small></td><td><small>${r.status}</small></td></tr>`).join("") + `</table>` +
+    (rows.length > shown.length ? `<small>Mostrando ${shown.length} de ${rows.length}: use os filtros e a ordenação.</small>` : "");
+  // métodos em massa com prévia do impacto (trabalhadores e produção) antes de aplicar
+  let mass = "";
+  if (bSel.size) {
+    const sel = [...bSel].map((key) => key.split(":").map(Number) as [number, number]).filter(([h, b]) => eco.levels[b]?.[h]);
+    const types = new Set(sel.map(([, b]) => BUILDINGS[b].name)), one = types.size === 1 ? [...types][0] : null;
+    const cats = CATEGORIES.map((n, k) => [n, k] as const).filter(([, k]) => one || k >= 3); // tipos diferentes: só organização e manutenção são comuns
+    if (!cats.some(([, k]) => k === bpCat)) bpCat = cats[0][1];
+    const list = methodsOf(one ?? BUILDINGS[sel[0][1]].name)[bpCat];
+    let dW = 0, dOut = 0, n = 0;
+    for (const [h, b] of sel) {
+      const key = methodKey(h, b), cur = activeMethods(eco, key, BUILDINGS[b].name, known), next = [...cur];
+      const lst = methodsOf(BUILDINGS[b].name)[bpCat], m = bpK >= 0 ? lst.find((x) => x.name === list[bpK]?.name) : undefined;
+      if (bpK >= 0 && (!m || (m.tech && !known.has(m.tech)))) continue;
+      next[bpCat] = m ?? next[bpCat];
+      const a = combine(cur), z = combine(next), lv = eco.levels[b][h], def = BUILDINGS[b];
+      dW += lv * def.workers * (z.workers - a.workers); dOut += (ledgerOf(eco, key)?.produced ?? 0) * ((1 + z.out) / (1 + a.out) - 1); n++;
+    }
+    mass = `<div class="card"><b>${bSel.size} selecionado${bSel.size > 1 ? "s" : ""}</b> <button data-act="bselnone">Limpar</button><br>` +
+      `<select id="bp-cat">${cats.map(([nm, k]) => `<option value="${k}"${k === bpCat ? " selected" : ""}>${nm}</option>`).join("")}</select> ` +
+      `<select id="bp-k"><option value="-1"${bpK < 0 ? " selected" : ""}>Automático</option>${list.map((m, k) => `<option value="${k}"${k === bpK ? " selected" : ""}${m.tech && !known.has(m.tech) ? " disabled" : ""}>${m.name} — ${methodEffect(m)}</option>`).join("")}</select>` +
+      `<br><small>Impacto estimado em ${n} edifício${n === 1 ? "" : "s"}: trabalhadores ${dW >= 0 ? "+" : ""}${fmt(dW)} · produção ${dOut >= 0 ? "+" : ""}${fmt(dOut)}/semana (insumos extras do método não incluídos)</small> <button data-act="bapply">Aplicar</button></div>`;
+  }
+  return `<div class="tabs">${B_FILTERS.map((f, k) => `<button data-bfilter="${k}" class="${k === bFilter ? "on" : ""}">${f}</button>`).join(" ")}</div>` +
+    `<small>${rows.length} edifícios · <button data-act="bselall">Selecionar todos os ${Math.min(rows.length, 150)} da lista</button></small>` + mass + table;
+}
+
 function buildingsHtml() {
   if (!active) return "";
+  const tabs = `<div class="tabs">${["Obras e construção em massa", "Edifícios e Produção"].map((n, k) => `<button data-btab="${k}" class="${k === bTab ? "on" : ""}">${n}</button>`).join(" ")}</div>`;
+  if (bTab === 1) return tabs + edificiosHtml();
+  return tabs + obrasHtml();
+}
+function obrasHtml() {
   const c = eco.countries[active - 1], q = queueOf(eco, active);
   const total = BUILDINGS.map((_, b) => { let n = 0; for (const i of eco.owned) if (world.owner[i] === active) n += eco.levels[b][i]; return n; });
   const rows = BUILDINGS.map((b, k) => (total[k] ? `<tr><td>${b.name}</td><td>${total[k]}</td><td>${b.workers * total[k]}</td></tr>` : "")).join("");
@@ -992,7 +1088,7 @@ function buildingsHtml() {
     `<label><input id="mb-priv" type="checkbox"${mbPriv ? " checked" : ""}> fila privada</label>` +
     `<br><small>${BUILDINGS[mbB].industry ? "Indústria: só em centro urbano." : BUILDINGS[mbB].boosts !== undefined ? `Melhoria: precisa de ${BUILDINGS[BUILDINGS[mbB].boosts!].name} no hex.` : `Extratora: hex com ${BUILDINGS[mbB].for.map((g) => GOODS[g]).join(", ")}.`} ${BUILDINGS[mbB].workers} trabalhadores e ${cpCost(mbB)} PC por nível.${locked ? ` <span class="bad">Precisa pesquisar ${tech}.</span>` : ""}</small>` +
     `<br>Hexes elegíveis: <b>${targets.length}</b> · obras: <b>${n}</b> · custo ${fmt(money)} · ${fmt(cps)} PC · ~${Number.isFinite(weeks) ? weeks : "∞"} semanas com a capacidade atual` +
-    (n ? ` <button data-act="massbuild">Pôr ${n} obra${n > 1 ? "s" : ""} na fila</button>` : "") + `</div>`;
+    (n ? ` <button data-act="massbuild">Pôr ${n} obra${n > 1 ? "s" : ""} na fila</button>` : "") + ` <button data-act="massmap" title="Camada Construção: verde elegível, amarelo limite ou já existe, vermelho inválido">Ver no mapa</button></div>`;
   const ships = navalQueueOf(eco, active).map((o) => `<tr><td>${o.ship}<br><small>${eco.cities[o.city]?.name ?? "—"}</small></td><td>${Math.round((o.done / o.np) * 100)}%<br><small>${fmt(o.np - o.done)} PN</small></td><td>${fmt(o.cost - o.paid)}</td><td><small>${o.waiting ?? ""}</small></td><td><button data-cancelship="${o.id}">Cancelar</button></td></tr>`).join("");
   const naval = ships ? `<h3>Estaleiros: navios encomendados</h3><table><tr><td><b>Navio</b></td><td><b>Progresso</b></td><td><b>Falta pagar</b></td><td></td><td></td></tr>${ships}</table>` : "";
   return cap + queue + naval + mass + `<h3>Construções do país</h3><table><tr><td><b>Construção</b></td><td><b>Níveis</b></td><td><b>Vagas</b></td></tr>${rows}</table>` +
