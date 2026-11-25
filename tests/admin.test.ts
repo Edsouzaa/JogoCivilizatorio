@@ -12,6 +12,8 @@ c.research.known.add("Escrita"); c.treasury = 1e5;
 const center = BUILDINGS.findIndex((b) => b.name === "Centro administrativo");
 assert.equal(build(w, e, city.hex, center), null);
 w.pop[city.hex] = 1e5;
+const sawB = BUILDINGS.findIndex((b) => b.name === "Serraria");
+for (const i of e.owned) if (e.market[i] === 1) e.levels[sawB][i] = 0; // serraria com aproveitamento de resíduos faz papel
 tick(w, e);
 assert.equal(c.adminWeek, 0, "sem papel não deveria gerar pontos");
 // madeira no mercado: uma serraria num hex da região

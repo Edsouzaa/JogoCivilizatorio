@@ -1,6 +1,8 @@
 import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
+import { activeMethods, combine, methodKey } from "./methods.ts";
+import { stepFirms, privateShareOf, type FirmRun, type Ledger } from "./firms.ts";
 import { stepConstruction, methodInputs, constructionMethod, CONSTRUCTION_METHODS, type Project } from "./construction.ts";
 import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
@@ -193,6 +195,8 @@ export type Country = {
   investWeek?: number;  // quanto entrou na última semana
   cpWeek?: number;      // pontos de construção da última semana (base + setores; construction.ts)
   cpUsed?: number;      // quanto deles as obras usaram
+  insolvencies?: number; // níveis privados fechados por insolvência (firms.ts)
+  ownersTake?: number;   // da renda dos donos, quanto foi ao tesouro (estatais) ou ao fundo na última semana (firms.ts)
   ruler?: number;       // id do governante (characters.ts)
   tributeWeek?: number; // tributo da semana: + recebido (soberano), − pago (súdito)
   glory?: number;       // prestígio de guerras (diplomacy.ts), se apaga devagar
@@ -248,6 +252,8 @@ export type Economy = {
   influence?: Uint16Array;            // área de influência: país que influencia cada hex livre (expansion.ts)
   outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
   construction?: Project[]; nextProject?: number; // filas de obras (construction.ts)
+  methods?: Map<string, number[]>;   // método escolhido por edifício ("hex:b" → índice por categoria; methods.ts)
+  ledgers?: Map<string, Ledger>;     // conta financeira de cada edifício ("hex:b"; firms.ts)
   closedRivers?: Record<number, number>; // rio navegável → país que o fechou ao comércio dos outros
   claims?: Claim[];                   // reivindicações sobre cidades (claims.ts)
   subjects?: Record<number, Subject>; // súdito → ligação com o soberano (subjects.ts)
@@ -606,7 +612,7 @@ function updatePops(e: Economy, c: Country, country: number) {
   if (!cap) return; // país sem cidades: sem mercado para medir qualidade de vida
   let needCost = 0; // só necessidades básicas: comida, peles e madeira (QV 25 = básicas cobertas)
   for (const gi of BASIC_NEEDS) needCost += POP_DEMAND[gi] * BASE_PRICE[gi] * cap.price[gi];
-  distributeIncome(c.pops, c.gdpWeek, c.subsistence, needCost);
+  distributeIncome(c.pops, c.gdpWeek, c.subsistence, needCost, c.ownersTake ?? 0);
 }
 
 /**
@@ -693,31 +699,48 @@ export function tick(w: World, e: Economy) {
     for (const f of FOOD) { city.market.supply[f] += food; c.subsistence += food * BASE_PRICE[f] * city.market.price[f]; }
   }
 
-  // throughput[cidade][b] = soma de nível × ocupação das indústrias b no mercado da cidade
-  const throughput = e.cities.map(() => new Float64Array(NB));
+  // throughput[cidade][b] = soma de nível × ocupação das indústrias b no mercado da cidade;
+  // outMul = o mesmo × (1 + bônus dos métodos); mIn = insumos extras dos métodos. `runs` guarda o que cada edifício fez (firms.ts)
+  const throughput = e.cities.map(() => new Float64Array(NB)), outMul = e.cities.map(() => new Float64Array(NB));
+  const mIn = e.cities.map(() => new Map<number, Map<number, number>>()); // cidade → indústria → bem → qtd
+  const runs: FirmRun[] = [], pending: FirmRun[] = []; // pending: extratoras com bônus de método esperando insumo
   for (const i of e.producers) {
     const k = e.market[i];
     if (!k || e.occupier[i]) continue;
-    const m = e.cities[k - 1].market, c = e.countries[w.owner[i] - 1];
-    let base = 0, mult = 1, required = 0, mined = 0; // mined: produção do 1º recurso (gasta a jazida)
+    const m = e.cities[k - 1].market, c = e.countries[w.owner[i] - 1], known = c.research.known;
+    let mult = 1, required = 0, mined = 0; // mined: produção do 1º recurso (gasta a jazida)
     const out = new Map<number, number>(); // produto → produção base
+    const here: FirmRun[] = [];
     for (let b = 0; b < NB; b++) {
       const lv = e.levels[b][i];
       if (!lv) continue;
-      const def = BUILDINGS[b];
-      required += lv * def.workers;
-      c.upkeep += lv * RULES.upkeepPerLevel;
+      const def = BUILDINGS[b], key = methodKey(i, b), fx = combine(activeMethods(e, key, def.name, known));
+      const run: FirmRun = { key, hex: i, b, city: k - 1, country: w.owner[i], lv, workers: lv * def.workers * fx.workers, outs: [], ins: [], fx, q: 0 };
+      here.push(run); runs.push(run);
+      required += run.workers;
       if (def.industry) continue;
       if (def.boosts === undefined) {
         const q = lv * RULES.outputPerLevel * (1 + c.bonus[b]), g = outputOf(w, b, i);
-        base += q; out.set(g, (out.get(g) ?? 0) + q);
+        out.set(g, (out.get(g) ?? 0) + q); run.q = q; run.outs.push([g, q]);
         if (g === w.resource[i]) mined += q;
       } else mult += lv * def.mult!;
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals);
     const natural = (hasIncentive(e, k - 1, "Isenção fiscal") ? 1.15 : 1) * (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // pouco controle: parte some no caminho
-    for (const [g, q] of out) m.supply[g] += q * mult * staffing * penalty * natural;
+    const f = mult * staffing * penalty * natural;
+    for (const [gi, q] of out) m.supply[gi] += q * f;
+    for (const r of here) {
+      r.workers *= staffing; r.outs = r.outs.map(([gi, q]) => [gi, q * f]);
+      c.upkeep += r.lv * RULES.upkeepPerLevel * r.fx.upkeep * (1 - privateShareOf(e, r.key, r.lv)); // parte privada paga a própria manutenção (firms.ts)
+      const def = BUILDINGS[r.b];
+      if (def.industry || def.boosts !== undefined) continue;
+      // bônus dos métodos e subprodutos: só saem se os insumos extras chegarem (depois do comércio)
+      r.bonus = r.outs.map(([gi, q]) => [gi, q * r.fx.out] as [number, number]).filter(([, q]) => q > 0);
+      for (const [gn, q] of r.fx.extra) r.bonus.push([g(gn), r.lv * q * f]);
+      r.need = [...r.fx.inputs].map(([gn, q]) => [g(gn), r.lv * q * staffing] as [number, number]);
+      if (r.bonus.length) pending.push(r);
+    }
     if (mined && w.reserve[i] !== Infinity) { // jazida: cada semana de extração gasta a reserva
       w.reserve[i] -= (mined / RULES.outputPerLevel) * staffing;
       if (w.reserve[i] <= 0) {
@@ -725,36 +748,61 @@ export function tick(w: World, e: Economy) {
         exhaust(w, i); e.exhausted.push(i);
       }
     }
-    for (let b = 0; b < NB; b++) { // quem trabalha aqui, por tipo de POP
-      const lv = e.levels[b][i];
-      if (lv) for (const [t, share] of JOBS[c.research.era][b]) c.pops.count[t] += lv * BUILDINGS[b].workers * staffing * share;
+    for (const r of here) for (const [t, share] of JOBS[c.research.era][r.b]) c.pops.count[t] += r.workers * share; // quem trabalha aqui, por tipo de POP
+    for (const r of here) if (BUILDINGS[r.b].industry) {
+      const thr = r.lv * staffing * penalty * (1 + c.bonus[r.b]) * RULES.urbanIndustry;
+      r.q = thr; throughput[k - 1][r.b] += thr; outMul[k - 1][r.b] += thr * (1 + r.fx.out);
+      const mm = mIn[k - 1].get(r.b) ?? new Map<number, number>();
+      for (const [gn, q] of r.fx.inputs) mm.set(g(gn), (mm.get(g(gn)) ?? 0) + q * thr);
+      mIn[k - 1].set(r.b, mm);
     }
-    for (const b of INDUSTRIES) if (e.levels[b][i]) throughput[e.market[i] - 1][b] += e.levels[b][i] * staffing * penalty * (1 + c.bonus[b]) * RULES.urbanIndustry;
   }
 
-  // o que cada mercado quer: consumo da população + insumos das indústrias a plena carga
+  // o que cada mercado quer: consumo da população + insumos das indústrias a plena carga (+ extras dos métodos)
   e.cities.forEach((city, k) => {
     const m = city.market;
     for (let gi = 1; gi < NG; gi++) m.need[gi] = m.pop * POP_DEMAND[gi];
-    for (const b of INDUSTRIES) for (const [gi, q] of industryInputs(e, b, city)) m.need[gi] += q * throughput[k][b];
+    for (const b of INDUSTRIES) {
+      for (const [gi, q] of industryInputs(e, b, city)) m.need[gi] += q * throughput[k][b];
+      for (const [gi, q] of mIn[k].get(b) ?? []) m.need[gi] += q;
+    }
   });
+  for (const r of pending) for (const [gi, q] of r.need!) e.cities[r.city].market.need[gi] += q;
   trade(e, (m, gi) => m.need[gi]); // matéria-prima vai para onde falta, antes de virar produto
 
+  for (const r of pending) { // extratoras: insumos dos métodos → bônus de produção na mesma proporção
+    const m = e.cities[r.city].market;
+    let eff = 1;
+    for (const [gi, q] of r.need!) { m.demand[gi] += q; if (q > 0) eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / q); }
+    for (const [gi, q] of r.need!) { m.used[gi] += q * eff; r.ins.push([gi, q * eff]); }
+    for (const [gi, q] of r.bonus!) { m.supply[gi] += q * eff; r.outs.push([gi, q * eff]); }
+  }
+
+  const industryEff = e.cities.map(() => new Float64Array(NB));
   e.cities.forEach((city, k) => {
     const m = city.market;
     for (const b of INDUSTRIES) { // na ordem de BUILDINGS: o bronze feito aqui já serve ao armeiro
       const thr = throughput[k][b];
       if (!thr) continue;
-      const { outputs } = BUILDINGS[b].industry!, inputs = industryInputs(e, b, city);
+      const { outputs } = BUILDINGS[b].industry!, inputs: [number, number][] = industryInputs(e, b, city).map(([gi, q]) => [gi, q * thr]);
+      for (const [gi, q] of mIn[k].get(b) ?? []) inputs.push([gi, q]);
       let eff = 1;
-      for (const [gi, q] of inputs) { m.demand[gi] += q * thr; eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / (q * thr)); }
-      for (const [gi, q] of inputs) m.used[gi] += q * thr * eff;
-      for (const [go, q] of outputs) m.supply[go] += q * thr * eff;
+      for (const [gi, q] of inputs) { m.demand[gi] += q; if (q > 0) eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / q); }
+      for (const [gi, q] of inputs) m.used[gi] += q * eff;
+      const om = outMul[k][b]; // produção com o bônus dos métodos
+      for (const [go, q] of outputs) m.supply[go] += q * om * eff;
+      industryEff[k][b] = eff;
       const adm = BUILDINGS[b].industry!.admin;
-      if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * thr * eff; }
-      if (b === SECTOR) { const c = e.countries[city.country - 1]; c.cpWeek = (c.cpWeek ?? 0) + CONSTRUCTION_METHODS[constructionMethod(c.research.era)].cp * thr * eff; }
+      if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * om * eff; }
+      if (b === SECTOR) { const c = e.countries[city.country - 1]; c.cpWeek = (c.cpWeek ?? 0) + CONSTRUCTION_METHODS[constructionMethod(c.research.era)].cp * om * eff; }
     }
   });
+  for (const r of runs) if (BUILDINGS[r.b].industry) { // conta de cada indústria: a parte dela no que a cidade fez
+    const eff = industryEff[r.city][r.b], city = e.cities[r.city], tot = throughput[r.city][r.b], mm = mIn[r.city].get(r.b);
+    for (const [go, q] of BUILDINGS[r.b].industry!.outputs) r.outs.push([go, q * r.q * (1 + r.fx.out) * eff]);
+    for (const [gi, q] of industryInputs(e, r.b, city)) r.ins.push([gi, q * r.q * eff]);
+    if (mm && tot) for (const [gi, q] of mm) r.ins.push([gi, (q * r.q * eff) / tot]); // extras da cidade divididos pelo peso de cada uma
+  }
   trade(e, (m, gi) => m.pop * POP_DEMAND[gi]); // produtos prontos circulam
   foreignTrade(w, e);
 
@@ -831,6 +879,7 @@ export function tick(w: World, e: Economy) {
 
   stepAdmin(e);
   payTribute(e);
+  stepFirms(w, e, runs);
   stepConstruction(w, e);
   e.week++;
 }

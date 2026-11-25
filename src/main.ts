@@ -5,6 +5,8 @@ import {
   proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy,
 } from "./economy.ts";
+import { methodsOf, activeMethods, methodKey, CATEGORIES, type Method } from "./methods.ts";
+import { ledgerOf, FIRM } from "./firms.ts";
 import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, constructionMethod, CONSTRUCTION_METHODS, CONSTRUCT } from "./construction.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
@@ -153,6 +155,7 @@ const fileInput = Object.assign(document.createElement("input"), { type: "file",
 document.addEventListener("change", (ev) => { // construção em massa: escolhas mudam o cálculo
   const t = ev.target as HTMLInputElement;
   if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
+  else if (t.dataset?.meth) { const [hex, b, cat] = t.dataset.meth.split("|").map(Number); cmd({ t: "method", hex, b, cat, k: +t.value }); return; }
   else if (t.id === "mb-levels") mbLevels = Math.max(1, Math.min(50, Math.round(+t.value) || 1)); else if (t.id === "mb-priv") mbPriv = t.checked; else return;
   updateUI();
 });
@@ -571,6 +574,10 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "settlers") return cmd({ t: "settlers" });
   if (d.act === "massbuild") return cmd({ t: "buildMany", hexes: massTargets(), b: mbB, levels: mbLevels, priv: mbPriv });
   if (d.cancelbuild) return cmd({ t: "cancelBuild", id: +d.cancelbuild });
+  if (d.sheet) { openSheet = openSheet === d.sheet ? "" : d.sheet; return updateUI(); }
+  if (d.methall) { const [b, cat, k] = d.methall.split("|").map(Number); return cmd({ t: "method", hex: -1, b, cat, k, all: true }); }
+  if (d.privatize) { const [hex, b] = d.privatize.split("|").map(Number); return cmd({ t: "privatize", hex, b, n: 1 }); }
+  if (d.nationalize) { const [hex, b] = d.nationalize.split("|").map(Number); return cmd({ t: "nationalize", hex, b, n: 1 }); }
   if (d.pausebuild) return cmd({ t: "pauseBuild", id: +d.pausebuild });
   if (d.tech && active) return cmd({ t: "tech", name: d.tech });
   if (d.law && active) {
@@ -908,6 +915,45 @@ function massTargets() {
     if (ok) out.push(i);
   }
   return out;
+}
+
+// ---- ficha de um edifício: métodos de produção (com comparação), dono e conta financeira (methods.ts, firms.ts)
+let openSheet = "";
+/** Efeito de um método em texto curto (para comparar). */
+function methodEffect(m: Method) {
+  const parts: string[] = [];
+  if (m.out) parts.push(`${m.out > 0 ? "+" : ""}${Math.round(m.out * 100)}% produção`);
+  if (m.workers && m.workers !== 1) parts.push(`×${m.workers} trabalhadores`);
+  if (m.upkeep && m.upkeep !== 1) parts.push(`×${m.upkeep} manutenção`);
+  if (m.inputs?.length) parts.push(`usa ${m.inputs.map(([g, q]) => `${q} ${g}`).join(" + ")} por nível`);
+  if (m.extra?.length) parts.push(`faz ${m.extra.map(([g, q]) => `${q} ${g}`).join(" + ")} por nível`);
+  if (m.divShare !== undefined) parts.push(m.state ? "lucro ao tesouro" : `${Math.round(m.divShare * 100)}% do lucro em dividendos`);
+  return parts.join(", ") || "sem efeito extra";
+}
+function sheetHtml(i: number, b: number) {
+  const key = methodKey(i, b), def = BUILDINGS[b], lv = eco.levels[b][i], known = eco.countries[active - 1].research.known;
+  const act = activeMethods(eco, key, def.name, known), pick = eco.methods?.get(key);
+  const meth = methodsOf(def.name).map((list, cat) => {
+    if (list.length < 2) return "";
+    const cur = pick?.[cat] ?? -1;
+    const opts = `<option value="-1"${cur < 0 ? " selected" : ""}>Automático (${act[cat].name})</option>` +
+      list.map((m, k) => `<option value="${k}"${cur === k ? " selected" : ""}${m.tech && !known.has(m.tech) ? " disabled" : ""} title="${methodEffect(m)}">${m.name}${m.tech && !known.has(m.tech) ? ` (${m.tech})` : ""}</option>`).join("");
+    return `<tr><td><small>${CATEGORIES[cat]}</small></td><td><select data-meth="${i}|${b}|${cat}">${opts}</select><br><small style="color:var(--dim)">${methodEffect(act[cat])}</small></td>` +
+      `<td><button data-methall="${b}|${cat}|${cur}" title="Usa esta escolha em todos os edifícios ${def.name} do país">Em todos</button></td></tr>`;
+  }).join("");
+  const l = ledgerOf(eco, key);
+  if (!l) return `<div class="card"><table>${meth}</table><small>A conta aparece depois da primeira semana.</small></div>`;
+  const row = (n: string, v: number, cls = "") => `<tr><td>${n}</td><td class="${cls}">${signed(v)}</td></tr>`;
+  const hist = l.hist.length > 1 ? (() => { const mx = Math.max(1e-9, ...l.hist.map(Math.abs)); return `<svg width="160" height="30" style="display:block"><line x1="0" y1="15" x2="160" y2="15" stroke="#555"/><polyline fill="none" stroke="#c9a45c" points="${l.hist.map((v, k) => `${(k / (l.hist.length - 1)) * 160},${15 - (v / mx) * 14}`).join(" ")}"/></svg>`; })() : "";
+  return `<div class="card"><b>${def.name}</b> nível ${lv} · ${lv - l.priv} estatal/comunitário · ${l.priv} privado · desde a semana ${l.built}` +
+    ` <button data-privatize="${i}|${b}" title="Vende 1 nível ao fundo de investimento por ${FIRM.privatizeValue * 100}% do valor">Privatizar 1</button>` +
+    (l.priv ? ` <button data-nationalize="${i}|${b}" title="Compra 1 nível privado indenizando os donos; investidores não gostam (legitimidade)">Nacionalizar 1</button>` : "") +
+    `<br><small>${fmt(l.workers)} empregados · produz ${fmt(l.produced)} por semana</small>` +
+    `<table>${meth}</table>` +
+    `<table>${row("Receita", l.rev)}${row("Insumos", -l.inputs)}${row("Salários", -l.wages)}${row("Manutenção", -l.upkeep)}${row("Impostos", -l.tax)}${row("Lucro", l.profit, l.profit < 0 ? "up" : "down")}` +
+    `<tr><td>Reserva</td><td>${fmt(l.reserve)}</td></tr><tr><td>Dívida</td><td class="${l.debt > 0 ? "up" : ""}">${fmt(l.debt)}</td></tr>` +
+    `${l.div ? row("Dividendos", l.div) : ""}${l.reinvest ? row("Reinvestido (fundo)", l.reinvest) : ""}${l.toState ? row("Para o tesouro", l.toState) : ""}</table>` +
+    `<small>Lucro das últimas ${l.hist.length} semanas</small>${hist}` + (l.log?.length ? `<small>${l.log.join("<br>")}</small>` : "") + `</div>`;
 }
 
 function buildingsHtml() {
@@ -1323,6 +1369,11 @@ function hexHtml() {
       `<td>${locked ? `<small><i class=i-lock></i> ${tech}</small>` : `<button data-build="${b}" title="Põe 1 nível na fila pública: ${cpCost(b)} PC; o dinheiro sai aos poucos">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>${queuedLevels(eco, i, b) ? ` <small>+${queuedLevels(eco, i, b)} na fila</small>` : ""}`}</td></tr>`;
   });
   h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
+  if (world.owner[i] === active) for (const b of buildingsFor(res, !!eco.urban[i], world.resource2[i])) if (eco.levels[b][i]) {
+    const key = methodKey(i, b);
+    h += `<br><button data-sheet="${key}">${openSheet === key ? "Fechar" : "Ficha"}: ${BUILDINGS[b].name}</button>`;
+    if (openSheet === key) h += sheetHtml(i, b);
+  }
   for (let b = 1; b <= eco.countries.length; b++) if (atWar(eco, active, b)) {
     const s = airSuperiority(eco, airRegion(eco, i), active, b);
     h += `<br><i class=i-plane></i> Céu desta região contra ${world.countries[b - 1].name}: <b class="${s >= 0.5 ? "down" : "up"}">${pct(s)}</b> <small>(batalhas aqui: ${s >= 0.5 ? "+" : "−"}${Math.round(Math.abs(2 * s - 1) * AIR.bonus * 100)}%)</small>`;

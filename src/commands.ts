@@ -1,5 +1,8 @@
+import { BUILDINGS } from "./economy.ts";
 // Comandos do jogador. Toda ação que muda a partida passa por aqui, para valer igual no single-player,
 // no servidor e em todos os navegadores do multiplayer (lockstep). Cada comando só age sobre o país de quem mandou.
+import { setMethod, methodKey } from "./methods.ts";
+import { privatize, nationalize } from "./firms.ts";
 import { queueBuild, cancelProject, pauseProject } from "./construction.ts";
 import { toggleRiver } from "./navigation.ts";
 import {
@@ -23,6 +26,8 @@ export type Cmd =
   | { t: "build"; i: number; b: number; priv?: boolean }
   | { t: "buildMany"; hexes: number[]; b: number; levels: number; priv?: boolean } // construção em massa
   | { t: "cancelBuild"; id: number } | { t: "pauseBuild"; id: number }
+  | { t: "method"; hex: number; b: number; cat: number; k: number; all?: boolean } // método de produção (all: todos os edifícios b do país)
+  | { t: "privatize"; hex: number; b: number; n: number } | { t: "nationalize"; hex: number; b: number; n: number }
   | { t: "found"; unit: number; name?: string; flag?: Flag }
   | { t: "outpost"; unit: number } // colonos viram posto avançado
   | { t: "settlers" }
@@ -99,6 +104,16 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       }
       return ok ? null : err ?? "Nada para construir";
     }
+    case "method": {
+      if (!isInt(c.b) || !BUILDINGS[c.b] || !isInt(c.cat) || !Number.isInteger(c.k)) return "Método inválido";
+      const known = e.countries[country - 1].research.known;
+      if (!c.all) return isInt(c.hex) && w.owner[c.hex] === country && e.levels[c.b][c.hex] ? setMethod(e, methodKey(c.hex, c.b), BUILDINGS[c.b].name, c.cat, c.k, known) : "Edifício não é seu";
+      let err: string | null = "Nenhum edifício desse tipo";
+      for (const i of e.owned) if (w.owner[i] === country && e.levels[c.b][i]) err = setMethod(e, methodKey(i, c.b), BUILDINGS[c.b].name, c.cat, c.k, known);
+      return err;
+    }
+    case "privatize": return isInt(c.hex) && isInt(c.b) && isInt(c.n, 1) ? privatize(w, e, country, c.hex, c.b, c.n) : "Pedido inválido";
+    case "nationalize": return isInt(c.hex) && isInt(c.b) && isInt(c.n, 1) ? nationalize(w, e, country, c.hex, c.b, c.n) : "Pedido inválido";
     case "cancelBuild": return isInt(c.id, 1) ? cancelProject(e, country, c.id) : "Obra inválida";
     case "pauseBuild": return isInt(c.id, 1) ? pauseProject(e, country, c.id) : "Obra inválida";
     case "outpost": return own(c.unit) ? buildOutpost(w, e, c.unit) : "Unidade não é sua";

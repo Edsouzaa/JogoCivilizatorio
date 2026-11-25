@@ -121,3 +121,50 @@ Construir não é mais instantâneo. Cada nível vira uma **obra** na fila do pa
 - **Limite físico do hex:** as vagas de todas as construções de um hex cabem em 2 × metade do teto de população dele.
 - **Construção em massa:** no menu Construções, escolha a construção, a cidade (ou todas), os níveis por hex e a fila. O painel mostra os hexes elegíveis, o custo, os PC e a previsão, e põe tudo na fila de uma vez.
 - **Gerenciar a fila:** obras podem ser pausadas ou canceladas. O que já foi pago numa obra cancelada fica gasto.
+
+## Métodos de produção (methods.ts)
+
+Cada edifício tem 5 categorias e usa 1 método em cada. O padrão é "automático": o melhor método já liberado.
+
+| Categoria | Exemplos |
+|---|---|
+| Produção-base | Fazenda: subsistência → tradicional → rotação de culturas → intensiva → científica → de precisão |
+| Produção secundária | Diversificação (frutas), produção de couro (peles), aproveitamento de resíduos da serraria (papel) |
+| Automação | Arado (gado) → arado pesado (cavalos + ferramentas) → tratores (petróleo) → máquinas agrícolas |
+| Organização | Comunitária, Familiar, Aristocrática, Companhia comercial, Empresarial, Cooperativa, Estatal |
+| Manutenção | Rudimentar → regular → especializada → industrial → automatizada |
+
+- **Efeitos de um método:** bônus de produção, multiplicador de trabalhadores, multiplicador de manutenção, insumos extras por nível e produtos extras.
+- **Insumos:** o bônus e os subprodutos só saem na proporção dos insumos que o mercado da cidade tiver. Sem gado, o arado não rende mais nada.
+- **Teto:** os bônus dos métodos se somam até +200%. Os bônus de tecnologia continuam à parte.
+- **Comparação:** na ficha do edifício (botão "Ficha" no painel do hex), cada método mostra o efeito e o automático aparece entre parênteses.
+- **Aplicar em massa:** "Em todos" aplica a escolha a todos os edifícios do mesmo tipo no país.
+
+## Finanças e propriedade de cada edifício (firms.ts)
+
+Cada edifício (tipo + hex) tem uma conta semanal:
+
+**lucro = receita − insumos − salários − manutenção − impostos**
+
+- **Receita:** o que ele produziu de verdade × o preço do mercado da cidade.
+- **Insumos:** o que ele comprou de verdade.
+- **Salários:** a parte do trabalho no valor agregado, 70%, a mesma divisão da renda das POPs.
+- **Impostos:** a taxa do país sobre o lucro.
+
+Destino do lucro:
+
+- **Reserva:** a meta é 6 semanas de custos. Passando da meta, o que sobra é distribuído.
+- **Organização Estatal:**
+  - O lucro vai ao tesouro e sai da renda dos donos.
+  - O Estado cobre o prejuízo.
+- **Outras organizações:**
+  - A organização diz quanto vira dividendo; por exemplo, a Comunitária distribui 20%.
+  - A parte privada reinveste no fundo de investimento.
+  - Os donos põem no fundo a fração da lei de Economia: 0%, 15%, 30% ou 50%.
+- **Prejuízo:** gasta a reserva e depois vira dívida. Dívida acima de 26 semanas de receita é insolvência, e um nível fecha (os privados primeiro).
+
+Propriedade:
+
+- **Origem:** níveis feitos pela fila privada são privados; os da fila pública são estatais ou comunitários.
+- **Privatizar:** o fundo de investimento paga 60% do valor ao tesouro.
+- **Nacionalizar:** o tesouro indeniza 100% do valor e assume a dívida proporcional. A legitimidade cai 0,01 por nível.

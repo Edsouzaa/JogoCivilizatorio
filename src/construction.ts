@@ -7,6 +7,7 @@
 import { BUILDINGS, RULES, build, canBuild, type Economy } from "./economy.ts";
 import { GOODS } from "./economy.ts";
 import { lawOf } from "./politics.ts";
+import { addPrivateLevel } from "./firms.ts";
 import type { World } from "./world.ts";
 
 export type Project = {
@@ -110,7 +111,7 @@ export function stepConstruction(w: World, e: Economy) {
   });
   for (const p of done) {
     e.construction = e.construction!.filter((x) => x !== p);
-    if (w.owner[p.hex] === p.country) build(w, e, p.hex, p.b, true); // perdeu o hex durante a obra: obra perdida
+    if (w.owner[p.hex] === p.country && !build(w, e, p.hex, p.b, true) && p.priv) addPrivateLevel(e, p.hex, p.b); // perdeu o hex durante a obra: obra perdida
   }
 }
 

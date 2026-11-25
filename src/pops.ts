@@ -93,7 +93,8 @@ const livesOffLand = (t: PopType) => t.cls === 0 && t.wage < 0.5;
  * `gdp` = PIB da semana; `subsistenceValue` = valor da comida de subsistência (vai para quem vive da terra);
  * `needCost` = custo semanal das necessidades básicas de 1 pessoa. Renda igual a esse custo = 25.
  */
-export function distributeIncome(p: Pops, gdp: number, subsistenceValue: number, needCost: number) {
+/** `ownersTake`: parte da renda dos donos que não chega a eles (lucro de estatais no tesouro, reinvestimento no fundo; firms.ts). */
+export function distributeIncome(p: Pops, gdp: number, subsistenceValue: number, needCost: number, ownersTake = 0) {
   p.income.fill(0);
   let wageWeight = 0, owners = 0, subsisting = 0;
   POP_TYPES.forEach((t, k) => {
@@ -103,7 +104,7 @@ export function distributeIncome(p: Pops, gdp: number, subsistenceValue: number,
   const market = Math.max(0, gdp - subsistenceValue);
   POP_TYPES.forEach((t, k) => {
     if (!p.count[k]) return;
-    if (t.owner) p.income[k] = (market * POP_RULES.ownerShare * p.count[k]) / owners;
+    if (t.owner) p.income[k] = (Math.max(0, market * POP_RULES.ownerShare - ownersTake) * p.count[k]) / owners;
     else if (t.wage) p.income[k] = (market * (1 - POP_RULES.ownerShare) * p.count[k] * t.wage) / wageWeight;
     if (livesOffLand(t)) p.income[k] += (subsistenceValue * p.count[k]) / subsisting;
   });
