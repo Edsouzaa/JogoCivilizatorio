@@ -2,6 +2,8 @@ import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, typ
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
 import { econ, debtCap } from "./eramods.ts";
+import type { Battle } from "./battle.ts";
+import { demandOf, type Supply } from "./logistics.ts";
 import { collectTaxes, record, resetBook, setPopDemand, type ClassTax, type ActiveTax } from "./budget.ts";
 import { warMult, convertedOutputs, exportBlocked, stepWarEconomy } from "./wareconomy.ts";
 import { stepNaval, type ShipOrder } from "./naval.ts";
@@ -303,6 +305,7 @@ export type Country = {
   taxNext?: number;       // cobrado nesta semana: entra no tesouro na próxima
   taxEff?: number;        // fração do devido que o Estado consegue cobrar
   book?: Record<string, number>; bookLast?: Record<string, number>; // receitas (+) e despesas (−) por categoria: semana atual e anterior
+  attritionTotal?: number; // soldados perdidos por atrito (logistics.ts), fora das batalhas
   ownersTake?: number;   // da renda dos donos, quanto foi ao tesouro (estatais) ou ao fundo na última semana (firms.ts)
   ruler?: number;       // id do governante (characters.ts)
   tributeWeek?: number; // tributo da semana: + recebido (soberano), − pago (súdito)
@@ -335,12 +338,17 @@ export type Division = {
   unit?: string;                           // tipo de tropa (units.ts); sem = Lanceiros
   mix?: Record<string, number>;            // regimento: fração dos soldados de cada tipo (soma 1); unit = o tipo mais numeroso
   size?: number;                           // regimento: quantas divisões juntou (teto de reforço = isto × tamanho da divisão)
+  morale?: number;                         // 0..1: vontade de lutar (battle.ts); separada da organização
+  entrench?: number;                       // pontos de entrincheiramento parado (battle.ts)
+  fatigue?: number;                        // 0..1: cansaço da marcha (logistics.ts)
+  supply?: Supply;                         // abastecimento da semana (logistics.ts)
+  stock?: { food: number; ammo: number; fuel: number }; // estoque do exército em semanas
   general?: number;                        // id do personagem que comanda (characters.ts)
   supplied?: boolean;                      // exército: tinha suprimento na última semana (war.ts)
   path?: { target: number; steps: number[] }; // caminho calculado (vai no save: o lockstep precisa dele igual em todos)
 };
 /** Números de uma guerra, por país participante. */
-export type WarStats = { start: number; dead: Record<number, number>; civil: Record<number, number>; cost: Record<number, number> };
+export type WarStats = { start: number; dead: Record<number, number>; civil: Record<number, number>; cost: Record<number, number>; attrition?: Record<number, number> }; // dead = baixas de batalha; attrition = atrito (separado)
 export type Economy = {
   week: number; levels: Uint8Array[]; producers: Set<number>;
   countries: Country[]; cities: City[];
@@ -361,6 +369,7 @@ export type Economy = {
   influence?: Uint16Array;            // área de influência: país que influencia cada hex livre (expansion.ts)
   outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
   construction?: Project[]; nextProject?: number; // filas de obras (construction.ts)
+  battles?: Battle[]; nextBattle?: number;        // batalhas terrestres (battle.ts)
   naval?: ShipOrder[]; nextNaval?: number;        // fila de navios (naval.ts)
   methods?: Map<string, number[]>;   // método escolhido por edifício ("hex:b" → índice por categoria; methods.ts)
   ledgers?: Map<string, Ledger>;     // conta financeira de cada edifício ("hex:b"; firms.ts)
@@ -948,7 +957,7 @@ export function tick(w: World, e: Economy) {
   foreignTrade(w, e);
 
   const ARMS = g("Armas"); // exércitos compram armas no mercado da capital
-  for (const d of e.divisions) if (d.kind === "army") e.cities.find((k) => k.country === d.country)!.market.demand[ARMS] += ARMS_PER_DIVISION;
+  for (const d of e.divisions) if (d.kind === "army") { const m = e.cities.find((k) => k.country === d.country)?.market; if (!m) continue; m.demand[ARMS] += ARMS_PER_DIVISION; for (const [gi, q] of demandOf(e, d)) m.demand[gi] += q; } // armas e suprimentos do exército (logistics.ts)
 
   e.cities.forEach((city) => {
     const m = city.market;

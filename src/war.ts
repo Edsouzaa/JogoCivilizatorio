@@ -1,3 +1,5 @@
+import { resolveBattles, entrench, setRiverCheck } from "./battle.ts";
+import { stepSupply, attrition } from "./logistics.ts";
 import { lawFx } from "./politics.ts";
 import { econ, spend } from "./eramods.ts";
 // Guerra terrestre (estilo HOI4 simplificado, sem customizar divisões).
@@ -136,9 +138,6 @@ MOVE_WEEKS[T.OCEAN] = Infinity; MOVE_WEEKS[T.ICE] = Infinity;
 MOVE_WEEKS[T.PLAINS] = MOVE_WEEKS[T.GRASS] = MOVE_WEEKS[T.DESERT] = MOVE_WEEKS[T.TUNDRA] = MOVE_WEEKS[T.SAVANNA] = MOVE_WEEKS[T.STEPPE] = 1;
 MOVE_WEEKS[T.FOREST] = MOVE_WEEKS[T.JUNGLE] = MOVE_WEEKS[T.HILLS] = MOVE_WEEKS[T.TAIGA] = 2;
 MOVE_WEEKS[T.MOUNTAIN] = 3;
-/** Bônus de defesa do terreno. */
-const DEFENSE: number[] = Array(TERRAINS.length).fill(1);
-DEFENSE[T.FOREST] = DEFENSE[T.TAIGA] = 1.15; DEFENSE[T.JUNGLE] = 1.25; DEFENSE[T.HILLS] = 1.25; DEFENSE[T.MOUNTAIN] = 1.5;
 
 const key = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`);
 export const atWar = (e: Economy, a: number, b: number) => a !== b && a > 0 && b > 0 && e.wars.has(key(a, b));
@@ -238,6 +237,7 @@ export function nextStep(w: World, from: number, target: number, ok: (i: number)
 }
 
 /** Há rio na borda entre dois hexes vizinhos? */
+setRiverCheck(crossesRiver); // battle.ts usa sem importar war.ts (função declarada: já existe aqui)
 export function crossesRiver(w: World, a: number, b: number) {
   for (let k = 0; k < 6; k++) if (across(w.W, w.H, a, k) === b) return riverAt(w, a, k) === 1;
   return false;
@@ -275,12 +275,6 @@ export function splitRegiment(e: Economy, country: number, id: number): string |
 
 /** Força de combate: soldados × organização × armas × tecnologia militar do país. */
 const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "fleet")) * craftOf(SHIPS, d.unit).power, 0);
-/** Força de combate: soldados × organização × armas × tecnologia × tipo (ataque ou defesa) × governante × general. */
-const power = (e: Economy, ds: Division[], role: "atk" | "def") => ds.reduce((s, d) => {
-  const r = rulerOf(e, d.country), g = d.general ? e.characters?.find((c) => c.id === d.general) : undefined, u = statsOf(d);
-  return s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army") + lawFx(e.countries[d.country - 1].politics, "army", e.countries[d.country - 1].control)) * u[role]
-    * (1 + (r ? CHAR.milArmy * attrMod(r.mil) : 0)) * (1 + (g ? CHAR.generalArmy * attrMod(g.mil) + CHAR.generalBase : 0));
-}, 0);
 
 /** Tira baixas das divisões proporcionalmente à força, e a mesma gente da população da capital. */
 function takeLosses(w: World, e: Economy, ds: Division[], losses: number) {
@@ -340,7 +334,7 @@ export function stepWar(w: World, e: Economy) {
   const enemiesIn = (hex: number, country: number) => (at.get(hex) ?? []).filter((x) => x.kind === "army" && w.terrain[x.hex] !== T.OCEAN && atWar(e, country, x.country));
 
   const battles = new Map<number, Division[]>(); // hex defendido → atacantes
-  const fighting = new Set<Division>();
+  const fighting = new Set<Division>(), moved = new Set<Division>();
   let changed = false;
   for (const d of e.divisions) {
     if (d.target === null || d.kind === "air") continue; // esquadrões não andam: voam missões
@@ -357,7 +351,7 @@ export function stepWar(w: World, e: Economy) {
     if (!sea && (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country))) { d.target = null; continue; }
     d.progress += sea ? 1 : (d.kind === "army" ? statsOf(d) : unitOf(undefined)).speed / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
     if (d.progress < 1) continue;
-    d.progress = 0; d.siege = 0; // saiu do lugar: o cerco recomeça
+    d.progress = 0; d.siege = 0; moved.add(d); // saiu do lugar: o cerco recomeça
     at.set(d.hex, (at.get(d.hex) ?? []).filter((x) => x !== d));
     d.hex = next;
     if (!at.has(next)) at.set(next, []);
@@ -413,31 +407,17 @@ export function stepWar(w: World, e: Economy) {
     }
   }
 
-  for (const [hex, attackers] of battles) {
-    const defenders = attackers.length ? enemiesIn(hex, attackers[0].country) : [];
-    if (!defenders.length) continue;
-    const riverLine = attackers.some((a) => crossesRiver(w, a.hex, hex)); // atacar atravessando rio é pior
-    const sup = airSuperiority(e, airRegion(e, hex), attackers[0].country, defenders[0].country); // céu de quem?
-    const pa = power(e, attackers, "atk") * (1 + AIR.bonus * (2 * sup - 1));
-    const pd = power(e, defenders, "def") * DEFENSE[w.terrain[hex]] * (riverLine ? 1.25 : 1) * (1 + AIR.bonus * (1 - 2 * sup));
-    takeLosses(w, e, defenders, pa * WAR.casualties);
-    takeLosses(w, e, attackers, pd * WAR.casualties);
-    for (const d of defenders) d.org = Math.max(0, d.org - WAR.orgLoss * (pa / (pd || 1)));
-    for (const d of attackers) d.org = Math.max(0, d.org - WAR.orgLoss * (pd / (pa || 1)));
-    for (const d of [...attackers, ...defenders]) fighting.add(d);
-    if (defenders.some((d) => d.org < WAR.brokenOrg)) { // batalha decidida: entra na vida dos generais
-      const na = Math.round(attackers.reduce((x, d) => x + d.strength, 0)), nd = Math.round(defenders.reduce((x, d) => x + d.strength, 0));
-      for (const d of attackers) { const g = d.general && e.characters?.find((c) => c.id === d.general); if (g) note(g, e.week, `venceu uma batalha contra §${defenders[0].country}§: ${na} × ${nd} soldados`); }
-      for (const d of defenders) { const g = d.general && e.characters?.find((c) => c.id === d.general); if (g) note(g, e.week, `perdeu uma batalha para §${attackers[0].country}§: ${nd} × ${na} soldados`); }
-    }
-    for (const d of defenders) if (d.org < WAR.brokenOrg) { // recua para um vizinho seguro ou é destruída
-      let to = -1;
-      forNeighbors(hex % w.W, (hex / w.W) | 0, w.W, w.H, (j) => {
-        if (to < 0 && controller(w, e, j) === d.country && !enemiesIn(j, d.country).length && MOVE_WEEKS[w.terrain[j]] !== Infinity) to = j;
-      });
-      if (to < 0) d.strength = 0; else { d.hex = to; d.target = null; }
-    }
-  }
+  // batalhas terrestres: frente, fases, dados, organização e moral, reservas, retirada (battle.ts)
+  const landFights = resolveBattles(w, e, battles, WAR.divisionSize, enemiesIn,
+    (d, from) => { let to = -1; forNeighbors(from % w.W, (from / w.W) | 0, w.W, w.H, (j) => { if (to < 0 && controller(w, e, j) === d.country && !enemiesIn(j, d.country).length && MOVE_WEEKS[w.terrain[j]] !== Infinity) to = j; }); return to; },
+    (ds, n) => takeLosses(w, e, ds, n),
+    (b, winner, att, def) => { // batalha decidida: entra na vida dos generais
+      const na = Math.round(b.startAtt), nd = Math.round(b.startDef), [won, lost] = winner === "att" ? [att, def] : [def, att];
+      for (const d of won) { const g = d.general && e.characters?.find((c) => c.id === d.general); if (g) note(g, e.week, `venceu uma batalha contra §${lost[0].country}§: ${winner === "att" ? na : nd} × ${winner === "att" ? nd : na} soldados`); }
+      for (const d of lost) { const g = d.general && e.characters?.find((c) => c.id === d.general); if (g) note(g, e.week, `perdeu uma batalha para §${won[0].country}§`); }
+    },
+    (hex, a, b) => Math.round((2 * airSuperiority(e, airRegion(e, hex), a, b) - 1) * 10) / 10);
+  for (const d of landFights) fighting.add(d);
 
   // combate naval: em cada zona marítima, frotas de países em guerra lutam entre si
   const fleetsIn = new Map<number, Division[]>();
@@ -478,22 +458,26 @@ export function stepWar(w: World, e: Economy) {
     }
   }
 
+  stepSupply(w, e, (d) => depotDistance(w, e, d), (k) => supplyRange(e, k), fighting); // logística terrestre (logistics.ts)
   for (const d of e.divisions) {
     if (d.kind === "settler") { // colonos longe das cidades ficam sem suprimentos e vão morrendo
       if (settlerDistance(w, e, d) > RULES.settlerSupplyRange) d.strength -= Math.max(0.5, d.strength * RULES.settlerAttrition);
       continue;
     }
     if (d.kind === "air" && controller(w, e, d.hex) !== d.country) { d.hex = e.cities.find((k) => k.country === d.country)!.hex; d.target = null; } // base caiu: muda para a capital
-    if (d.kind === "army" && w.terrain[d.hex] !== T.OCEAN) { // exército longe de qualquer depósito (cidade sua ou tomada) passa fome
-      d.supplied = depotDistance(w, e, d) <= supplyRange(e, d.country);
-      if (!d.supplied) { d.org = Math.max(0, d.org - WAR.noSupplyOrg); d.strength -= d.strength * WAR.noSupplyLoss; continue; }
+    if (d.kind === "army" && w.terrain[d.hex] !== T.OCEAN) { // atrito (terreno, inverno, fome) e fadiga; fora das baixas de batalha
+      const dead = attrition(w, e, d, moved.has(d), atWar(e, d.country, controller(w, e, d.hex)));
+      for (const s of warsOf(e, d.country)) s.attrition = { ...(s.attrition ?? {}), [d.country]: (s.attrition?.[d.country] ?? 0) + dead };
+      if (!fighting.has(d)) entrench(e, d, moved.has(d));
+      if ((d.supply?.level ?? 1) < 0.5) d.org = Math.max(0, d.org - WAR.noSupplyOrg * (1 - (d.supply?.level ?? 1)) * 2);
     }
     if (fighting.has(d) || d.strength < 1) continue; // morta não se recupera nem recebe reforço
-    d.org = Math.min(1, d.org + WAR.orgRecovery);
+    // organização volta com descanso e suprimento; cansaço atrasa
+    d.org = Math.min(1, d.org + WAR.orgRecovery * (d.kind === "army" ? (d.supply?.level ?? 1) * (1 - 0.5 * (d.fatigue ?? 0)) : 1));
     const c = e.countries[d.country - 1];
     const full = d.kind === "fleet" ? NAVY.sailors : d.kind === "air" ? AIR.pilots : WAR.divisionSize * (d.size ?? 1);
-    if (controller(w, e, d.hex) === d.country && d.strength < full && c.manpower > 0) { // reforço em território (ou águas) próprio
-      const add = Math.min(WAR.reinforce, c.manpower, full - d.strength);
+    if (controller(w, e, d.hex) === d.country && d.strength < full && c.manpower > 0) { // reforço em território (ou águas) próprio: precisa de gente e de armas
+      const add = Math.min(WAR.reinforce * (d.kind === "army" ? Math.max(0.5, (d.equip - 0.5) * 2) : 1), c.manpower, full - d.strength); // sem armas no mercado, reforça pela metade (lanças improvisadas)
       d.strength += add; c.manpower -= add;
     }
   }

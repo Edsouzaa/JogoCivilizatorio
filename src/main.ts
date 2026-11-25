@@ -3,13 +3,15 @@ import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BI
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   proposePact, cancelPact, hasPact, INFAMY, popCap, cityName, cityReach, maxRoad, maxHarbor,
-  BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy,
+  BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy, type Division,
 } from "./economy.ts";
 import { WAR_ECONOMY, WAR_ECON, CONVERSIONS } from "./wareconomy.ts";
 import { MILITARY } from "./wareconomy.ts";
 import { BUDGET_IN, TAX_KINDS, classTaxOf, canTax } from "./budget.ts";
 import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./eramods.ts";
 import { artSVG } from "./art.ts";
+import { deploy, widthOf, BATTLE, type Battle } from "./battle.ts";
+import { levelName } from "./logistics.ts";
 import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, combine, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
@@ -618,6 +620,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.cancelbuild) return cmd({ t: "cancelBuild", id: +d.cancelbuild });
   if (d.cancelship) return cmd({ t: "cancelShip", id: +d.cancelship });
   if (d.wareco) return cmd({ t: "warEconomy", level: +d.wareco });
+  if (d.battle !== undefined) { openBattle = +d.battle; return updateUI(); }
   if (d.conversion) return cmd({ t: "conversion", on: !eco.countries[active - 1].conversion });
   if (d.sheet) { openSheet = openSheet === d.sheet ? "" : d.sheet; return updateUI(); }
   if (d.methall) { const [b, cat, k] = d.methall.split("|").map(Number); return cmd({ t: "method", hex: -1, b, cat, k, all: true }); }
@@ -1231,6 +1234,26 @@ function diplomacyHtml() {
     (known.size ? "" : "<small>Ninguém conhecido ainda: vizinhos e parceiros aparecem aqui.</small>");
 }
 
+// ---- batalhas (battle.ts): lista e tela com as duas linhas e o histórico de rolagens
+let openBattle = 0;
+function battleHtml(b: Battle) {
+  const nameOf = (k: number) => world.countries[k - 1]?.name ?? "?";
+  const city = eco.market[b.hex] && eco.cities[eco.market[b.hex] - 1]?.hex === b.hex ? eco.cities[eco.market[b.hex] - 1].name : null;
+  const side = (k: number) => eco.divisions.filter((d) => d.kind === "army" && d.country === k && (d.hex === b.hex || d.target === b.hex));
+  const line = (k: number) => {
+    const { front, reserve } = deploy(side(k), b.frontage, WAR.divisionSize);
+    const row = (ds: Division[]) => ds.map((d) => `<span title="${statsOf(d).name}: ${Math.round(d.strength)} soldados, org. ${pct(d.org)}, moral ${pct(d.morale ?? 1)}" style="display:inline-block;width:${Math.max(8, Math.min(40, widthOf(d, WAR.divisionSize) * 2))}px;height:12px;margin:1px;background:${d.org >= BATTLE.broken ? "var(--blue)" : "#555"};opacity:${0.4 + 0.6 * d.org}"></span>`).join("") || "<small>—</small>";
+    return `<div><small>Frente</small> ${row(front)}</div><div><small>Reserva</small> ${row(reserve)}</div>`;
+  };
+  const mods = (m: [string, number][]) => m.map(([n, v]) => `${n} ${v > 0 ? "+" : ""}${v}`).join(", ") || "sem modificadores";
+  const rows = [...b.log].reverse().map((r) => `<tr><td><small>sem. ${r.week} · ${r.round}ª · ${r.phase}</small></td><td><small>dado ${r.att.roll} (${mods(r.att.mods)}) = <b>${r.att.total}</b></small></td><td><small>dado ${r.def.roll} (${mods(r.def.mods)}) = <b>${r.def.total}</b></small></td><td><small>${r.text}</small></td></tr>`).join("");
+  return `<div class="card"><b>Batalha ${city ? `de ${city}` : `em ${TERRAINS[world.terrain[b.hex]].name.toLowerCase()} (${b.hex % W}, ${(b.hex / W) | 0})`}</b> · ${b.state} <button data-battle="0" style="float:right">Fechar</button>` +
+    `<br><small>Desde a semana ${b.start} · frente de ${Math.round(b.frontage)} (${b.dirs} direç${b.dirs > 1 ? "ões" : "ão"} de ataque) · fogo pesa ${pct(BATTLE.fireShare[Math.max(eco.countries[b.attacker - 1].research.era, eco.countries[b.defender - 1].research.era)])}</small>` +
+    `<table><tr><td><b>Atacante: ${nameOf(b.attacker)}</b><br><small>${Math.round(b.startAtt)} soldados no início · ${Math.round(b.deadAtt)} baixas</small>${line(b.attacker)}</td>` +
+    `<td><b>Defensor: ${nameOf(b.defender)}</b><br><small>${Math.round(b.startDef)} soldados no início · ${Math.round(b.deadDef)} baixas</small>${line(b.defender)}</td></tr></table>` +
+    `<h3>Rolagens</h3><table><tr><td></td><td><b>Atacante</b></td><td><b>Defensor</b></td><td><b>Resultado</b></td></tr>${rows}</table></div>`;
+}
+
 function militaryHtml() {
   if (!active) return "";
   const mine = eco.divisions.filter((d) => d.country === active);
@@ -1240,7 +1263,10 @@ function militaryHtml() {
     `<br><small>${["Mercado livre; produção militar só por encomenda.", `Indústria militar +${WAR_ECON.military[1] * 100}% (subsídio de ${WAR_ECON.subsidy[1] * 100}% da receita), bens estratégicos não são exportados, fila privada com metade da capacidade, legitimidade −${WAR_ECON.legitimacyWeek[1]}/sem (o dobro sem guerra).`, `Indústria militar +${WAR_ECON.military[2] * 100}%, bens civis ${WAR_ECON.civilian[2] * 100}%, fila privada parada, lucro das empresas requisitado pelo tesouro, preços estratégicos tabelados, legitimidade −${WAR_ECON.legitimacyWeek[2]}/sem. Só durante uma guerra.`][lv]}</small>` +
     (lv ? `<br><label><input type="checkbox" data-conversion="1"${c.conversion ? " checked" : ""}> Converter a indústria: ${Object.entries(CONVERSIONS).map(([b, o]) => `${b} → ${o.map(([n, q]) => `${q} ${n}`).join(" + ")}`).join("; ")}</label>` : "") +
     `<br><small>Subsídio militar na semana: ${fmt(c.warSubsidy ?? 0)}</small></div>`;
-  return warsHtml() + econ + `<h3>Forças</h3><table><tr><td><b>Unidade</b></td><td><b>Força</b></td><td><b>Org.</b></td><td><b>Ordem</b></td></tr>${rows}</table>` + (mine.length ? "" : "<small>Sem unidades: recrute numa cidade sua.</small>");
+  const mineB = (eco.battles ?? []).filter((b) => b.attacker === active || b.defender === active);
+  const ob = mineB.find((b) => b.id === openBattle);
+  const blist = mineB.length ? `<h3>Batalhas</h3>` + mineB.slice().reverse().map((b) => `<button data-battle="${b.id}" class="${b.id === openBattle ? "on" : ""}">${b.state === "combate" ? icon("military", 14) + " " : ""}${world.countries[b.attacker - 1].name} × ${world.countries[b.defender - 1].name} · sem. ${b.start}${b.state !== "combate" ? ` (${b.state})` : ""}</button>`).join(" ") : "";
+  return warsHtml() + blist + (ob ? battleHtml(ob) : "") + econ + `<h3>Forças</h3><table><tr><td><b>Unidade</b></td><td><b>Força</b></td><td><b>Org.</b></td><td><b>Ordem</b></td></tr>${rows}</table>` + (mine.length ? "" : "<small>Sem unidades: recrute numa cidade sua.</small>");
 }
 
 function adminHtml() {
@@ -1432,7 +1458,8 @@ function divisionHtml() {
   return `<div class="unit"><b><i class=i-military></i> ${u.name} ${d.id}</b> <small>${u.cat} · ataque ${u.atk} · defesa ${u.def}</small> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
     formationSVG(d) + (d.mix ? `<table>${Object.entries(d.mix).sort((a, b) => b[1] - a[1]).map(([n, f]) => `<tr><td>${n}</td><td>${fmt(d.strength * f)} soldados</td><td><small>${unitOf(n).cat} · atq ${unitOf(n).atk} · def ${unitOf(n).def}</small></td></tr>`).join("")}</table>` +
       (d.country === active ? `<button data-act="split" title="Volta a ser uma divisão por tipo de soldado">Separar o regimento</button><br>` : "") : "") +
-    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize * (d.size ?? 1)} · org. ${pct(d.org)} · armas ${pct(d.equip)} · ` +
+    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize * (d.size ?? 1)} · org. ${pct(d.org)} · moral ${pct(d.morale ?? 1)} · armas ${pct(d.equip)} · cansaço ${pct(d.fatigue ?? 0)}${(d.entrench ?? 0) >= 0.5 ? ` · entrincheirado +${(d.entrench ?? 0).toFixed(1)}` : ""}` +
+    (d.supply ? `<br>Abastecimento <b class="${d.supply.level >= 0.75 ? "down" : d.supply.level >= 0.5 ? "" : "up"}">${pct(d.supply.level)} (${levelName(d.supply.level)})</b> · comida ${pct(d.supply.food)} · munição ${pct(d.supply.ammo)} · combustível ${pct(d.supply.fuel)} · estoque ${(d.stock?.food ?? 0).toFixed(1)} sem. · ` : " · ") +
     (d.supplied === false ? `<span class="bad">sem suprimento (depósito a ${depotDistance(world, eco, d)} hexes, alcance ${supplyRange(eco, d.country)})</span>` : `suprimento ok`) + ` <button data-act="disband">Desfazer</button>` +
     (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b>Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`
       : d.country === active ? `<br><button data-act="hire-general">Contratar general (${CHAR.generalCost})</button>` : "") + frontHtml([d.id]) + `</div>`;
@@ -1851,6 +1878,12 @@ function drawUnits() {
   }
   const toScreen = divScreen;
   drawRegions();
+  for (const b of eco.battles ?? []) { // batalha em andamento: duas espadas cruzadas em vermelho sobre o hex
+    if (b.state !== "combate" || (active && !explored.get(active)?.[b.hex])) continue; // só onde o jogador já viu
+    const [x, y] = toScreen(b.hex), r = Math.max(6, Math.min(14, cam.zoom * 0.7));
+    units.strokeStyle = "#cf6b62"; units.lineWidth = 2.5; units.beginPath();
+    units.moveTo(x - r, y - r); units.lineTo(x + r, y + r); units.moveTo(x + r, y - r); units.lineTo(x - r, y + r); units.stroke();
+  }
   if (drag?.box && drag.moved >= 5) { // caixa de seleção
     const dpr = window.devicePixelRatio || 1;
     units.strokeStyle = "#fff"; units.lineWidth = 1; units.setLineDash([5, 3]);
