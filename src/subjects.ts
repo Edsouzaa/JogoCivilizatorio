@@ -1,3 +1,4 @@
+import { record } from "./budget.ts";
 // Dependências políticas: um país (súdito) ligado a outro (soberano), com autonomia de 0 a 100.
 //   Tributário: paga tributo, resto livre.         Vassalo: paga e entra nas guerras do soberano.
 //   Fantoche: paga mais, entra nas guerras e não pode fazer acordos sozinho.   Protetorado: não paga; o protetor entra nas guerras dele.
@@ -53,6 +54,7 @@ export function payTribute(e: Economy) {
     const c = e.countries[+k - 1], o = e.countries[s.overlord - 1];
     const t = Math.max(0, c.income) * SUBJECT_KINDS[s.kind].tribute * (1 - s.autonomy / 200); // mais autonomia, menos tributo
     c.treasury -= t; o.treasury += t;
+    record(c, "Tributo de súditos", -t); record(o, "Tributo de súditos", t);
     c.tributeWeek = -t; o.tributeWeek = (o.tributeWeek ?? 0) + t;
   }
 }

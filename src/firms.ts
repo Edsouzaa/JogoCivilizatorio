@@ -1,3 +1,4 @@
+import { sectorRate, record } from "./budget.ts";
 import { econ, spend } from "./eramods.ts";
 // Finanças e propriedade de cada edifício (estilo Victoria 3). Cada "hex:b" (construção b no hex) tem uma conta:
 //   receita = o que produziu × preço do mercado da cidade (venda real da semana)
@@ -73,7 +74,7 @@ export function addPrivateLevel(e: Economy, hex: number, b: number) { const l = 
 
 /** Uma vez por semana, depois da produção e dos preços. */
 export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
-  for (const c of e.countries) { c.ownersTake = 0; c.warSubsidy = 0; }
+  for (const c of e.countries) { c.ownersTake = 0; c.warSubsidy = 0; c.sectorTaxWeek = {}; }
   for (const r of runs) {
     const l = ensure(e, r.key), c = e.countries[r.country - 1], m = e.cities[r.city].market;
     l.priv = Math.min(l.priv, r.lv); // níveis perdidos (jazida, insolvência) saem primeiro da parte privada
@@ -83,7 +84,9 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     l.wages = added * (1 - POP_RULES.ownerShare);
     l.upkeep = r.lv * RULES.upkeepPerLevel * r.fx.upkeep * econ(c, "upkeep") * econ(c, "monetization"); // a mesma conta do tesouro (eramods.ts)
     const before = l.rev - l.inputs - l.wages - l.upkeep;
-    l.tax = Math.max(0, before) * c.tax;
+    const st = sectorRate(c, r.b); // tributo setorial (budget.ts): sobre a receita, pago na fonte ao Estado
+    l.tax = Math.max(0, before) * c.tax + l.rev * st.rate;
+    if (st.id) (c.sectorTaxWeek ??= {})[st.id] = (c.sectorTaxWeek[st.id] ?? 0) + l.rev * st.rate;
     l.profit = before - l.tax;
     l.div = l.reinvest = l.toState = 0;
     l.hist.push(l.profit); if (l.hist.length > FIRM.histWeeks) l.hist.shift();
@@ -92,7 +95,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     const ps = l.priv / r.lv, wl = c.warEconomy ?? 0;
     if (wl && MILITARY.has(def.name)) { // subsídio militar: o tesouro paga uma fração da receita
       const sub = l.rev * WAR_ECON.subsidy[wl];
-      spend(c, sub);
+      spend(c, sub, "Subsídios");
       c.warSubsidy = (c.warSubsidy ?? 0) + sub; l.profit += sub;
     }
     l.reserve += l.profit;
@@ -101,7 +104,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     if (l.reserve > target) {
       const free = l.reserve - target;
       l.reserve = target;
-      if (r.fx.state || wl === 2) { l.toState = free; c.treasury += free; c.ownersTake! += free; } // estatal ou requisitado na guerra total: tudo ao tesouro
+      if (r.fx.state || wl === 2) { l.toState = free; c.treasury += free; c.ownersTake! += free; record(c, "Lucro de estatais", free); } // estatal ou requisitado na guerra total: tudo ao tesouro
       else { // dividendos aos donos; a parte privada reinveste no fundo e os donos põem lá a fração da lei
         l.div = free * r.fx.divShare; l.reinvest = (free - l.div) * ps;
         const toFund = l.reinvest + l.div * ps * fundShare(e, r.country);
@@ -110,7 +113,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     } else if (l.reserve < 0) {
       const gap = -l.reserve;
       l.reserve = 0;
-      if (r.fx.state) { l.toState = -gap * spend(c, gap); } // o Estado cobre (até o crédito)
+      if (r.fx.state) { l.toState = -gap * spend(c, gap, "Subsídios"); } // o Estado cobre (até o crédito)
       else {
         l.debt += gap;
         if (e.week - l.built > FIRM.insolventWeeks && l.debt > FIRM.insolventWeeks * Math.max(l.rev, l.upkeep, 1)) { // insolvência (depois da carência): fecha um nível (privado primeiro)

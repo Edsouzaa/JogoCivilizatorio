@@ -85,7 +85,7 @@ export function jobsFor(building: string, e: number): [number, number][] {
 /** Quem não tem emprego: caçadores-coletores até a Agricultura, depois camponeses. */
 export const idleType = (knowsAgriculture: boolean) => P[knowsAgriculture ? "Camponeses" : "Caçadores-coletores"];
 
-export type Pops = { count: Float64Array; income: Float64Array; qol: Float64Array; loyalty: Float64Array };
+export type Pops = { count: Float64Array; income: Float64Array; qol: Float64Array; loyalty: Float64Array; taxable?: Float64Array }; // taxable: renda de mercado (sem a subsistência), base dos impostos (budget.ts)
 export const newPops = (): Pops => ({
   count: new Float64Array(NP), income: new Float64Array(NP), qol: new Float64Array(NP),
   loyalty: new Float64Array(NP).fill(POP_RULES.loyaltyStart),
@@ -114,8 +114,14 @@ export function distributeIncome(p: Pops, gdp: number, subsistenceValue: number,
     else if (t.wage) p.income[k] = (market * (1 - POP_RULES.ownerShare) * p.count[k] * t.wage) / wageWeight;
     if (livesOffLand(t)) p.income[k] += (subsistenceValue * p.count[k]) / subsisting;
   });
+  p.taxable = Float64Array.from(p.income); // renda tributável = total menos a parte de subsistência (comida da terra não paga imposto)
+  POP_TYPES.forEach((t, k) => { if (livesOffLand(t) && p.count[k]) p.taxable![k] -= (subsistenceValue * p.count[k]) / subsisting; });
+  computeQol(p, needCost);
+}
+/** Qualidade de vida (1–50) pela renda que sobra (depois dos impostos, quando houver): renda = necessidades básicas dá 25. */
+export function computeQol(p: Pops, needCost: number) {
   POP_TYPES.forEach((_, k) => {
-    p.qol[k] = p.count[k] ? Math.min(50, Math.max(1, (25 * p.income[k]) / p.count[k] / needCost)) : 0;
+    p.qol[k] = p.count[k] ? Math.min(50, Math.max(1, (25 * Math.max(0, p.income[k])) / p.count[k] / needCost)) : 0;
   });
 }
 

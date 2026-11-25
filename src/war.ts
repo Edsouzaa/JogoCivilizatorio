@@ -313,14 +313,14 @@ export function stepWar(w: World, e: Economy) {
   for (const d of e.divisions) if (d.kind === "army") count.set(d.country, (count.get(d.country) ?? 0) + 1);
   for (const d of e.divisions) if (d.kind === "fleet" || d.kind === "air") { // manutenção de frotas e esquadrões
     const c = e.countries[d.country - 1];
-    if (spend(c, (d.kind === "air" ? AIR.upkeep : NAVY.upkeep) * econ(c, "monetization")) < 1) d.org = Math.max(0, d.org - WAR.unpaidOrg); // sem soldo: desorganiza
+    if (spend(c, (d.kind === "air" ? AIR.upkeep : NAVY.upkeep) * econ(c, "monetization"), "Frotas e aviação") < 1) d.org = Math.max(0, d.org - WAR.unpaidOrg); // sem soldo: desorganiza
   }
   for (const [country, n] of count) { // armas e manutenção
     const c = e.countries[country - 1], m = e.cities.find((k) => k.country === country)!.market;
     const fill = m.demand[ARMS] ? Math.min(1, m.supply[ARMS] / m.demand[ARMS]) : 1;
     for (const d of e.divisions) if (d.country === country && d.kind === "army") d.equip = 0.5 + 0.5 * fill;
     const cost = n * WAR.upkeep * econ(c, "monetization"); // exército tribal vive do que leva: só a parte monetizada é soldo
-    const paidShare = spend(c, cost);
+    const paidShare = spend(c, cost, "Exército");
     for (const s of warsOf(e, country)) s.cost[country] = (s.cost[country] ?? 0) + cost * paidShare;
     if (paidShare < 1) for (const d of e.divisions) if (d.country === country && d.kind === "army") d.org = Math.max(0, d.org - WAR.unpaidOrg * (1 - paidShare)); // sem soldo: desorganiza
   }

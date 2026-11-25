@@ -16,8 +16,8 @@ const row = (tax: number, monetization: number, trade: number, industry: number,
 
 /** Valores de partida por era (Tribal … Moderna). Ajuste aqui: é o único lugar. */
 export const ERA_ECON: Row[] = [
-  row(0.15, 0.2, 0.25, 0.35, 0.2, 0.5, 1.5, 0.15, 0, 0),
-  row(0.3, 0.4, 0.4, 0.5, 0.35, 0.6, 1.3, 0.1, 0.1, 0.1),
+  row(0.22, 0.2, 0.25, 0.35, 0.2, 0.5, 1.5, 0.15, 0, 0), // imposto 22% (pedido: 15%; subido na simulação: com a base só de mercado, 15% não pagava a manutenção)
+  row(0.35, 0.4, 0.4, 0.5, 0.35, 0.6, 1.3, 0.1, 0.1, 0.1),
   row(0.4, 0.5, 0.5, 0.6, 0.45, 0.7, 1.2, 0.08, 0.2, 0.2),
   row(0.5, 0.6, 0.6, 0.7, 0.55, 0.8, 1.1, 0.06, 0.35, 0.4),
   row(0.6, 0.7, 0.7, 0.75, 0.6, 0.85, 1.05, 0.05, 0.45, 0.6),
@@ -72,10 +72,11 @@ export const debtCap = (c: Country) => econ(c, "credit") * ECON_RULES.debtPerGdp
 export const ECON_RULES = { debtPerGdp: 1 };
 
 /** Paga `amount` do tesouro sem passar do teto de crédito. Devolve a fração paga (o resto fica sem pagar). */
-export function spend(c: Country, amount: number): number {
+export function spend(c: Country, amount: number, category?: string): number {
   if (amount <= 0) return 1;
   const pay = Math.min(amount, Math.max(0, c.treasury) + Math.max(0, debtCap(c) - c.debt));
   c.treasury -= pay;
+  if (category) { const b = (c.book ??= {}); b[category] = (b[category] ?? 0) - pay; } // livro do orçamento (budget.ts)
   if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
   return pay / amount;
 }

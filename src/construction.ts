@@ -9,7 +9,7 @@ import { GOODS } from "./economy.ts";
 import { lawOf } from "./politics.ts";
 import { addPrivateLevel } from "./firms.ts";
 import { WAR_ECON } from "./wareconomy.ts";
-import { econ, debtCap } from "./eramods.ts";
+import { econ, debtCap, spend } from "./eramods.ts";
 import type { World } from "./world.ts";
 
 export type Project = {
@@ -125,7 +125,7 @@ export function stepConstruction(w: World, e: Economy) {
         if (give <= 1e-9) continue;
       } else p.waiting = undefined;
       if (p.priv) c.investPool! -= pay;
-      else { c.treasury -= pay; if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; } }
+      else spend(c, pay, "Obras públicas");
       p.paid += pay; p.done += give; pool[key] -= give; c.cpUsed += give;
       if (p.done >= p.cp - 1e-9) done.push(p);
     }

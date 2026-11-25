@@ -20,10 +20,10 @@ assert.ok(Math.abs(e.control[far] - Math.min(CONTROL.risePerMonth, maxControl(w,
 // controle baixo derruba a arrecadação
 for (const i of e.owned) if (w.owner[i] === 1) w.pop[i] += 500; // gente para ter imposto de verdade
 for (let k = 0; k < 4; k++) tick(w, e);
-e.control.fill(1); e.week = 1; tick(w, e); // fora do mês: não recalcula
+e.control.fill(1); e.week = 1; tick(w, e); e.week = 1; tick(w, e); // fora do mês: não recalcula; imposto entra na semana seguinte
 const before = e.countries[0].income;
 e.control.fill(0.1); e.week = 1;
-tick(w, e);
+tick(w, e); e.week = 1; tick(w, e);
 assert.ok(e.countries[0].income < before, "pouco controle deveria arrecadar menos");
 console.log("control ok");
 

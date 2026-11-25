@@ -7,6 +7,8 @@ import {
 } from "./economy.ts";
 import { WAR_ECONOMY, WAR_ECON, CONVERSIONS } from "./wareconomy.ts";
 import { MILITARY } from "./wareconomy.ts";
+import { BUDGET_IN, TAX_KINDS, classTaxOf, canTax } from "./budget.ts";
+import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./eramods.ts";
 import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, combine, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
@@ -159,6 +161,9 @@ document.addEventListener("change", (ev) => { // construção em massa: escolhas
   const t = ev.target as HTMLInputElement;
   queueMicrotask(() => t.blur()); // escolheu: o painel volta a se atualizar
   if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
+  else if (t.dataset?.ctaxmode) { const k = +t.dataset.ctaxmode; cmd({ t: "classTax", cls: k, mode: t.value as "pct" | "fixed", v: t.value === "pct" ? eco.countries[active - 1].tax : 1 }); return; }
+  else if (t.dataset?.ctax) { const k = +t.dataset.ctax, mode = classTaxOf(eco.countries[active - 1], k).mode; cmd({ t: "classTax", cls: k, mode, v: mode === "pct" ? Math.max(0, +t.value) / 100 : Math.max(0, +t.value) }); return; }
+  else if (t.dataset?.stax) { cmd({ t: "tax", id: t.dataset.stax, rate: Math.max(0, +t.value) / 100 }); return; }
   else if (t.dataset?.meth) { const [hex, b, cat] = t.dataset.meth.split("|").map(Number); cmd({ t: "method", hex, b, cat, k: +t.value }); return; }
   else if (t.id === "mb-levels") mbLevels = Math.max(1, Math.min(50, Math.round(+t.value) || 1)); else if (t.id === "mb-priv") mbPriv = t.checked;
   else if (t.id === "bp-cat") { bpCat = +t.value; bpK = -1; } else if (t.id === "bp-k") bpK = +t.value; else return;
@@ -746,7 +751,7 @@ function leftmenuHtml() {
 }
 
 // ---- Economia em abas (docs/interface.md §4): o único lugar onde mercadorias aparecem como estoque e fluxo
-const ECON_TABS = ["Visão Geral", "Mercados", "Mercadorias", "Produção e Consumo", "Finanças"] as const;
+const ECON_TABS = ["Visão Geral", "Orçamento", "Mercados", "Mercadorias", "Produção e Consumo", "Finanças", "Dificuldades da era"] as const;
 let econTab = 0;
 const GOOD_CATS: [string, string[]][] = [
   ["Alimentos", ["Grãos", "Frutas e vegetais", "Carne e caça", "Produtos alimentícios", "Bebidas"]],
@@ -829,8 +834,60 @@ function goodDetailHtml(name: string) {
 
 function economyView() {
   const tabs = `<div class="tabs">${ECON_TABS.map((t, k) => `<button data-econ="${k}" class="${k === econTab ? "on" : ""}">${t}</button>`).join("")}</div>`;
-  if (econTab === 2 && goodDetail) return tabs + goodDetailHtml(goodDetail);
-  return tabs + [econOverview, marketsHtml, goodsCardsHtml, prodConsHtml, financesHtml][econTab]();
+  if (econTab === 3 && goodDetail) return tabs + goodDetailHtml(goodDetail);
+  return tabs + [econOverview, budgetHtml, marketsHtml, goodsCardsHtml, prodConsHtml, financesHtml, eraHtml][econTab]();
+}
+
+// ---- Orçamento do Estado (budget.ts): receitas e despesas reais da semana, impostos por classe e tributos específicos
+function budgetHtml() {
+  if (!active) return "";
+  const c = eco.countries[active - 1], book = c.bookLast ?? {};
+  const ins = BUDGET_IN.map((k) => [k, book[k] ?? 0] as const).filter(([, v]) => v > 0.005);
+  const outs = Object.entries(book).filter(([, v]) => v < -0.005).map(([k, v]) => [k, -v] as const).sort((a, b) => b[1] - a[1]);
+  const tin = ins.reduce((s, [, v]) => s + v, 0), tout = outs.reduce((s, [, v]) => s + v, 0), bal = tin - tout;
+  const rows = (list: readonly (readonly [string, number])[], tot: number) => list.map(([k, v]) => `<tr><td>${k}</td><td class="num">${fmt(v)}</td><td><small>${pct(tot ? v / tot : 0)}</small></td></tr>`).join("") || `<tr><td colspan=3><small>nada nesta semana</small></td></tr>`;
+  const warn: string[] = [];
+  if (bal < 0) warn.push(`Déficit de ${fmt(-bal)} por semana`);
+  if ((c.upkeepPaid ?? 1) < 0.99) warn.push(`Só ${pct(c.upkeepPaid ?? 1)} da manutenção foi paga: as construções rendem menos`);
+  if (debtCap(c) <= 0) warn.push("Sem crédito nesta era: gasto além do tesouro fica sem pagar");
+  // impostos por classe: base tributável real, alíquota, cobrado e qualidade de vida
+  const p = c.pops, taxable = p.taxable ?? new Float64Array(p.count.length);
+  const cls = CLASSES.map((name, k) => {
+    let people = 0, base = 0, qolSum = 0;
+    POP_TYPES.forEach((t, i) => { if (t.cls === k) { people += p.count[i]; base += taxable[i]; qolSum += p.qol[i] * p.count[i]; } });
+    const t = classTaxOf(c, k), paid = c.taxByClass?.[k] ?? 0, eff = c.taxEff ?? 0;
+    const step = t.mode === "pct" ? 0.05 : 1, next = t.v + step, extra = (t.mode === "pct" ? base * step : Math.min(base, next * people) - Math.min(base, t.v * people)) * eff;
+    return `<tr><td>${name}<br><small>${fmt(people)} pessoas · QV ${people ? Math.round(qolSum / people) : 0}</small></td><td class="num">${fmt(base)}</td>` +
+      `<td><select data-ctaxmode="${k}"><option value="pct"${t.mode === "pct" ? " selected" : ""}>%</option><option value="fixed"${t.mode === "fixed" ? " selected" : ""}>fixo</option></select> ` +
+      `<input data-ctax="${k}" type="number" step="${t.mode === "pct" ? 1 : 0.1}" min="0" value="${t.mode === "pct" ? Math.round(t.v * 100) : t.v.toFixed(1)}" style="width:56px">${t.mode === "pct" ? "%" : "/pessoa"}</td>` +
+      `<td class="num">${fmt(paid)}</td><td><small>+${t.mode === "pct" ? "5 pontos" : "1/pessoa"}: +${fmt(extra)}/sem, renda da classe −${fmt(extra)}</small></td></tr>`;
+  }).join("");
+  const taxes = TAX_KINDS.map((t) => {
+    const a = c.taxes?.find((x) => x.id === t.id), ok = canTax(c, t);
+    const status = a ? (a.suspended ? `<span class="bad">suspenso (faltam pontos adm.)</span>` : "ativo") : ok ? "disponível" : `<small><i class=i-lock></i> ${t.tech}</small>`;
+    return `<tr><td><b>${t.name}</b><br><small>${t.desc}${t.temporary ? ` Dura ${t.temporary} semanas.` : ""}</small></td><td><small>${t.adminCost} adm. + ${t.adminWeek}/sem</small></td><td>${status}</td>` +
+      `<td>${ok ? `<input data-stax="${t.id}" type="number" min="0" max="${Math.round(t.maxRate * 100)}" step="1" value="${Math.round((a?.rate ?? 0) * 100)}" style="width:52px">% <small>(máx. ${Math.round(t.maxRate * 100)}%)</small>` : ""}</td></tr>`;
+  }).join("");
+  return `<div class="cards"><div class="card"><div class="k">Tesouro</div><div class="v">${fmt(c.treasury)}</div></div><div class="card"><div class="k">Receitas / sem</div><div class="v down">${fmt(tin)}</div></div>` +
+    `<div class="card"><div class="k">Despesas / sem</div><div class="v up">${fmt(tout)}</div></div><div class="card"><div class="k">${bal >= 0 ? "Superávit" : "Déficit"}</div><div class="v ${bal >= 0 ? "down" : "up"}">${signed(bal)}</div></div>` +
+    `<div class="card"><div class="k">Dívida / teto de crédito</div><div class="v">${fmt(c.debt)} / ${fmt(debtCap(c))}</div></div><div class="card"><div class="k">Cobrança efetiva</div><div class="v">${pct(c.taxEff ?? 0)}</div></div></div>` +
+    (warn.length ? `<div class="card"><span class="warn">${warn.join("<br>")}</span></div>` : "") +
+    `<h3>Receitas</h3><table>${rows(ins, tin)}</table><h3>Despesas</h3><table>${rows(outs, tout)}</table>` +
+    `<h3>Impostos por classe social</h3><small>O imposto sai da renda de mercado de cada classe (comida de subsistência não paga). O que o Estado não consegue cobrar fica com o povo. Menos renda disponível = menos qualidade de vida = mais vontade de emigrar.</small>` +
+    `<table><tr><td><b>Classe</b></td><td><b>Renda tributável</b></td><td><b>Imposto</b></td><td><b>Cobrado</b></td><td><b>Prévia</b></td></tr>${cls}</table>` +
+    `<h3>Tributos específicos</h3><small>Criar custa pontos administrativos (você tem ${Math.floor(c.admin ?? 0)}); manter também. Sem pontos, o tributo fica suspenso. 0% revoga.</small><table>${taxes}</table>`;
+}
+/** Dificuldades estruturais da era (eramods.ts): valor atual de cada fator e o que melhora. */
+function eraHtml() {
+  if (!active) return "";
+  const c = eco.countries[active - 1];
+  const names: [EconKey, string, string][] = [["tax", "Eficiência tributária", "fração do imposto devido que chega ao tesouro"], ["monetization", "Monetização", "parte dos custos e do investimento paga em dinheiro"],
+    ["trade", "Eficiência comercial", "quanto circula entre cidades e com o exterior"], ["industry", "Produtividade industrial", "produção das indústrias"], ["admin", "Eficiência administrativa", "pontos administrativos"],
+    ["construction", "Eficiência de construção", "pontos de construção"], ["upkeep", "Custo de manutenção", "multiplica a manutenção"], ["foodLoss", "Perda de comida", "subsistência perdida por mês"],
+    ["credit", "Capacidade de crédito", "teto de dívida em PIB anual"], ["privateInvest", "Investimento privado formal", "entrada no fundo de investimento"]];
+  const helps = (k: EconKey) => [...Object.entries(ECON_TECH).filter(([, v]) => v[k]).map(([t]) => `${c.research.known.has(t) ? "✓ " : ""}${t}`), ...Object.entries(ECON_LAW).filter(([, v]) => v[k]).map(([l]) => `lei ${l}`)].join(", ");
+  return `<small>Era ${ERAS[c.research.era]}: a sociedade ainda não tem as instituições para transformar produção em dinheiro e em obras. Só tecnologias e leis melhoram estes números (a data sozinha não).</small><table>` +
+    names.map(([k, n, d]) => `<tr><td><b>${n}</b><br><small>${d}</small></td><td class="num">${pct(econ(c, k))}</td><td><small>base da era ${pct(ERA_ECON[c.research.era][k])} · melhoram: ${helps(k) || "próxima era"}</small></td></tr>`).join("") + `</table>`;
 }
 
 function econOverview() {

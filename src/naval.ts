@@ -64,7 +64,7 @@ export function stepNaval(w: World, e: Economy) {
       let give = Math.min(pool, o.np - o.done);
       if (give <= 0) { o.waiting = yardTier(e, ci) ? "sem capacidade" : "sem estaleiro"; continue; }
       let pay = (o.cost * give) / o.np;
-      const got = spend(c, pay); give *= got; pay *= got;
+      const got = spend(c, pay, "Estaleiros"); give *= got; pay *= got;
       if (give <= 1e-9) { o.waiting = "sem dinheiro"; continue; }
       o.paid += pay; o.done += give; pool -= give; o.waiting = undefined;
       if (o.done >= o.np - 1e-9) { if (c.manpower >= NAVY.sailors) done.push(o); else o.waiting = "sem marinheiros"; }

@@ -2,13 +2,14 @@ import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, typ
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
 import { econ, debtCap } from "./eramods.ts";
+import { collectTaxes, record, resetBook, setPopDemand, type ClassTax, type ActiveTax } from "./budget.ts";
 import { warMult, convertedOutputs, exportBlocked, stepWarEconomy } from "./wareconomy.ts";
 import { stepNaval, type ShipOrder } from "./naval.ts";
 import { activeMethods, combine, methodKey, INDUSTRIES as INDUSTRY_NAMES } from "./methods.ts";
 import { stepFirms, privateShareOf, type FirmRun, type Ledger } from "./firms.ts";
 import { stepConstruction, methodInputs, sectorMethod, CONSTRUCTION_METHODS, type Project } from "./construction.ts";
 import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
-import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
+import { jobsFor, idleType, newPops, distributeIncome, computeQol, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
 import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 import type { Flag } from "./flags.ts";
@@ -132,6 +133,7 @@ const yard = (name: string, workers: number, inputs: [string, number][], naval: 
 yard("Doca", 30, [["Madeira", 2], ["Tecidos", 0.5]], 3);
 yard("Estaleiro", 50, [["Madeira", 2], ["Tecidos", 1], ["Ferro", 0.5], ["Ferramentas", 0.5]], 6);
 yard("Arsenal naval", 80, [["Aço", 2], ["Máquinas", 0.5], ["Combustível", 0.5]], 12);
+setPopDemand((gi) => POP_DEMAND[gi]); // budget.ts: tributo sobre consumo
 const NB = BUILDINGS.length;
 /** Insumos de 1 nível da indústria b nesta cidade (o setor de construção usa o método da era do país). */
 const industryInputs = (e: Economy, b: number, city: City) => (b === SECTOR ? methodInputs(e, city.country) : BUILDINGS[b].industry!.inputs);
@@ -290,6 +292,13 @@ export type Country = {
   warSubsidy?: number;   // subsídio militar pago na última semana (firms.ts)
   insolvencies?: number; // níveis privados fechados por insolvência (firms.ts)
   upkeepPaid?: number;   // fração da manutenção paga na última semana (sem crédito, fica atrasada; eramods.ts)
+  classTax?: ClassTax[];  // imposto por classe social (budget.ts); sem = o da lei de Impostos
+  taxes?: ActiveTax[];    // tributos específicos ativos
+  taxByClass?: number[];  // cobrado de cada classe na última semana
+  specificTaxWeek?: number; sectorTaxWeek?: Record<string, number>; // tributos específicos da semana (casas / construções)
+  taxNext?: number;       // cobrado nesta semana: entra no tesouro na próxima
+  taxEff?: number;        // fração do devido que o Estado consegue cobrar
+  book?: Record<string, number>; bookLast?: Record<string, number>; // receitas (+) e despesas (−) por categoria: semana atual e anterior
   ownersTake?: number;   // da renda dos donos, quanto foi ao tesouro (estatais) ou ao fundo na última semana (firms.ts)
   ruler?: number;       // id do governante (characters.ts)
   tributeWeek?: number; // tributo da semana: + recebido (soberano), − pago (súdito)
@@ -718,6 +727,8 @@ function updatePops(e: Economy, c: Country, country: number) {
   let needCost = 0; // só necessidades básicas: comida, peles e madeira (QV 25 = básicas cobertas)
   for (const gi of BASIC_NEEDS) needCost += POP_DEMAND[gi] * BASE_PRICE[gi] * cap.price[gi];
   distributeIncome(c.pops, c.gdpWeek, c.subsistence, needCost, c.ownersTake ?? 0);
+  c.taxNext = collectTaxes(e, c, country, c.taxEff ?? 0, cap.price); // impostos saem da renda; o Estado recebe na semana que vem
+  computeQol(c.pops, needCost); // qualidade de vida pela renda que sobrou
 }
 
 /**
@@ -783,7 +794,7 @@ export function tick(w: World, e: Economy) {
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
-  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); c.adminWeek = 0; c.cpWeek = 0; }
+  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); c.adminWeek = 0; c.cpWeek = 0; resetBook(c); }
 
   for (const i of e.owned) {
     const k = e.market[i];
@@ -946,14 +957,18 @@ export function tick(w: World, e: Economy) {
     c.tax = gdp ? nominal / gdp : lawOf(c.politics, "Impostos").tax!; // imposto médio
     // governo legítimo arrecada mais; no Centralizado, estados melhoram a administração
     const ruler = rulerOf(e, ci + 1);
-    c.income = taxed * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1)) * (1 + (ruler ? CHAR.admTax * attrMod(ruler.adm) : 0)) // governante bom administrador arrecada mais
-      * econ(c, "tax"); // era: só parte do devido é cobrada (eramods.ts; a monetização reduz os custos pagos em dinheiro)
+    // fração do imposto devido que o Estado consegue cobrar: era, legitimidade, administração, governante, controle e isenções (cobrança em budget.ts)
+    c.taxEff = Math.min(1, econ(c, "tax") * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1)) * (1 + (ruler ? CHAR.admTax * attrMod(ruler.adm) : 0)) * (nominal > 0 ? taxed / nominal : 1));
+    c.income = c.taxNext ?? 0; // cobrado da renda das classes na semana passada (budget.ts collectTaxes)
+    const specificIn = (c.specificTaxWeek ?? 0) + Object.values(c.sectorTaxWeek ?? {}).reduce((s, v) => s + v, 0);
+    record(c, "Impostos por classe", c.income - specificIn); record(c, "Tributos específicos", specificIn); record(c, "Tarifas", c.tariffs);
     c.interest = (c.debt * RULES.interestYear) / 52;
     // manutenção em dinheiro: só a parte monetizada (o resto é trabalho e material da comunidade), × o custo relativo da era
     c.upkeep *= econ(c, "upkeep") * econ(c, "monetization");
     c.treasury += c.income + c.tariffs - c.interest;
     const room = Math.max(0, c.treasury) + Math.max(0, debtCap(c) - c.debt); // sem crédito, o que não cabe no tesouro fica sem pagar
     const paid = Math.min(c.upkeep, room);
+    record(c, "Manutenção de construções", -paid); record(c, "Juros", -c.interest);
     c.upkeepPaid = c.upkeep > 0 ? paid / c.upkeep : 1; // manutenção atrasada: as construções rendem menos na semana que vem
     c.treasury -= paid;
     if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }

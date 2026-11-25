@@ -19,8 +19,8 @@ const w2 = generateWorld(200, 100, 6, 3), e2 = createEconomy(w2); stepCharacters
 assert.equal(rulerOf(e2, 1)!.name, rulerOf(e, 1)!.name);
 // governante bom de administração arrecada mais
 tick(w, e); const r1 = rulerOf(e, 1)!;
-r1.adm = 0; e.week = 1; tick(w, e); const bad = e.countries[0].income;
-r1.adm = 100; e.week = 1; tick(w, e); const good = e.countries[0].income;
+r1.adm = 0; e.week = 1; tick(w, e); e.week = 1; tick(w, e); const bad = e.countries[0].income; // o imposto cobrado entra no tesouro na semana seguinte
+r1.adm = 100; e.week = 1; tick(w, e); e.week = 1; tick(w, e); const good = e.countries[0].income;
 assert.ok(good > bad);
 // morte: vem o sucessor; guardado na história continua existindo
 assert.equal(applyCommand(w, e, 1, { t: "saveCharacter", id: r1.id }), null);
