@@ -1,3 +1,4 @@
+import { holdsMouth } from "./navigation.ts";
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, generateRiverSystems, HEX_MODES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
@@ -523,6 +524,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.transfer) return cmd({ t: "transfer", from: eco.market[selected] - 1, to: Number(d.transfer) });
   if (d.act === "found" && selectedDiv) return askFound(selectedDiv);
   if (d.act === "outpost" && selectedDiv) return cmd({ t: "outpost", unit: selectedDiv });
+  if (d.closeriver) return cmd({ t: "closeRiver", id: +d.closeriver });
   if (d.river) {
     const name = prompt("Nome do rio", world.rivers![+d.river - 1].name);
     if (name) cmd({ t: "river", id: +d.river, name });
@@ -1225,7 +1227,13 @@ function hexHtml() {
   if (world.reserve[i] !== Infinity) h += ` · jazida para ~${Math.round(world.reserve[i] / 52)} anos (com 1 nível)`;
   if (eco.urban[i]) h += " · <b>urbano</b>";
   const rv = world.riverOf?.[i];
-  if (rv) { const x = world.rivers![rv - 1]; h += ` · <b>${x.name}</b> <button data-river="${rv}" title="Renomear rio"><i class=i-edit></i></button> <small>(navegável, ${x.length} hexes, deságua na zona marítima ${x.zone || "—"})</small>`; }
+  if (rv) {
+    const x = world.rivers![rv - 1], by = eco.closedRivers?.[rv];
+    h += ` · <b>${x.name}</b> <button data-river="${rv}" title="Renomear rio"><i class=i-edit></i></button> <small>(navegável, ${x.length} hexes, deságua na zona marítima ${x.zone || "—"})</small>`;
+    if (by) h += ` <small><b>Fechado</b> ao comércio dos outros por ${world.countries[by - 1].name}</small>`;
+    if (by === active || (!by && active && holdsMouth(world, active, rv)))
+      h += ` <button data-closeriver="${rv}" title="Quem controla a foz decide quem navega">${by ? "Reabrir o rio" : "Fechar o rio aos outros"}</button>`;
+  }
   const ct = world.continent?.[i];
   if (ct) h += ` · continente <b>${world.continents![ct - 1].name}</b> <button data-continent="${ct}" title="Renomear continente"><i class=i-edit></i></button>`;
   h += ` · cabem ${fmt(popCap(world, eco, i))}` + (world.owner[i] ? ` · controle ${pct(eco.control[i])}` : "");

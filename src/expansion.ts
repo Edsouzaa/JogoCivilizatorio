@@ -3,7 +3,7 @@
 // Fundar longe não é proibido: só fica mais caro, conta na capacidade de expansão e a cidade nasce isolada.
 import { forNeighbors, hexesInRadius } from "./hex.ts";
 import { T, isLand, type World } from "./world.ts";
-import type { Economy } from "./economy.ts";
+import { riverOpen, type Economy } from "./economy.ts";
 
 export const EXPAND = {
   foundBase: 60,       // dinheiro para fundar uma cidade (× multiplicador da distância)
@@ -95,7 +95,7 @@ export function updateExpansion(w: World, e: Economy, radiusOf: (size: number) =
     const queue = [cap]; reached[cap] = 1;
     for (let q = 0; q < queue.length; q++) forNeighbors(queue[q] % w.W, (queue[q] / w.W) | 0, w.W, w.H, (j) => { if (!reached[j] && w.owner[j] === country) { reached[j] = 1; queue.push(j); } });
   }
-  for (const k of e.cities) k.isolated = !reached[k.hex] && !k.port && !(k.harbor ?? 0); // água também liga
+  for (const k of e.cities) k.isolated = !reached[k.hex] && !riverOpen(e, k) && !(k.harbor ?? 0); // água também liga
 }
 
 /** Posto avançado: colonos viram um acampamento que reivindica o hex e espalha influência (base para expandir). */

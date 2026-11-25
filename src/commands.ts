@@ -1,5 +1,6 @@
 // Comandos do jogador. Toda ação que muda a partida passa por aqui, para valer igual no single-player,
 // no servidor e em todos os navegadores do multiplayer (lockstep). Cada comando só age sobre o país de quem mandou.
+import { toggleRiver } from "./navigation.ts";
 import {
   build, foundCity, trainSettlers, transferSize, urbanize, buildRoad, buildHarbor, proposePact, cancelPact, type Economy,
 } from "./economy.ts";
@@ -35,6 +36,7 @@ export type Cmd =
   | { t: "respond"; id: number; accept: boolean } // responder proposta de outro jogador
   | { t: "vote"; id: number; yes: boolean } // votar num nome (multiplayer)
   | { t: "river"; id: number; name: string } // renomear rio navegável
+  | { t: "closeRiver"; id: number } // fechar/reabrir rio ao comércio dos outros (quem tem a foz)
   | { t: "saveCharacter"; id: number } // guardar na história (o livro continua depois da morte) // resposta ao evento pendente
   | { t: "tech"; name: string }
   | { t: "law"; cat: string; name: string }
@@ -185,6 +187,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       k.name = name;
       return null;
     }
+    case "closeRiver": return isInt(c.id, 1) ? toggleRiver(w, e, country, c.id) : "Rio inválido";
     case "claim": if (!e.humans.includes(country)) e.humans.push(country); return null;
     case "release": e.humans = e.humans.filter((k) => k !== country); return null;
     default: return "Comando desconhecido";

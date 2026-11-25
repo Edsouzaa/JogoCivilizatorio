@@ -1,5 +1,6 @@
 import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
+import { stepRivers } from "./navigation.ts";
 import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
@@ -154,6 +155,7 @@ export type Market = {
 export type City = {
   name: string; country: number; hex: number; size: number; urban: number[]; market: Market;
   port: boolean; // cidade em rio navegável: exporta mais no comércio
+  river?: number; // rio navegável da cidade (w.rivers, base 1): quem tem a foz pode fechá-lo (navigation.ts)
   blockaded?: boolean; // frota inimiga na zona marítima colada: sem comércio exterior, metade do interno, sem porto
   state?: number;       // id do estado da cidade (states.ts)
   flag?: Flag;          // bandeira própria (sem ela, a do país)
@@ -238,6 +240,7 @@ export type Economy = {
   proposals?: Proposal[]; nextProposal?: number; votes?: Vote[]; // propostas esperando jogador (proposals.ts)
   influence?: Uint16Array;            // área de influência: país que influencia cada hex livre (expansion.ts)
   outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
+  closedRivers?: Record<number, number>; // rio navegável → país que o fechou ao comércio dos outros
   claims?: Claim[];                   // reivindicações sobre cidades (claims.ts)
   subjects?: Record<number, Subject>; // súdito → ligação com o soberano (subjects.ts)
   freed?: number[];                   // súditos que se soltaram neste mês (aviso)
@@ -280,6 +283,7 @@ export function refresh(w: World, e: Economy) {
     c.urban = [...new Set([c.hex, ...(c.picked ?? []).filter(ok), ...hexesInRadius(c.hex, 3, w.W, w.H).filter(ok)])].slice(0, c.size);
     for (const j of c.urban) e.urban[j] = 1;
     c.port = c.urban.some((j) => w.navigable[j] > 0);
+    c.river = c.urban.map((j) => w.riverOf?.[j] ?? 0).find((r) => r > 0);
     c.coast = c.urban.some((j) => { let s = false; forNeighbors(j % w.W, (j / w.W) | 0, w.W, w.H, (n) => { if (w.terrain[n] === T.OCEAN) s = true; }); return s; });
     e.market[c.hex] = k + 1; queue.push(c.hex);
   });
@@ -329,8 +333,10 @@ export const popCap = (w: World, e: Economy, i: number) => {
 };
 
 /** Cidade com saída para água (rio navegável ou mar com porto): troca mais e mais longe. */
-const onWater = (c: City) => c.port || (c.harbor ?? 0) > 0;
-const portMult = (c: City) => (c.port ? RULES.portTradeBonus : 1) * (1 + RULES.harborTrade * (c.harbor ?? 0));
+/** Porto fluvial aberto: o rio não foi fechado por outro país (disputa de navegação). */
+export const riverOpen = (e: Economy, c: City) => c.port && !(c.river && (e.closedRivers?.[c.river] ?? c.country) !== c.country);
+const onWater = (e: Economy, c: City) => riverOpen(e, c) || (c.harbor ?? 0) > 0;
+const portMult = (e: Economy, c: City) => (riverOpen(e, c) ? RULES.portTradeBonus : 1) * (1 + RULES.harborTrade * (c.harbor ?? 0));
 /** Porto máximo pela era: 1 até a Clássica, +1 a cada duas eras (até 5). */
 export const maxHarbor = (e: Economy, country: number) => Math.min(5, 1 + Math.floor(e.countries[country - 1].research.era / 2));
 
@@ -500,7 +506,7 @@ function foreignTrade(w: World, e: Economy) {
   for (const key of e.pacts) {
     const [a, b] = key.split("-").map(Number);
     const near = (city: City, other: number) => e.cities.some((k) => k.country === other &&
-      hexDistance(city.hex % w.W, (city.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W) <= RULES.foreignRange * (onWater(city) || onWater(k) ? 2 : 1));
+      hexDistance(city.hex % w.W, (city.hex / w.W) | 0, k.hex % w.W, (k.hex / w.W) | 0, w.W) <= RULES.foreignRange * (onWater(e, city) || onWater(e, k) ? 2 : 1));
     const pool = e.cities.filter((k) => !k.blockaded && ((k.country === a && near(k, b)) || (k.country === b && near(k, a))));
     if (!pool.some((k) => k.country === a) || !pool.some((k) => k.country === b)) continue;
     // além-mar (continentes diferentes): sem Navegação o navio não cruza o oceano profundo e quase nada passa
@@ -512,14 +518,14 @@ function foreignTrade(w: World, e: Economy) {
       for (const [from, to] of [[a, b], [b, a]]) {
         let offer = 0, lack = 0;
         const fs = Math.min(1, RULES.foreignShare * (1 + techSum(e.countries[from - 1].research, "trade")));
-        pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * portMult(k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
+        pool.forEach((k, i) => { if (k.country === from && net[i] > 0) offer += net[i] * Math.min(1, fs * portMult(e, k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
         // pouca frota capaz de cruzar o oceano profundo: além-mar sem Navegação só passa uma fração
         const moved = Math.min(offer, lack) * (overseas && !e.countries[from - 1].research.known.has("Navegação") ? RULES.oceanTradeNoNav : 1);
         if (moved <= 0) continue;
         const value = moved * BASE_PRICE[gi];
         pool.forEach((k, i) => {
           let d = 0;
-          if (k.country === from && net[i] > 0) d = -net[i] * Math.min(1, fs * portMult(k)) * (moved / offer);
+          if (k.country === from && net[i] > 0) d = -net[i] * Math.min(1, fs * portMult(e, k)) * (moved / offer);
           if (k.country === to && net[i] < 0) d = -net[i] * (moved / lack);
           k.market.supply[gi] += d; k.market.trade[gi] += d; net[i] += d;
         });
@@ -539,7 +545,7 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
   }
   for (const [country, cs] of byCountry) {
     if (cs.length < 2) continue;
-    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : portMult(c)) * (1 + RULES.roadTrade * (c.road ?? 0)));
+    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : portMult(e, c)) * (1 + RULES.roadTrade * (c.road ?? 0)));
     const c0 = e.countries[country - 1];
     const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")); // lei de Economia + tecnologia
     for (let gi = 1; gi < NG; gi++) {
@@ -637,7 +643,7 @@ export function dropHomeless(e: Economy) {
 export function tick(w: World, e: Economy) {
   e.exhausted = []; e.freed = [];
   dropHomeless(e);
-  if (e.week % 4 === 0) { updateExpansion(w, e, borderRadius); updateControl(w, e); e.contacts = contactsOf(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); expireProposals(e); }
+  if (e.week % 4 === 0) { updateExpansion(w, e, borderRadius); updateControl(w, e); e.contacts = contactsOf(w, e); stepRivers(w, e); stepDiplomacy(e); e.freed = stepSubjects(e); expireProposals(e); }
   if (e.week % 52 === 26) stepClaims(w, e);
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle

@@ -112,6 +112,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Rios sempre chegam à água: todo rio termina no mar, num lago ou noutro rio; o que para numa bacia ganha um lago no fim (se for curto ou não couber lago, o rio não fica). Teste novo garante que todo rio encosta em água.
 - Rios sinuosos: a trava contra espiral deixava só 2 bordas do rio por hex, e toda curva precisa de 3 (por isso os rios eram retos). Agora vale 3, e um ruído suave entorta a descida (RIVER_MEANDER). Rio não corre por dentro nem pela margem de lago aberto depois dele.
 - Lagos variados: o lago enche a bacia pelo hex mais baixo da beira até um tamanho sorteado (quase todos pequenos, alguns médios, raros de ~350 hexes, como um mar interior). Prefere crescer encostado no próprio lago (corpo cheio, contorno irregular) e nunca encosta no mar. Lista das construções em docs/construcoes.md.
+- Disputa de navegação: quem controla a foz de um rio navegável pode fechá-lo ao comércio dos outros (botão no painel do hex do rio). Cidades estrangeiras nele perdem o bônus de porto fluvial e a ligação por água, e a relação com quem fechou cai 1 por mês. Perder a foz reabre o rio. A IA ainda não usa.
 - Oceano profundo visível: azul bem escuro no mapa (a faixa rasa do litoral continua clara). Além de barrar navio sem Navegação, atrapalha o comércio além-mar: entre países de continentes diferentes, quem não tem Navegação só consegue exportar 20% do que exportaria.
 
 ## Próximos (nesta ordem)
@@ -127,7 +128,6 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 5. **Rios**
    - Rio navegável desenhado largo (ocupando o hex, com margem).
    - Cidades e portos na margem.
-   - Disputa de navegação.
 6. **Guerra**
     - Exploração por unidades terrestres e aéreas.
 7. **Mapas novos (resto)**: população com zoom no hex e modos Cidade/Estado/País/Mundo, atração de imigração e suprimentos.
