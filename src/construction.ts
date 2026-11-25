@@ -33,14 +33,21 @@ export const CONSTRUCTION_METHODS: { name: string; era: number; inputs: [string,
   { name: "Construção rudimentar", era: 0, inputs: [["Madeira", 1], ["Pedra", 1]], cp: 3 },
   { name: "Alvenaria", era: 1, inputs: [["Madeira", 1], ["Pedra", 1], ["Argila", 0.5], ["Ferramentas", 0.5]], cp: 5 },
   { name: "Alvenaria especializada", era: 2, inputs: [["Madeira", 1], ["Pedra", 1.5], ["Ferramentas", 0.5], ["Ferro", 0.5]], cp: 7 },
-  { name: "Estruturas de ferro", era: 5, inputs: [["Madeira", 1], ["Ferro", 1], ["Ferramentas", 1], ["Carvão mineral", 0.5]], cp: 10 },
-  { name: "Construção industrial", era: 6, inputs: [["Ferro", 2], ["Ferramentas", 1], ["Carvão mineral", 1]], cp: 14 },
+  { name: "Alvenaria com vidro", era: 3, inputs: [["Madeira", 1], ["Pedra", 1], ["Ferro", 0.5], ["Vidro", 0.3], ["Ferramentas", 0.5]], cp: 8 },
+  { name: "Estruturas de ferro", era: 5, inputs: [["Madeira", 1], ["Ferro", 1], ["Aço", 0.3], ["Ferramentas", 1], ["Máquinas", 0.2]], cp: 10 },
+  { name: "Construção industrial", era: 6, inputs: [["Aço", 1.5], ["Máquinas", 0.5], ["Vidro", 0.5], ["Cimento", 1], ["Combustível", 0.3]], cp: 14 },
+  { name: "Concreto armado", era: 7, inputs: [["Aço", 1.5], ["Cimento", 1.5], ["Máquinas", 0.5], ["Combustível", 0.5]], cp: 18 },
+  { name: "Construção modular", era: 8, inputs: [["Aço", 1], ["Cimento", 1], ["Máquinas", 0.5], ["Alumínio", 0.3], ["Combustível", 0.5]], cp: 22 },
+  { name: "Construção automatizada", era: 9, inputs: [["Aço", 1], ["Cimento", 1], ["Máquinas", 0.5], ["Eletrônicos", 0.2], ["Combustível", 0.3]], cp: 26 },
 ];
 const idx = (n: string) => { const k = GOODS.indexOf(n); if (k < 0) throw new Error(`bem desconhecido: ${n}`); return k; };
 let METHOD_INPUTS: [number, number][][] | null = null; // calculado no 1º uso (import circular com economy.ts)
-/** Método de construção em uso na era (o melhor já liberado). */
+/** Melhor método liberado pela era. */
 export const constructionMethod = (era: number) => { let k = 0; CONSTRUCTION_METHODS.forEach((m, i) => { if (m.era <= era) k = i; }); return k; };
-export const methodInputs = (era: number) => (METHOD_INPUTS ??= CONSTRUCTION_METHODS.map((m) => m.inputs.map(([n, q]) => [idx(n), q] as [number, number])))[constructionMethod(era)];
+const inputsOf = (k: number) => (METHOD_INPUTS ??= CONSTRUCTION_METHODS.map((m) => m.inputs.map(([n, q]) => [idx(n), q] as [number, number])))[k];
+/** Método em uso pelo país: o que stepConstruction escolheu na semana passada (o mais avançado cujos materiais o país produz). */
+export const sectorMethod = (e: Economy, country: number) => { const c = e.countries[country - 1]; return Math.min(c.sectorMethod ?? constructionMethod(c.research.era), constructionMethod(c.research.era)); };
+export const methodInputs = (e: Economy, country: number) => inputsOf(sectorMethod(e, country));
 
 /** PC de 1 nível da construção b. */
 export const cpCost = (b: number) => Math.max(1, Math.round(BUILDINGS[b].workers * CONSTRUCT.cpPerWorker));
@@ -84,6 +91,14 @@ export function pauseProject(e: Economy, country: number, id: number): string | 
  * divide a capacidade entre as filas, anda as obras na ordem, paga e termina as que completaram.
  */
 export function stepConstruction(w: World, e: Economy) {
+  // método dos setores para a semana que vem: o mais avançado da era cujos materiais existem em algum mercado do país
+  const made = e.countries.map(() => new Set<number>());
+  for (const k of e.cities) k.market.supply.forEach((v, gi) => { if (v > 0) made[k.country - 1].add(gi); });
+  e.countries.forEach((c, ci) => {
+    let k = constructionMethod(c.research.era);
+    while (k > 0 && !inputsOf(k).every(([gi]) => made[ci].has(gi))) k--;
+    c.sectorMethod = k;
+  });
   const done: Project[] = [];
   e.countries.forEach((c, ci) => {
     const country = ci + 1, list = queueOf(e, country).filter((p) => !p.paused);

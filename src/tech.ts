@@ -105,6 +105,16 @@ for (let era = 0; era < ERAS.length; era++) {
 export const techSum = (r: Research, field: "trade" | "army" | "manpower" | "unrest" | "research" | "fleet" | "air") =>
   TECHS.reduce((s, t) => s + (r.known.has(t.name) ? t[field] ?? 0 : 0), 0);
 
+// Construções da Etapa 5 (docs/construcoes.md): que tecnologia libera cada uma (Olaria e Oficina de ferramentas são tribais e livres)
+for (const [tech, building] of [
+  ["Domesticação", "Curtume"], ["Agricultura", "Oficina de bebidas"], ["Trabalho do ferro", "Oficina de vidro"], ["Metalurgia do bronze", "Oficina de joias"],
+  ["Escrita", "Oficina de pergaminho"], ["Moinhos", "Moinho"], ["Moinhos", "Manufatura de tecidos"], ["Pólvora", "Fábrica de pólvora"], ["Imprensa", "Tipografia"],
+  ["Imprensa", "Oficina de máquinas simples"], ["Máquina a vapor", "Aciaria"], ["Máquina a vapor", "Fábrica de máquinas"], ["Química industrial", "Fábrica de cimento"],
+  ["Eletricidade", "Usina termelétrica"], ["Energia nuclear", "Usina nuclear"], ["Química industrial", "Fábrica química"], ["Química industrial", "Fábrica de fertilizantes"],
+  ["Medicina moderna", "Fábrica de medicamentos"], ["Química industrial", "Refinaria"], ["Eletricidade", "Fundição de alumínio"], ["Produção em massa", "Fábrica de plásticos"],
+  ["Rádio", "Fábrica de eletrônicos"], ["Computadores", "Fábrica de baterias"], ["Energias renováveis", "Fábrica de equipamentos de energia"], ["Computadores", "Fábrica de telecomunicações"],
+] as const) (TECHS.find((t) => t.name === tech)!.unlocks ??= []).push(building);
+
 /** Tecnologia exigida por cada construção (só as que alguma tecnologia libera). */
 export const TECH_FOR_BUILDING = new Map(TECHS.flatMap((t) => (t.unlocks ?? []).map((b) => [b, t.name] as const)));
 

@@ -7,7 +7,7 @@ import {
 } from "./economy.ts";
 import { methodsOf, activeMethods, methodKey, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
-import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, constructionMethod, CONSTRUCTION_METHODS, CONSTRUCT } from "./construction.ts";
+import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, sectorMethod, CONSTRUCTION_METHODS, CONSTRUCT } from "./construction.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
@@ -705,13 +705,14 @@ function leftmenuHtml() {
 const ECON_TABS = ["Visão Geral", "Mercados", "Mercadorias", "Produção e Consumo", "Finanças"] as const;
 let econTab = 0;
 const GOOD_CATS: [string, string[]][] = [
-  ["Alimentos", ["Grãos", "Frutas e vegetais", "Carne e caça"]],
-  ["Agricultura e pecuária", ["Fibras", "Especiarias", "Gado", "Cavalos", "Peles"]],
-  ["Floresta e construção", ["Madeira", "Pedra", "Argila"]],
-  ["Minerais e energia", ["Sal", "Enxofre", "Carvão mineral", "Petróleo", "Pedras preciosas"]],
-  ["Metais", ["Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Bronze"]],
-  ["Manufaturados", ["Tecidos", "Ferramentas", "Papel"]],
-  ["Militar", ["Armas"]],
+  ["Alimentos", ["Grãos", "Frutas e vegetais", "Carne e caça", "Produtos alimentícios", "Bebidas"]],
+  ["Agricultura e pecuária", ["Fibras", "Especiarias", "Gado", "Cavalos", "Peles", "Plantas medicinais", "Fertilizantes"]],
+  ["Floresta e construção", ["Madeira", "Pedra", "Argila", "Cimento", "Vidro"]],
+  ["Minerais e energia", ["Sal", "Enxofre", "Salitre", "Carvão mineral", "Petróleo", "Combustível", "Energia elétrica", "Urânio", "Areia de quartzo", "Pedras preciosas"]],
+  ["Metais", ["Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Bauxita", "Lítio", "Terras raras", "Bronze", "Aço", "Alumínio"]],
+  ["Manufaturados", ["Tecidos", "Couro", "Cerâmica", "Ferramentas", "Papel", "Materiais impressos", "Bens de luxo", "Medicamentos", "Química básica", "Plásticos"]],
+  ["Indústria avançada", ["Máquinas", "Eletrônicos", "Baterias", "Equipamentos de energia", "Equipamentos de telecomunicações"]],
+  ["Militar", ["Armas", "Pólvora"]],
 ];
 /** Soma dos mercados das cidades do país para um bem. Comércio > 0 = entrou de outras cidades/países. */
 function nationalGood(g: number) {
@@ -961,7 +962,7 @@ function buildingsHtml() {
   const c = eco.countries[active - 1], q = queueOf(eco, active);
   const total = BUILDINGS.map((_, b) => { let n = 0; for (const i of eco.owned) if (world.owner[i] === active) n += eco.levels[b][i]; return n; });
   const rows = BUILDINGS.map((b, k) => (total[k] ? `<tr><td>${b.name}</td><td>${total[k]}</td><td>${b.workers * total[k]}</td></tr>` : "")).join("");
-  const method = CONSTRUCTION_METHODS[constructionMethod(c.research.era)], base = baseCp(eco, active);
+  const method = CONSTRUCTION_METHODS[sectorMethod(eco, active)], base = baseCp(eco, active);
   const cap = `<div class="card"><b>Capacidade de construção</b>: ${fmt(c.cpWeek ?? 0)} PC/semana <small>(comunidade ${base} + setores ${fmt(Math.max(0, (c.cpWeek ?? 0) - base))})</small> · usados ${fmt(c.cpUsed ?? 0)}` +
     `<br><small>Método dos setores: ${method.name} (${method.inputs.map(([g, n]) => `${n} ${g}`).join(" + ")} → ${method.cp} PC por nível) · fila privada ${pct(privateShare(eco, active))} da capacidade (lei de Economia) · fundo de investimento ${fmt(c.investPool ?? 0)}</small>` +
     `<br><small>Cada obra recebe até ${fmt(CONSTRUCT.maxPerProject * (1 + c.research.era / 2))} PC por semana; o dinheiro sai junto com o progresso.</small></div>`;

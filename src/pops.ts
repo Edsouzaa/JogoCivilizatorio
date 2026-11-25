@@ -55,6 +55,12 @@ const KIND: Record<string, Kind> = {
   "Serraria": "labor", "Trilhas de transporte": "labor", "Mina": "labor", "Galerias escoradas": "labor", "Barreiro": "labor", "Poço": "labor",
   "Fundição de bronze": "industry", "Tecelagem": "industry", "Ferraria": "industry", "Armeiro": "industry",
   "Siderúrgica": "industry", "Fábrica têxtil": "industry", "Arsenal": "industry", "Oficina de papel": "industry", "Centro administrativo": "admin", "Setor de construção": "labor",
+  "Olaria": "industry", "Oficina de ferramentas": "industry", "Curtume": "industry", "Oficina de bebidas": "industry", "Oficina de vidro": "industry",
+  "Oficina de joias": "industry", "Oficina de pergaminho": "industry", "Moinho": "industry", "Manufatura de tecidos": "industry", "Fábrica de pólvora": "industry",
+  "Tipografia": "industry", "Aciaria": "industry", "Oficina de máquinas simples": "industry", "Fábrica de máquinas": "industry", "Fábrica de cimento": "industry",
+  "Usina termelétrica": "industry", "Usina nuclear": "industry", "Fábrica química": "industry", "Fábrica de fertilizantes": "industry",
+  "Fábrica de medicamentos": "industry", "Refinaria": "industry", "Fundição de alumínio": "industry", "Fábrica de plásticos": "industry",
+  "Fábrica de eletrônicos": "industry", "Fábrica de baterias": "industry", "Fábrica de equipamentos de energia": "industry", "Fábrica de telecomunicações": "industry",
 };
 
 /** Dono das construções na era: chefes tribais → aristocratas → capitalistas (indústria). */

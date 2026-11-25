@@ -26,7 +26,8 @@ export const isLand = (t: number) => t !== T.OCEAN && t !== T.ICE;
 // Matérias-primas de docs/recursos.md que já aparecem no mapa. 0 = sem recurso.
 export const RESOURCES = ["—", "Grãos", "Frutas e vegetais", "Carne e caça", "Peles", "Madeira", "Pedra", "Fibras",
   "Argila", "Sal", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Especiarias", "Cavalos",
-  "Gado", "Carvão mineral", "Enxofre", "Petróleo"];
+  "Gado", "Carvão mineral", "Enxofre", "Petróleo",
+  "Areia de quartzo", "Salitre", "Bauxita", "Terras raras", "Lítio", "Urânio", "Plantas medicinais"];
 /** Cor de cada recurso no mapa de recursos. */
 export const RES_COLORS = RESOURCES.map((_, k) => [((k * 97) % 200) + 55, ((k * 57) % 200) + 55, ((k * 151) % 200) + 55]);
 const R = Object.fromEntries(RESOURCES.map((n, i) => [n, i]));
@@ -34,15 +35,15 @@ const RESOURCES_BY_TERRAIN: number[][] = [
   [],
   [R["Grãos"], R["Grãos"], R["Cavalos"], R["Gado"], R["Argila"], R["Fibras"]],
   [R["Grãos"], R["Gado"], R["Cavalos"], R["Frutas e vegetais"], R["Fibras"]],
-  [R["Sal"], R["Petróleo"], R["Ouro"], R["Enxofre"]],
+  [R["Sal"], R["Petróleo"], R["Ouro"], R["Enxofre"], R["Areia de quartzo"], R["Salitre"], R["Lítio"]],
   [R["Madeira"], R["Madeira"], R["Carne e caça"], R["Peles"], R["Frutas e vegetais"]],
-  [R["Madeira"], R["Especiarias"], R["Frutas e vegetais"], R["Pedras preciosas"]],
-  [R["Pedra"], R["Cobre"], R["Estanho"], R["Ferro"], R["Carvão mineral"], R["Prata"]],
-  [R["Pedra"], R["Ferro"], R["Ouro"], R["Prata"], R["Pedras preciosas"], R["Carvão mineral"]],
-  [R["Peles"], R["Carne e caça"], R["Petróleo"]],
+  [R["Madeira"], R["Especiarias"], R["Frutas e vegetais"], R["Pedras preciosas"], R["Plantas medicinais"], R["Bauxita"]],
+  [R["Pedra"], R["Cobre"], R["Estanho"], R["Ferro"], R["Carvão mineral"], R["Prata"], R["Bauxita"], R["Terras raras"]],
+  [R["Pedra"], R["Ferro"], R["Ouro"], R["Prata"], R["Pedras preciosas"], R["Carvão mineral"], R["Terras raras"], R["Urânio"], R["Lítio"]],
+  [R["Peles"], R["Carne e caça"], R["Petróleo"], R["Urânio"]],
   [],
-  [R["Gado"], R["Carne e caça"], R["Fibras"], R["Ouro"]],
-  [R["Cavalos"], R["Gado"], R["Sal"]],
+  [R["Gado"], R["Carne e caça"], R["Fibras"], R["Ouro"], R["Bauxita"], R["Plantas medicinais"]],
+  [R["Cavalos"], R["Gado"], R["Sal"], R["Salitre"]],
   [R["Madeira"], R["Peles"], R["Carne e caça"], R["Ferro"]],
 ];
 // recursos de jazida (minérios, pedras, petróleo...) são mais raros que os de fazenda/pasto
@@ -50,7 +51,8 @@ const RESOURCES_BY_TERRAIN: number[][] = [
 const commonOf = (t: number) => RESOURCES_BY_TERRAIN[t].find((r) => !MINERAL.has(r)) ?? RESOURCES_BY_TERRAIN[t][0] ?? 0;
 /** Reservas (em semanas de extratora nível 1 com equipe completa). Pedra e sal quase não acabam. */
 export const RESERVE = { minYears: 150, maxYears: 600, abundant: 5 };
-const MINERAL = new Set(["Pedra", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Carvão mineral", "Enxofre", "Petróleo", "Sal"].map((n) => R[n]));
+const MINERAL = new Set(["Pedra", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Carvão mineral", "Enxofre", "Petróleo", "Sal",
+  "Areia de quartzo", "Salitre", "Bauxita", "Terras raras", "Lítio", "Urânio"].map((n) => R[n]));
 
 export const START_RADIUS = 1; // território inicial em volta da capital; cresce com a cidade
 

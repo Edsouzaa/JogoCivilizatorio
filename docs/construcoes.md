@@ -199,3 +199,76 @@ Propriedade:
 - Só põe obra na fila se o fundo cobre o que já deve mais a obra nova.
 
 **Gráficos novos** (aba Gráficos): capacidade de construção, construção usada, fundo de investimento, contribuições ao fundo, lucro dos edifícios e insolvências.
+
+## Etapa 5: matérias-primas, bens e edifícios novos
+
+**Matérias-primas novas:**
+
+| Recurso | Construção que extrai | Onde aparece |
+|---|---|---|
+| Areia de quartzo | Mina | Desertos |
+| Salitre | Mina | Desertos e estepes |
+| Bauxita | Mina | Selvas, savanas e colinas |
+| Terras raras | Mina | Colinas e montanhas |
+| Lítio | Mina | Desertos e montanhas |
+| Urânio | Mina | Montanhas e tundras |
+| Plantas medicinais | Fazenda | Selvas e savanas |
+
+**Bens novos:** cerâmica, couro, bebidas, vidro, bens de luxo, produtos alimentícios, pólvora, máquinas, materiais impressos, aço, cimento, química básica, fertilizantes, medicamentos, combustível, energia elétrica, alumínio, plásticos, eletrônicos, baterias, equipamentos de energia e equipamentos de telecomunicações.
+
+- **Consumo das casas:** cerâmica, couro, bebidas, bens de luxo, alimentos processados, impressos, medicamentos, combustível, energia elétrica, eletrônicos, plásticos e telecomunicações.
+- **Só insumo:** aço, cimento, máquinas, química básica e os demais.
+- **Energia elétrica:** é uma mercadoria como as outras. É produzida por usinas, vendida no mercado da cidade e consumida pelas casas e pela fundição de alumínio.
+
+**Edifícios novos:** todos são indústrias urbanas. Estão na ordem em que rodam: quem fabrica um insumo vem antes de quem o usa.
+
+| Construção | Insumos por nível | Produto por nível | Trabalhadores | PC | Exige |
+|---|---|---|---|---|---|
+| Olaria | 2 Argila | 2 Cerâmica | 20 | 10 | — |
+| Oficina de ferramentas | 1 Madeira + 1 Pedra | 1 Ferramentas | 25 | 13 | — |
+| Curtume | 2 Peles | 2 Couro | 20 | 10 | Domesticação (Tribal) |
+| Oficina de bebidas | 2 Grãos + 1 Frutas e vegetais | 3 Bebidas | 20 | 10 | Agricultura (Tribal) |
+| Oficina de vidro | 2 Areia de quartzo + 1 Madeira | 2 Vidro | 30 | 15 | Trabalho do ferro (Clássica) |
+| Oficina de joias | 0.5 Ouro + 0.5 Prata + 0.5 Pedras preciosas | 1 Bens de luxo | 15 | 8 | Metalurgia do bronze (Tribal) |
+| Oficina de pergaminho | 2 Peles | 2 Papel | 20 | 10 | Escrita (Clássica) |
+| Moinho | 3 Grãos | 3 Produtos alimentícios | 20 | 10 | Moinhos (Medieval) |
+| Manufatura de tecidos | 3 Fibras | 4 Tecidos | 40 | 20 | Moinhos (Medieval) |
+| Fábrica de pólvora | 1 Enxofre + 1 Salitre + 1 Madeira | 2 Pólvora | 35 | 18 | Pólvora (Descobertas) |
+| Tipografia | 2 Papel | 2 Materiais impressos | 25 | 13 | Imprensa (Renascença) |
+| Aciaria | 2 Ferro + 1 Carvão mineral | 2 Aço | 50 | 25 | Máquina a vapor (Revoluções) |
+| Oficina de máquinas simples | 1 Ferro + 1 Ferramentas | 1 Máquinas | 40 | 20 | Imprensa (Renascença) |
+| Fábrica de máquinas | 2 Aço + 1 Ferramentas | 3 Máquinas | 70 | 35 | Máquina a vapor (Revoluções) |
+| Fábrica de cimento | 2 Pedra + 1 Argila + 0.5 Carvão mineral | 3 Cimento | 40 | 20 | Química industrial (Industrialização) |
+| Usina termelétrica | 2 Carvão mineral | 6 Energia elétrica | 40 | 20 | Eletricidade (Industrialização) |
+| Usina nuclear | 0.2 Urânio | 20 Energia elétrica | 80 | 40 | Energia nuclear (Multipolar) |
+| Fábrica química | 1 Enxofre + 1 Sal | 2 Química básica | 60 | 30 | Química industrial (Industrialização) |
+| Fábrica de fertilizantes | 1 Química básica + 1 Salitre | 3 Fertilizantes | 50 | 25 | Química industrial (Industrialização) |
+| Fábrica de medicamentos | 2 Plantas medicinais + 1 Química básica | 2 Medicamentos | 50 | 25 | Medicina moderna (Industrialização) |
+| Refinaria | 2 Petróleo | 3 Combustível | 60 | 30 | Química industrial (Industrialização) |
+| Fundição de alumínio | 2 Bauxita + 3 Energia elétrica | 1 Alumínio | 60 | 30 | Eletricidade (Industrialização) |
+| Fábrica de plásticos | 1 Petróleo + 1 Química básica | 2 Plásticos | 60 | 30 | Produção em massa (Grandes Guerras) |
+| Fábrica de eletrônicos | 2 Areia de quartzo + 0.5 Terras raras + 0.5 Plásticos | 1 Eletrônicos | 80 | 40 | Rádio (Grandes Guerras) |
+| Fábrica de baterias | 1 Lítio + 0.5 Química básica + 0.2 Alumínio | 1 Baterias | 70 | 35 | Computadores (Multipolar) |
+| Fábrica de equipamentos de energia | 1 Areia de quartzo + 1 Aço + 0.3 Terras raras | 1 Equipamentos de energia | 80 | 40 | Energias renováveis (Moderna) |
+| Fábrica de telecomunicações | 1 Vidro + 0.5 Eletrônicos | 1 Equipamentos de telecomunicações | 70 | 35 | Computadores (Multipolar) |
+
+**Não criados, porque já existem:**
+- A Oficina de armas seria o Armeiro.
+- A Salina seria a Mina de sal.
+- A Fundição de ferro seria a Ferraria.
+- Estaleiro, doca e arsenal naval entram na construção naval, na Etapa 6.
+
+**Métodos de construção novos:**
+
+| Método | Era | Materiais | PC por nível |
+|---|---|---|---|
+| Alvenaria com vidro | Renascença | inclui vidro | 8 |
+| Estruturas de ferro | Revoluções | inclui aço e máquinas | 10 |
+| Construção industrial | Industrialização | aço, máquinas, vidro, cimento e combustível | 14 |
+| Concreto armado | Grandes Guerras | — | 18 |
+| Construção modular | Multipolar | inclui alumínio | 22 |
+| Construção automatizada | Moderna | inclui eletrônicos | 26 |
+
+- **Escolha do método:** o setor usa o método mais avançado cujos materiais o país produziu na semana anterior. Assim a construção não trava quando falta cimento ou aço.
+- **Indústrias novas:** ganham métodos genéricos de artesanal a automatizada.
+- **Saves:** o formato subiu para a versão 6 (lista de bens nova), e saves antigos não abrem mais.

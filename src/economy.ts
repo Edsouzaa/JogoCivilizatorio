@@ -1,9 +1,9 @@
 import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
-import { activeMethods, combine, methodKey } from "./methods.ts";
+import { activeMethods, combine, methodKey, INDUSTRIES as INDUSTRY_NAMES } from "./methods.ts";
 import { stepFirms, privateShareOf, type FirmRun, type Ledger } from "./firms.ts";
-import { stepConstruction, methodInputs, constructionMethod, CONSTRUCTION_METHODS, type Project } from "./construction.ts";
+import { stepConstruction, methodInputs, sectorMethod, CONSTRUCTION_METHODS, type Project } from "./construction.ts";
 import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
@@ -21,7 +21,10 @@ import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
-export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas", "Papel"];
+export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas", "Papel",
+  "Cerâmica", "Couro", "Bebidas", "Vidro", "Bens de luxo", "Produtos alimentícios", "Pólvora", "Máquinas", "Materiais impressos",
+  "Aço", "Cimento", "Química básica", "Fertilizantes", "Medicamentos", "Combustível", "Energia elétrica", "Alumínio", "Plásticos",
+  "Eletrônicos", "Baterias", "Equipamentos de energia", "Equipamentos de telecomunicações"];
 const g = (n: string) => { const k = GOODS.indexOf(n); if (k < 0) throw new Error(`bem desconhecido: ${n}`); return k; };
 const NG = GOODS.length;
 
@@ -30,6 +33,12 @@ const BASE: Record<string, number> = {
   "Argila": 8, "Sal": 15, "Cobre": 30, "Estanho": 35, "Ferro": 30, "Ouro": 120, "Prata": 80, "Pedras preciosas": 150,
   "Especiarias": 60, "Cavalos": 50, "Gado": 30, "Carvão mineral": 20, "Enxofre": 25, "Petróleo": 40,
   "Bronze": 60, "Tecidos": 35, "Ferramentas": 55, "Armas": 90, "Papel": 30,
+  // matérias-primas novas e manufaturados (preço ≈ insumos + trabalho, como os de cima)
+  "Areia de quartzo": 10, "Salitre": 25, "Bauxita": 25, "Terras raras": 80, "Lítio": 60, "Urânio": 120, "Plantas medicinais": 30,
+  "Cerâmica": 20, "Couro": 30, "Bebidas": 25, "Vidro": 30, "Bens de luxo": 250, "Produtos alimentícios": 16, "Pólvora": 70, "Máquinas": 140,
+  "Materiais impressos": 45, "Aço": 75, "Cimento": 25, "Química básica": 60, "Fertilizantes": 50, "Medicamentos": 110, "Combustível": 55,
+  "Energia elétrica": 30, "Alumínio": 110, "Plásticos": 80, "Eletrônicos": 220, "Baterias": 160, "Equipamentos de energia": 260,
+  "Equipamentos de telecomunicações": 300,
 };
 export const BASE_PRICE = GOODS.map((n) => BASE[n] ?? 0);
 
@@ -41,6 +50,11 @@ const BASIC_NEEDS = [...FOOD, g("Peles"), g("Madeira")];
 for (const f of FOOD) POP_DEMAND[f] = 1 / 200;
 POP_DEMAND[g("Tecidos")] = 1 / 300; POP_DEMAND[g("Ferramentas")] = 1 / 800; POP_DEMAND[g("Armas")] = 1 / 3000;
 POP_DEMAND[g("Bronze")] = 1 / 4000;
+// bens de consumo novos (quem não alcança fica sem; só as necessidades básicas entram na qualidade de vida)
+for (const [n, d] of [["Cerâmica", 2000], ["Couro", 2500], ["Bebidas", 800], ["Bens de luxo", 20000], ["Produtos alimentícios", 600], ["Materiais impressos", 3000],
+  ["Medicamentos", 3000], ["Combustível", 2000], ["Energia elétrica", 800], ["Eletrônicos", 4000], ["Plásticos", 3000], ["Equipamentos de telecomunicações", 10000]] as const) POP_DEMAND[g(n)] = 1 / d;
+// insumos puros (ninguém consome em casa)
+for (const n of ["Areia de quartzo", "Salitre", "Bauxita", "Terras raras", "Lítio", "Urânio", "Pólvora", "Máquinas", "Aço", "Cimento", "Química básica", "Fertilizantes", "Alumínio", "Baterias", "Equipamentos de energia"]) POP_DEMAND[g(n)] = 0;
 
 type Building = {
   name: string; workers: number;
@@ -56,14 +70,14 @@ type Building = {
 export const BUILDINGS: Building[] = [];
 const add = (b: Building) => BUILDINGS.push(b) - 1;
 const res = (...names: string[]) => names.map(g);
-const FARM = add({ name: "Fazenda", for: res("Grãos", "Frutas e vegetais", "Fibras", "Especiarias"), workers: 20 });
+const FARM = add({ name: "Fazenda", for: res("Grãos", "Frutas e vegetais", "Fibras", "Especiarias", "Plantas medicinais"), workers: 20 });
 add({ name: "Irrigação", for: BUILDINGS[FARM].for, workers: 10, boosts: FARM, mult: 0.5 });
 const PASTURE = add({ name: "Pasto", for: res("Cavalos", "Gado"), workers: 15 });
 add({ name: "Estábulo", for: BUILDINGS[PASTURE].for, workers: 8, boosts: PASTURE, mult: 0.4 });
 add({ name: "Acampamento de caça", for: res("Carne e caça", "Peles"), workers: 15 });
 const LUMBER = add({ name: "Serraria", for: res("Madeira"), workers: 20 });
 add({ name: "Trilhas de transporte", for: BUILDINGS[LUMBER].for, workers: 8, boosts: LUMBER, mult: 0.3 });
-const MINE = add({ name: "Mina", for: res("Pedra", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Carvão mineral", "Enxofre", "Sal"), workers: 30 });
+const MINE = add({ name: "Mina", for: res("Pedra", "Cobre", "Estanho", "Ferro", "Ouro", "Prata", "Pedras preciosas", "Carvão mineral", "Enxofre", "Sal", "Areia de quartzo", "Salitre", "Bauxita", "Terras raras", "Lítio", "Urânio"), workers: 30 });
 add({ name: "Galerias escoradas", for: BUILDINGS[MINE].for, workers: 15, boosts: MINE, mult: 0.5 });
 add({ name: "Barreiro", for: res("Argila"), workers: 12 });
 add({ name: "Poço", for: res("Petróleo"), workers: 20 });
@@ -79,10 +93,41 @@ export const SECTOR = add({ name: "Setor de construção", for: [], workers: 30,
 add({ name: "Siderúrgica", for: [], workers: 60, industry: { inputs: [[g("Ferro"), 1], [g("Carvão mineral"), 1]], outputs: [[g("Ferramentas"), 4]] } });
 add({ name: "Fábrica têxtil", for: [], workers: 50, industry: { inputs: [[g("Fibras"), 2]], outputs: [[g("Tecidos"), 5]] } });
 add({ name: "Arsenal", for: [], workers: 60, industry: { inputs: [[g("Ferro"), 1], [g("Carvão mineral"), 1]], outputs: [[g("Armas"), 3]] } });
+// Etapa 5 (docs/construcoes.md): na ordem de dependência — quem fabrica um insumo vem antes de quem o usa no mesmo tick
+const ind = (name: string, workers: number, inputs: [string, number][], outputs: [string, number][]) =>
+  add({ name, for: [], workers, industry: { inputs: inputs.map(([n, q]) => [g(n), q]), outputs: outputs.map(([n, q]) => [g(n), q]) } });
+ind("Olaria", 20, [["Argila", 2]], [["Cerâmica", 2]]);
+ind("Oficina de ferramentas", 25, [["Madeira", 1], ["Pedra", 1]], [["Ferramentas", 1]]);
+ind("Curtume", 20, [["Peles", 2]], [["Couro", 2]]);
+ind("Oficina de bebidas", 20, [["Grãos", 2], ["Frutas e vegetais", 1]], [["Bebidas", 3]]);
+ind("Oficina de vidro", 30, [["Areia de quartzo", 2], ["Madeira", 1]], [["Vidro", 2]]);
+ind("Oficina de joias", 15, [["Ouro", 0.5], ["Prata", 0.5], ["Pedras preciosas", 0.5]], [["Bens de luxo", 1]]);
+ind("Oficina de pergaminho", 20, [["Peles", 2]], [["Papel", 2]]);
+ind("Moinho", 20, [["Grãos", 3]], [["Produtos alimentícios", 3]]);
+ind("Manufatura de tecidos", 40, [["Fibras", 3]], [["Tecidos", 4]]);
+ind("Fábrica de pólvora", 35, [["Enxofre", 1], ["Salitre", 1], ["Madeira", 1]], [["Pólvora", 2]]);
+ind("Tipografia", 25, [["Papel", 2]], [["Materiais impressos", 2]]);
+ind("Aciaria", 50, [["Ferro", 2], ["Carvão mineral", 1]], [["Aço", 2]]);
+ind("Oficina de máquinas simples", 40, [["Ferro", 1], ["Ferramentas", 1]], [["Máquinas", 1]]);
+ind("Fábrica de máquinas", 70, [["Aço", 2], ["Ferramentas", 1]], [["Máquinas", 3]]);
+ind("Fábrica de cimento", 40, [["Pedra", 2], ["Argila", 1], ["Carvão mineral", 0.5]], [["Cimento", 3]]);
+ind("Usina termelétrica", 40, [["Carvão mineral", 2]], [["Energia elétrica", 6]]);
+ind("Usina nuclear", 80, [["Urânio", 0.2]], [["Energia elétrica", 20]]);
+ind("Fábrica química", 60, [["Enxofre", 1], ["Sal", 1]], [["Química básica", 2]]);
+ind("Fábrica de fertilizantes", 50, [["Química básica", 1], ["Salitre", 1]], [["Fertilizantes", 3]]);
+ind("Fábrica de medicamentos", 50, [["Plantas medicinais", 2], ["Química básica", 1]], [["Medicamentos", 2]]);
+ind("Refinaria", 60, [["Petróleo", 2]], [["Combustível", 3]]);
+ind("Fundição de alumínio", 60, [["Bauxita", 2], ["Energia elétrica", 3]], [["Alumínio", 1]]);
+ind("Fábrica de plásticos", 60, [["Petróleo", 1], ["Química básica", 1]], [["Plásticos", 2]]);
+ind("Fábrica de eletrônicos", 80, [["Areia de quartzo", 2], ["Terras raras", 0.5], ["Plásticos", 0.5]], [["Eletrônicos", 1]]);
+ind("Fábrica de baterias", 70, [["Lítio", 1], ["Química básica", 0.5], ["Alumínio", 0.2]], [["Baterias", 1]]);
+ind("Fábrica de equipamentos de energia", 80, [["Areia de quartzo", 1], ["Aço", 1], ["Terras raras", 0.3]], [["Equipamentos de energia", 1]]);
+ind("Fábrica de telecomunicações", 70, [["Vidro", 1], ["Eletrônicos", 0.5]], [["Equipamentos de telecomunicações", 1]]);
 const NB = BUILDINGS.length;
 /** Insumos de 1 nível da indústria b nesta cidade (o setor de construção usa o método da era do país). */
-const industryInputs = (e: Economy, b: number, city: City) => (b === SECTOR ? methodInputs(e.countries[city.country - 1].research.era) : BUILDINGS[b].industry!.inputs);
+const industryInputs = (e: Economy, b: number, city: City) => (b === SECTOR ? methodInputs(e, city.country) : BUILDINGS[b].industry!.inputs);
 const INDUSTRIES = BUILDINGS.map((_, b) => b).filter((b) => BUILDINGS[b].industry);
+for (const b of INDUSTRIES) INDUSTRY_NAMES.add(BUILDINGS[b].name); // methods.ts: indústria sem métodos próprios ganha os genéricos
 for (const [name] of TECH_FOR_BUILDING) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`tecnologia libera construção inexistente: ${name}`);
 for (const t of TECHS) for (const [name] of t.bonus ?? []) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`bônus para construção inexistente: ${name}`);
 
@@ -195,6 +240,7 @@ export type Country = {
   investWeek?: number;  // quanto entrou na última semana
   cpWeek?: number;      // pontos de construção da última semana (base + setores; construction.ts)
   cpUsed?: number;      // quanto deles as obras usaram
+  sectorMethod?: number; // método dos setores de construção na semana (construction.ts)
   insolvencies?: number; // níveis privados fechados por insolvência (firms.ts)
   ownersTake?: number;   // da renda dos donos, quanto foi ao tesouro (estatais) ou ao fundo na última semana (firms.ts)
   ruler?: number;       // id do governante (characters.ts)
@@ -794,7 +840,7 @@ export function tick(w: World, e: Economy) {
       industryEff[k][b] = eff;
       const adm = BUILDINGS[b].industry!.admin;
       if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * om * eff; }
-      if (b === SECTOR) { const c = e.countries[city.country - 1]; c.cpWeek = (c.cpWeek ?? 0) + CONSTRUCTION_METHODS[constructionMethod(c.research.era)].cp * om * eff; }
+      if (b === SECTOR) { const c = e.countries[city.country - 1]; c.cpWeek = (c.cpWeek ?? 0) + CONSTRUCTION_METHODS[sectorMethod(e, city.country)].cp * om * eff; }
     }
   });
   for (const r of runs) if (BUILDINGS[r.b].industry) { // conta de cada indústria: a parte dela no que a cidade fez

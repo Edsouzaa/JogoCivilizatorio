@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { generateWorld } from "../src/world.ts";
 import { createEconomy, tick, buildingsFor, BUILDINGS, GOODS, SECTOR, RULES } from "../src/economy.ts";
-import { queueBuild, queueOf, stepConstruction, cancelProject, cpCost, baseCp, CONSTRUCTION_METHODS, constructionMethod } from "../src/construction.ts";
+import { queueBuild, queueOf, stepConstruction, cancelProject, cpCost, baseCp, CONSTRUCTION_METHODS, sectorMethod } from "../src/construction.ts";
 import { applyCommand } from "../src/commands.ts";
 
 const w = generateWorld(200, 100, 5, 2), e = createEconomy(w), c = e.countries[0];
@@ -64,9 +64,25 @@ const near = [...e.owned].filter((i) => w.owner[i] === 1 && !e.urban[i] && e.mar
   w.resource[i] = GOODS.indexOf(g); w.resource2[i] = 0; w.pop[i] = 1e4; w.reserve[i] = Infinity; e.levels[bb][i] = 20; e.producers.add(i);
 });
 tick(w, e);
-const method = CONSTRUCTION_METHODS[constructionMethod(c.research.era)];
+const method = CONSTRUCTION_METHODS[sectorMethod(e, 1)];
 assert.ok(m.used[wood] > 0, "setor consome madeira");
 assert.ok((c.cpWeek ?? 0) > baseCp(e, 1), "setor soma pontos de construção");
 assert.ok((c.cpWeek ?? 0) <= baseCp(e, 1) + 5 * method.cp * RULES.urbanIndustry * 2 + 1e-9);
 assert.equal(BUILDINGS[SECTOR].name, "Setor de construção");
+// era industrial sem aço nem cimento: o setor volta ao melhor método cujos materiais o país tem
+{
+  const { constructionMethod, sectorMethod: sm } = await import("../src/construction.ts");
+  const era = c.research.era; c.research.era = 6;
+  stepConstruction(w, e);
+  assert.ok(sm(e, 1) < constructionMethod(6), "sem aço/cimento: método mais simples");
+  c.research.era = era;
+}
+// indústria nova da Etapa 5: olaria transforma argila em cerâmica
+{
+  const pot = BUILDINGS.findIndex((x) => x.name === "Olaria"), CLAY = GOODS.indexOf("Argila"), CER = GOODS.indexOf("Cerâmica");
+  const pit = BUILDINGS.findIndex((x) => x.name === "Barreiro"), i = near[0];
+  w.resource[i] = CLAY; e.levels[pit][i] = 10; e.levels[pot][cap] = 3; w.pop[cap] = 1e5;
+  tick(w, e);
+  assert.ok(m.supply[CER] > 0 && m.used[CLAY] > 0, "olaria: argila → cerâmica");
+}
 console.log("construction ok");

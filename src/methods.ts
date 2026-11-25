@@ -111,8 +111,13 @@ Object.assign(BY, {
 /** Melhorias (irrigação, estábulo...) seguem o edifício que melhoram: só organização e manutenção. */
 const NONE: [Method[], Method[], Method[]] = [[M("Padrão")], [M("Sem subproduto")], [HAND]];
 
+/** Indústria sem métodos próprios (as da Etapa 5): degraus genéricos de artesanal a automatizada. */
+const GENERIC_INDUSTRY = industry(["Produção artesanal", "Produção organizada", "Produção mecanizada", "Produção industrial", "Produção automatizada"],
+  [undefined, "Escrita", "Máquina a vapor", "Eletricidade", "Automação"]);
 /** Métodos da construção, por categoria. */
-export const methodsOf = (building: string): Method[][] => [...(BY[building] ?? NONE), ORG, MAINT];
+export const methodsOf = (building: string): Method[][] => [...(BY[building] ?? (INDUSTRIES.has(building) ? GENERIC_INDUSTRY : NONE)), ORG, MAINT];
+/** Nomes das indústrias (economy.ts registra na carga: evita import circular de BUILDINGS aqui). */
+export const INDUSTRIES = new Set<string>();
 
 const unlocked = (m: Method, known: Set<string>) => !m.tech || known.has(m.tech);
 /** Organização automática: comunitária na era tribal, depois a mais avançada liberada (cooperativa e estatal são escolhas). */
