@@ -171,6 +171,7 @@ document.addEventListener("change", (ev) => { // construção em massa: escolhas
   queueMicrotask(() => t.blur()); // escolheu: o painel volta a se atualizar
   if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
   else if (t.dataset?.mission) { cmd({ t: "mission", id: +t.dataset.mission, m: t.value }); return; }
+  else if (t.dataset?.hexcity) { cmd({ t: "assignHex", hex: +t.dataset.hexcity, city: +t.value }); return; }
   else if (t.dataset?.tpol) { cmd({ t: "tradePolicy", good: t.dataset.tpol, policy: t.value }); return; }
   else if (t.id === "tariff") { cmd({ t: "tariff", rate: Math.max(0, +t.value) / 100 }); return; }
   else if (t.dataset?.prio) { cmd({ t: "priority", id: +t.dataset.prio, p: +t.value }); return; }
@@ -1661,6 +1662,12 @@ function hexHtml() {
     h += `<br><small><b>${s.kind}</b> · sustenta ${fmt(s.capacity)} · vivem da terra ${fmt(s.dependants)} · pressão <b class="${s.pressure > 1 ? "up" : s.pressure < 0.8 ? "down" : ""}">${pct(s.pressure)}</b>` +
       ` · produz ${s.gross.toFixed(1)}/sem (come em casa ${s.self.toFixed(1)}, sobra ${s.surplus.toFixed(1)}${s.deficit > 0.05 ? `, falta ${s.deficit.toFixed(1)}` : ""}) · terra ocupada ${pct(s.land)}</small>`;
   }
+  if (active && world.owner[i] === active && isLand(world.terrain[i]) && !eco.urban[i]) { // como no Civilization: escolher a cidade que trabalha este hex
+    const near = eco.cities.filter((k) => k.country === active && hexDistance(k.hex % W, (k.hex / W) | 0, i % W, (i / W) | 0, W) <= 8);
+    const manual = eco.hexCity?.[i];
+    if (near.length) h += `<br><small>Cidade deste hex:</small> <select data-hexcity="${i}"><option value="-1"${manual === undefined ? " selected" : ""}>Automático${city ? ` (${city.name})` : " (sem cidade)"}</option>` +
+      near.map((k) => `<option value="${k.hex}"${manual === k.hex ? " selected" : ""}>${k.name}</option>`).join("") + `</select>`;
+  }
   const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
   if (hst) { // estado: população, PIB (valor do que os mercados oferecem) e qualidade de vida
     const cs = eco.cities.filter((k) => k.state === hst.id);
@@ -1893,6 +1900,31 @@ function drawSecondResources() {
     units.fill();
   }
 }
+/** Cidade selecionada: contorno branco da área que ela atende e hexes urbanos piscando de leve (a grade continua visível). */
+let cityArea: { key: string; segs: number[]; urban: number[] } | null = null;
+function drawCityArea() {
+  const k = selected >= 0 && isLand(world.terrain[selected]) ? eco.market[selected] : 0;
+  if (!k) return;
+  const key = `${k}:${eco.version}`;
+  if (cityArea?.key !== key) {
+    const hexes = [...eco.owned].filter((j) => eco.market[j] === k);
+    cityArea = { key, segs: outline(world, hexes, (j) => eco.market[j] === k), urban: eco.cities[k - 1].urban };
+  }
+  const a = 0.1 + 0.12 * (0.5 + 0.5 * Math.sin(performance.now() / 350)), z = cam.zoom, hw = (SQRT3 / 2) * z;
+  units.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+  units.beginPath();
+  for (const u of cityArea.urban) {
+    const [sx, sy] = worldToScreen(...hexCenter(u % W, (u / W) | 0));
+    units.moveTo(sx, sy - z); units.lineTo(sx + hw, sy - z / 2); units.lineTo(sx + hw, sy + z / 2); units.lineTo(sx, sy + z); units.lineTo(sx - hw, sy + z / 2); units.lineTo(sx - hw, sy - z / 2); units.closePath();
+  }
+  units.fill();
+  units.strokeStyle = "#ffffffcc"; units.lineWidth = 2; units.setLineDash([6, 4]); units.beginPath();
+  for (let s = 0; s < cityArea.segs.length; s += 4) {
+    const [x1, y1] = worldToScreen(cityArea.segs[s], cityArea.segs[s + 1]);
+    units.moveTo(x1, y1); units.lineTo(x1 + (cityArea.segs[s + 2] - cityArea.segs[s]) * z, y1 + (cityArea.segs[s + 3] - cityArea.segs[s + 1]) * z);
+  }
+  units.stroke(); units.setLineDash([]);
+}
 function drawRegions() {
   drawSecondResources();
   if (!world.continents) generateContinents(world); // save de antes dos continentes
@@ -1910,6 +1942,7 @@ function drawRegions() {
     units.strokeStyle = "#0009"; units.lineWidth = 4; units.strokeText(k.name.toUpperCase(), x, y);
     units.fillStyle = "#f4ecd0"; units.fillText(k.name.toUpperCase(), x, y);
   }
+  drawCityArea();
   const n = nodesOf(), h = highlight();
   if (h) { // borda brilhando: traço largo translúcido + traço fino
     for (const [width, color] of [[7, "#ffd76a55"], [2, "#ffe9a0"]] as const) {

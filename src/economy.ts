@@ -402,6 +402,7 @@ export type Economy = {
   outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
   construction?: Project[]; nextProject?: number; // filas de obras (construction.ts)
   battles?: Battle[]; nextBattle?: number;        // batalhas terrestres (battle.ts)
+  hexCity?: Record<number, number>;               // hex → centro da cidade escolhida à mão (como no Civilization); o resto é automático
   tradeNodes?: TradeNode[];                       // nós comerciais e poder de cada país (markets.ts)
   naval?: ShipOrder[]; nextNaval?: number;        // fila de navios (naval.ts)
   methods?: Map<string, number[]>;   // método escolhido por edifício ("hex:b" → índice por categoria; methods.ts)
@@ -453,6 +454,12 @@ export function refresh(w: World, e: Economy) {
     c.coast = c.urban.some((j) => { let s = false; forNeighbors(j % w.W, (j / w.W) | 0, w.W, w.H, (n) => { if (w.terrain[n] === T.OCEAN) s = true; }); return s; });
     e.market[c.hex] = k + 1; queue.push(c.hex);
   });
+  // hexes escolhidos à mão para uma cidade (do mesmo país) ficam com ela antes da distribuição automática
+  const byHex = new Map(e.cities.map((c, k) => [c.hex, k]));
+  for (const [h, center] of Object.entries(e.hexCity ?? {})) {
+    const k = byHex.get(center), i = +h;
+    if (k !== undefined && w.owner[i] === e.cities[k].country && !e.market[i]) e.market[i] = k + 1;
+  }
   // cada hex do país compra/vende no mercado da cidade mais próxima (por caminho dentro do país), até o alcance dela;
   // além disso é só território do país: tem gente, mas não pertence a nenhuma cidade (sem mercado nem imposto)
   for (let step = 1; queue.length; step++) {

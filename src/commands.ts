@@ -13,7 +13,7 @@ import { privatize, nationalize } from "./firms.ts";
 import { queueBuild, cancelProject, pauseProject } from "./construction.ts";
 import { toggleRiver } from "./navigation.ts";
 import {
-  build, foundCity, trainSettlers, transferSize, buildRoad, buildHarbor, proposePact, cancelPact, type Economy,
+  build, foundCity, trainSettlers, transferSize, buildRoad, buildHarbor, proposePact, cancelPact, refresh, type Economy,
 } from "./economy.ts";
 import { recruit, buildFleet, buildAir, orderMove, declareWar, makePeace, disband, frontOrder } from "./war.ts";
 import { proposeLaw, cancelLaw } from "./politics.ts";
@@ -43,6 +43,7 @@ export type Cmd =
   | { t: "privatize"; hex: number; b: number; n: number } | { t: "nationalize"; hex: number; b: number; n: number }
   | { t: "found"; unit: number; name?: string; flag?: Flag }
   | { t: "outpost"; unit: number } // colonos viram posto avançado
+  | { t: "assignHex"; hex: number; city: number } // hex → cidade (centro); city < 0 = automático
   | { t: "buyHex"; hex: number } // compra hex livre colado no território (expansion.ts)
   | { t: "settlers" }
   | { t: "transfer"; from: number; to: number }
@@ -129,6 +130,13 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "nationalize": return isInt(c.hex) && isInt(c.b) && isInt(c.n, 1) ? nationalize(w, e, country, c.hex, c.b, c.n) : "Pedido inválido";
     case "cancelBuild": return isInt(c.id, 1) ? cancelProject(e, country, c.id) : "Obra inválida";
     case "pauseBuild": return isInt(c.id, 1) ? pauseProject(e, country, c.id) : "Obra inválida";
+    case "assignHex": {
+      if (!isInt(c.hex) || w.owner[c.hex] !== country) return "Hex não é seu";
+      const map = (e.hexCity ??= {});
+      if (c.city < 0) delete map[c.hex];
+      else { const k = e.cities.find((x) => x.hex === c.city); if (!k || k.country !== country) return "Cidade não é sua"; if (e.urban[c.hex]) return "Hex urbano é da própria cidade"; map[c.hex] = c.city; }
+      refresh(w, e); return null;
+    }
     case "buyHex": return isInt(c.hex) && c.hex < w.W * w.H ? buyHex(w, e, country, c.hex) : "Hex inválido";
     case "outpost": return own(c.unit) ? buildOutpost(w, e, c.unit) : "Unidade não é sua";
     case "found": {

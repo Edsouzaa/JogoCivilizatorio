@@ -4,6 +4,7 @@ import { createEconomy, foundCity, refresh, borderRadius, tick } from "../src/ec
 import { pathDistance, distanceMult, foundingCost, buildOutpost, updateExpansion, buyHex, hexPrice, EXPAND } from "../src/expansion.ts";
 import { hexDistance, forNeighbors } from "../src/hex.ts";
 import { relation } from "../src/diplomacy.ts";
+import { applyCommand } from "../src/commands.ts";
 
 const w = generateWorld(200, 100, 9, 2), e = createEconomy(w);
 const cap = e.cities[0].hex, c = e.countries[0];
@@ -43,5 +44,12 @@ assert.equal(buyHex(w, e, 1, free), null);
 assert.equal(w.owner[free], 1);
 assert.ok(hexPrice(w, e, 1) >= p0);
 assert.equal(relation(e, 1, 2), -EXPAND.contested);
+// cidade do hex escolhida à mão (como no Civilization): vale até voltar ao automático
+const kNear = e.cities.findIndex((k) => k.hex === near), hx = [...e.owned].find((j) => w.owner[j] === 1 && !e.urban[j] && e.market[j] && e.market[j] !== kNear + 1)!;
+assert.equal(applyCommand(w, e, 1, { t: "assignHex", hex: hx, city: near }), null);
+assert.equal(e.market[hx], kNear + 1);
+assert.equal(applyCommand(w, e, 1, { t: "assignHex", hex: hx, city: 12345 }), "Cidade não é sua");
+applyCommand(w, e, 1, { t: "assignHex", hex: hx, city: -1 });
+assert.equal(e.hexCity![hx], undefined);
 tick(w, e);
 console.log("expansion ok");
