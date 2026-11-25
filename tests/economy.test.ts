@@ -145,15 +145,25 @@ console.log("territory ok");
 }
 console.log("reserves ok");
 
-// cidade cresce sozinha quando a gente urbana enche; o campo longe dela é só território do país
+// cidade cresce +1 hex a cada 25% de gente a mais (ou com pontos administrativos sobrando); o campo longe dela é só território do país
 {
   const w4 = generateWorld(200, 100, 3, 2), e4 = createEconomy(w4), city = e4.cities[0];
   tick(w4, e4);
   assert.equal(city.size, 1);
-  for (const j of city.urban) w4.pop[j] = RULES.cityGrowthPop * 2; // cheia
+  growCities(w4, e4); // marca a população de partida
+  assert.equal(city.size, 1);
+  city.market.pop = city.popMark! * (1 + RULES.cityGrowthPct) + 1; // cresceu 25%
   growCities(w4, e4);
-  assert.equal(city.size, 2, "cidade cheia ganha um centro urbano");
-  assert.ok(city.urban.length === 2 && city.urban.every((j) => e4.urban[j]));
+  assert.equal(city.size, 2, "25% a mais de gente: +1 hex");
+  growCities(w4, e4);
+  assert.equal(city.size, 2, "a marca andou: precisa crescer de novo");
+  // excesso de pontos administrativos também faz crescer
+  const { adminCap } = await import("../src/admin.ts");
+  e4.countries[0].admin = adminCap(e4, 1);
+  e4.cities[0].market.pop = e4.cities[0].popMark!;
+  growCities(w4, e4);
+  assert.ok(city.size === 3 && e4.countries[0].admin! < adminCap(e4, 1), "pontos administrativos sobrando: +1 hex");
+  assert.ok(city.urban.length === 3 && city.urban.every((j) => e4.urban[j]));
   assert.ok(popCap(w4, e4, city.urban[1]) > popCap(w4, e4, [...e4.owned].find((j) => !e4.urban[j] && isLand(w4.terrain[j]))!));
   // hex do país além do alcance da cidade: sem mercado, mas a gente conta no país
   const far = [...e4.owned].find((j) => w4.owner[j] === 1 && !e4.market[j] && isLand(w4.terrain[j]));

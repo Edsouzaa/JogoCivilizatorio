@@ -141,7 +141,58 @@ O que já existe no jogo e deve ser reaproveitado:
 - **Previsão** que melhora com a tecnologia.
 - **Desempenho:** guardar só os eventos ativos e calcular efeitos só nos hexes atingidos (mapa de 1.024.000 hexes).
 
-## 5. Pendente dos pedidos desta rodada
+## 5. Planos militares, missões navais e aéreas, exploração (estilo HOI4)
+
+Já existe e serve de base:
+
+| O que existe | Onde |
+|---|---|
+| Ordem de frente (frontOrder) | war.ts |
+| Generais | characters.ts |
+| Regimentos (exércitos juntos, com formação) | war.ts mergeArmies |
+| Névoa | fog.ts |
+| Frotas em zonas marítimas | war.ts |
+| Esquadrões por região aérea | war.ts |
+
+**Comando:**
+- Exército (general) → Grupo de exércitos (comandante superior) → Frente → Plano → Operação.
+- A capacidade de comando vem da estratégia, administração, iniciativa, experiência e logística do general.
+
+**Ferramentas no mapa:** linha de frente, linha defensiva, linha de avanço, objetivo, seta de ofensiva, ponto de reunião, área de reserva e linha de retirada.
+
+**Operações terrestres:** ofensiva geral ou limitada, ruptura, flanqueamento, cerco, defesa de linha ou em profundidade, contra-ataque, perseguição, recuo organizado, invasão, libertação, guarnição, patrulha, reconhecimento, preparação defensiva e proteção logística.
+
+**Execução:**
+- Estados do plano: não iniciado, preparando, pronto, em execução, pausado, em dificuldade, concluído, fracassado e cancelado.
+- Autonomia do general: baixa, moderada ou alta.
+- Preparação dá um bônus limitado (com teto).
+
+**Missões navais** (por frota e zonas marítimas):
+- Combate: superioridade, patrulha, interceptação, ataque, bloqueio, caça a submarinos, bombardeio costeiro, defesa costeira.
+- Transporte e logística: transporte de tropas, invasão anfíbia, escolta de comboio, transporte comercial, abastecimento, reparo.
+- Especiais: minagem, desminagem, reconhecimento, operações especiais.
+- Configuração: agressividade, alvos, área, limite de perdas.
+- A composição da frota decide a eficiência em cada missão.
+
+**Missões aéreas** (por base ou porta-aviões e zona aérea):
+- Combate: superioridade, interceptação, patrulha, escolta, bombardeio estratégico, apoio aproximado, ataque antinaval, defesa aérea.
+- Reconhecimento: reconhecimento, monitoramento de frente.
+- Apoio: transporte, abastecimento aéreo, paraquedistas, evacuação, guerra eletrônica.
+- Limites: alcance de ida e volta, combustível e clima.
+
+**Exploração territorial: ordem "Explorar região"** (destino, área, direção ou raio):
+- Revela geografia, recursos, cidades e povos. É separada do reconhecimento militar, que mostra a situação atual e envelhece.
+- A eficiência vem da unidade: cavalaria rápida em planície, infantaria leve em terreno difícil.
+- Tem riscos: desgaste, doença, emboscada e tribos hostis.
+- Níveis de conhecimento: desconhecida, parcial, explorada, mapeada e reconhecimento atualizado.
+- Contato com povos independentes: negociar, trocar, cobrar tributo, proteger ou atacar.
+- Explorar não é reivindicar, ocupar nem integrar.
+
+**Operações conjuntas:** invasão anfíbia, ofensiva com apoio aéreo e naval, defesa costeira, interdição logística e reconhecimento combinado.
+
+**Validações:** navio em terra, avião fora do alcance, invasão sem transporte, ofensiva sem unidades e missão sem suprimento.
+
+## 6. Pendente dos pedidos desta rodada
 
 - **Leis:** as ~60 categorias completas (sociedade, imigração, justiça, meio ambiente...) e os resultados "adiada" e "aprovada com concessões". Feito: o núcleo, em politics.ts.
 - **Orçamento:** histórico por categoria, tributos de herança, riqueza e guerra em detalhe, evasão fiscal. Feito: impostos por classe e tributos específicos com pontos administrativos.

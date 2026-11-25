@@ -1371,6 +1371,27 @@ function frontHtml(ids: number[]) {
     (atWar(eco, active, k) ? ` <button data-front="${k}|attack|${armies.join(",")}" title="Marcham para as cidades deles">Atacar cidades</button>` : "")).join("") + "</div>";
 }
 
+/** Formação do regimento: frente (infantaria, blindados), flancos (montaria) e retaguarda (artilharia, cerco). Um quadrado ≈ 100 soldados. */
+function formationSVG(d: { strength: number; unit?: string; mix?: Record<string, number> }) {
+  const parts = Object.entries(d.mix ?? { [unitOf(d.unit).name]: 1 }).map(([n, f]) => [unitOf(n), Math.max(1, Math.round((d.strength * f) / 100))] as const);
+  const color: Record<string, string> = { Infantaria: "#7d9fc4", Montaria: "#c2a46a", Artilharia: "#cf6b62", Cerco: "#d39a52", Blindados: "#86b382" };
+  const row = (cats: string[]) => parts.filter(([u]) => cats.includes(u.cat)).flatMap(([u, n]) => Array.from({ length: Math.min(n, 30) }, () => u));
+  const front = row(["Infantaria", "Blindados"]), flank = row(["Montaria"]), back = row(["Artilharia", "Cerco"]);
+  const left = flank.slice(0, Math.ceil(flank.length / 2)), right = flank.slice(left.length), sq = 9, per = 12;
+  const lines = (list: typeof front) => Array.from({ length: Math.ceil(list.length / per) }, (_, r) => list.slice(r * per, r * per + per));
+  const frontRows = lines(front), backRows = lines(back), flankRows = Math.max(1, Math.ceil(Math.max(left.length, right.length) / 2));
+  const wdt = (per + 6) * sq, h = (frontRows.length + backRows.length + 2) * sq + 20;
+  let out = "", y = 14;
+  const put = (u: (typeof front)[number], x: number, yy: number) => { out += `<rect x="${x}" y="${yy}" width="${sq - 2}" height="${sq - 2}" fill="${color[u.cat] ?? "#999"}"><title>${u.name}</title></rect>`; };
+  frontRows.forEach((r, i) => r.forEach((u, k) => put(u, (3 + k + (per - r.length) / 2) * sq, y + i * sq)));
+  left.forEach((u, k) => put(u, (k % 2) * sq, y + Math.floor(k / 2) * sq));
+  right.forEach((u, k) => put(u, (per + 4 + (k % 2)) * sq, y + Math.floor(k / 2) * sq));
+  y += Math.max(frontRows.length, flankRows) * sq + sq;
+  backRows.forEach((r, i) => r.forEach((u, k) => put(u, (3 + k + (per - r.length) / 2) * sq, y + i * sq)));
+  return `<svg width="${wdt}" height="${h}" style="display:block;margin:4px 0"><text x="${wdt / 2}" y="9" fill="#9a978e" font-size="9" text-anchor="middle">▲ inimigo</text>${out}</svg>` +
+    `<small>${Object.entries(color).filter(([cat]) => parts.some(([u]) => u.cat === cat)).map(([cat, col]) => `<span style="color:${col}">■</span> ${cat}`).join(" · ")} · 1 quadrado ≈ 100 soldados</small>`;
+}
+
 function groupHtml() {
   const ds = eco.divisions.filter((d) => group.includes(d.id));
   const kinds = Object.keys(KIND_NAMES).filter((k) => ds.some((d) => d.kind === k));
@@ -1408,7 +1429,7 @@ function divisionHtml() {
   const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
   const u = statsOf(d), gen = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined;
   return `<div class="unit"><b><i class=i-military></i> ${u.name} ${d.id}</b> <small>${u.cat} · ataque ${u.atk} · defesa ${u.def}</small> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
-    (d.mix ? `<table>${Object.entries(d.mix).sort((a, b) => b[1] - a[1]).map(([n, f]) => `<tr><td>${n}</td><td>${fmt(d.strength * f)} soldados</td><td><small>${unitOf(n).cat} · atq ${unitOf(n).atk} · def ${unitOf(n).def}</small></td></tr>`).join("")}</table>` +
+    formationSVG(d) + (d.mix ? `<table>${Object.entries(d.mix).sort((a, b) => b[1] - a[1]).map(([n, f]) => `<tr><td>${n}</td><td>${fmt(d.strength * f)} soldados</td><td><small>${unitOf(n).cat} · atq ${unitOf(n).atk} · def ${unitOf(n).def}</small></td></tr>`).join("")}</table>` +
       (d.country === active ? `<button data-act="split" title="Volta a ser uma divisão por tipo de soldado">Separar o regimento</button><br>` : "") : "") +
     `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize * (d.size ?? 1)} · org. ${pct(d.org)} · armas ${pct(d.equip)} · ` +
     (d.supplied === false ? `<span class="bad">sem suprimento (depósito a ${depotDistance(world, eco, d)} hexes, alcance ${supplyRange(eco, d.country)})</span>` : `suprimento ok`) + ` <button data-act="disband">Desfazer</button>` +
@@ -1582,7 +1603,7 @@ function hexHtml() {
   h += ` · cabem ${fmt(popCap(world, eco, i))}` + (world.owner[i] ? ` · controle ${pct(eco.control[i])}` : "");
   if (active && world.owner[i] === active && !eco.urban[i] && isLand(world.terrain[i])) { // comprar como centro urbano da cidade vizinha
     const k = eco.cities.findIndex((cc) => cc.country === active && cc.urban.some((u) => hexDistance(u % W, (u / W) | 0, i % W, (i / W) | 0, W) === 1));
-    if (k >= 0) h += `<br><small><i class=i-city></i> A cidade ${eco.cities[k].name} cresce sozinha: ganha um centro urbano quando a gente urbana passa de ${fmt(eco.cities[k].size * RULES.cityGrowthPop)}.</small>`;
+    if (k >= 0) { const ck = eco.cities[k], goal = (ck.popMark ?? ck.market.pop) * (1 + RULES.cityGrowthPct); h += `<br><small><i class=i-city></i> ${ck.name} ganha +1 hex com +${Math.round(RULES.cityGrowthPct * 100)}% de gente desde o último (${fmt(ck.market.pop)} de ${fmt(goal)}) ou com pontos administrativos sobrando.</small>`; }
   }
   const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
   if (hst) { // estado: população, PIB (valor do que os mercados oferecem) e qualidade de vida

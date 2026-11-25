@@ -22,7 +22,7 @@ import { foundingCost, expansionCapacity, recentFoundings, updateExpansion } fro
 import { expireProposals, type Proposal, type Vote } from "./proposals.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
-import { ADMIN, hasIncentive, stepAdmin, INCENTIVES, type Incentive } from "./admin.ts";
+import { ADMIN, hasIncentive, stepAdmin, adminCap, INCENTIVES, type Incentive } from "./admin.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
 export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas", "Papel",
@@ -219,7 +219,10 @@ export const RULES = {
   portTradeBonus: 1.5,      // cidade em rio navegável exporta esta vezes mais
   taxBaseEfficiency: 0.5,   // arrecadação = imposto × (isto + legitimidade): legitimidade 0,5 arrecada 100%
   migrationWeek: 0.0005,    // fração da população rural que vai para a cidade do mercado por semana
-  cityGrowthPop: 300,       // a cidade ganha um centro urbano quando a gente urbana passa disto × tamanho (growCities)
+  cityGrowthPct: 0.25,      // a cidade ganha +1 hex a cada 25% de crescimento da população dela (growCities)
+  cityAdminShare: 0.95,     // ...ou quando os pontos administrativos chegam a 95% do teto (excesso)...
+  cityAdminCost: 10,        // ...gastando isto × tamanho em pontos
+  cityGrowthPop: 300,       // a IA estima a cidade cheia por isto × tamanho (painel)
   cityReachBase: 4,         // alcance do mercado da cidade em hexes (+1 a cada 3 de tamanho); além é só território do país
   oceanTradeNoNav: 0.2,     // comércio exterior além-mar sem Navegação: só isto passa (oceano profundo)
   harborCost: 120,          // porto nível n custa isto × n
@@ -262,6 +265,7 @@ export type City = {
   harbor?: number;      // nível do porto (0 = sem porto): mais comércio, até o máximo da era
   coast?: boolean;      // algum centro urbano encosta no mar (pode ter porto)
   road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
+  popMark?: number;     // população da cidade no último hex ganho (ou na fundação): base do próximo crescimento
   navalWeek?: number;   // pontos navais dos estaleiros da cidade nesta semana (naval.ts)
   picked?: number[];    // centros urbanos comprados, na ordem (o resto do tamanho vem dos hexes mais perto)
 };
@@ -498,22 +502,36 @@ export function buildRoad(e: Economy, k: number): string | null {
 export const cityReach = (size: number) => RULES.cityReachBase + Math.floor(size / 3);
 
 /**
- * Uma vez por mês: a cidade cresce sozinha quando a gente dos centros urbanos passa de cityGrowthPop × tamanho.
- * O novo centro urbano é o vizinho mais povoado (terra do país). Não se compra mais: cidade é gente, não decreto.
+ * Uma vez por mês, a cidade ganha +1 hex (centro urbano) quando:
+ *  - a população da cidade (ela e o campo que compra no mercado dela) cresceu cityGrowthPct desde o último hex ou a fundação; ou
+ *  - o país está com pontos administrativos sobrando (no teto): o governo organiza a cidade e gasta os pontos.
+ * O novo centro urbano é o vizinho mais povoado (terra do país). Não se compra com dinheiro: cidade é gente e organização.
  */
 export function growCities(w: World, e: Economy) {
   let changed = false;
-  for (const city of e.cities) {
-    if (city.size >= RULES.maxCitySize || city.urban.reduce((s, j) => s + w.pop[j], 0) < city.size * RULES.cityGrowthPop) continue;
+  const grow = (city: City) => {
+    if (city.size >= RULES.maxCitySize) return false;
     let best = -1;
     for (const u of city.urban) forNeighbors(u % w.W, (u / w.W) | 0, w.W, w.H, (j) => {
       if (w.owner[j] === city.country && !e.urban[j] && isLand(w.terrain[j]) && !e.occupier[j] && (best < 0 || w.pop[j] > w.pop[best])) best = j;
     });
-    if (best < 0) continue;
+    if (best < 0) return false;
     city.size++; city.picked = [...(city.picked ?? []), best]; e.urban[best] = 1; // marca já: outra cidade não pega o mesmo hex
+    city.popMark = city.market.pop; // o próximo hex conta a partir daqui
     claim(w, city.country, city.hex, borderRadius(city.size)); // a fronteira cresce com a cidade
-    changed = true;
+    return (changed = true);
+  };
+  for (const city of e.cities) {
+    if (!city.market.pop) continue;
+    city.popMark ??= city.market.pop; // fundação (ou save antigo): marca a população de partida
+    if (city.market.pop >= city.popMark * (1 + RULES.cityGrowthPct)) grow(city);
   }
+  e.countries.forEach((c, ci) => { // excesso administrativo: a maior cidade que ainda cresce ganha um hex
+    if ((c.admin ?? 0) < adminCap(e, ci + 1) * RULES.cityAdminShare) return;
+    const city = e.cities.filter((k) => k.country === ci + 1 && k.size < RULES.maxCitySize).sort((a, b) => b.market.pop - a.market.pop)[0];
+    const cost = RULES.cityAdminCost * (city?.size ?? 1);
+    if (city && (c.admin ?? 0) >= cost && grow(city)) c.admin! -= cost;
+  });
   if (changed) refresh(w, e);
 }
 
