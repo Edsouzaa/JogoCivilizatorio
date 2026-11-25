@@ -296,7 +296,7 @@ export function claim(w: World, country: number, center: number, radius: number)
   return got;
 }
 
-export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Controle", "Clima", "Tecnologia", "Satisfação", "Cultura", "Língua", "Religião", "Alfabetização", "Infraestrutura", "Expansão", "Construção", "Suprimento"] as const;
+export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Controle", "Clima", "Tecnologia", "Satisfação", "Cultura", "Língua", "Religião", "Alfabetização", "Infraestrutura", "Expansão", "Construção", "Suprimento", "Subsistência"] as const;
 /** Modos a partir daqui pintam com a cor que o chamador dá por hex (dados da economia: cultura, estradas...). */
 export const HEX_MODES = 8;
 const CLIMATE_COLORS = [[40, 150, 60], [220, 190, 90], [110, 190, 110], [120, 150, 190], [225, 235, 245]];

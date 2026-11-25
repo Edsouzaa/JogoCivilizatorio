@@ -8,6 +8,8 @@ const ownerOfKey = (key: string, e: Economy) => e.cities[e.market[+key.split(":"
 export const SERIES: Record<string, (c: Country, k: number, e?: Economy) => number> = {
   "PIB": (c) => c.gdpWeek * 52,
   "População": (c) => c.pop,
+  "Vivem da terra": (c) => c.sub?.dependants ?? 0,
+  "Pressão sobre a terra (%)": (c) => (c.sub?.capacity ? (100 * c.sub.dependants) / c.sub.capacity : 0),
   "Tesouro": (c) => c.treasury,
   "Dívida": (c) => c.debt,
   "Legitimidade": (c) => c.politics.legitimacy * 100,

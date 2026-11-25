@@ -100,7 +100,8 @@ const livesOffLand = (t: PopType) => t.cls === 0 && t.wage < 0.5;
  * `needCost` = custo semanal das necessidades básicas de 1 pessoa. Renda igual a esse custo = 25.
  */
 /** `ownersTake`: parte da renda dos donos que não chega a eles (lucro de estatais no tesouro, reinvestimento no fundo; firms.ts). */
-export function distributeIncome(p: Pops, gdp: number, subsistenceValue: number, needCost: number, ownersTake = 0) {
+/** `inKind`: parte de `subsistenceValue` comida em casa (não tributável); o resto é excedente vendido (tributável). */
+export function distributeIncome(p: Pops, gdp: number, subsistenceValue: number, needCost: number, ownersTake = 0, inKind = subsistenceValue) {
   p.income.fill(0);
   let wageWeight = 0, owners = 0, subsisting = 0;
   POP_TYPES.forEach((t, k) => {
@@ -115,7 +116,7 @@ export function distributeIncome(p: Pops, gdp: number, subsistenceValue: number,
     if (livesOffLand(t)) p.income[k] += (subsistenceValue * p.count[k]) / subsisting;
   });
   p.taxable = Float64Array.from(p.income); // renda tributável = total menos a parte de subsistência (comida da terra não paga imposto)
-  POP_TYPES.forEach((t, k) => { if (livesOffLand(t) && p.count[k]) p.taxable![k] -= (subsistenceValue * p.count[k]) / subsisting; });
+  POP_TYPES.forEach((t, k) => { if (livesOffLand(t) && p.count[k]) p.taxable![k] -= (inKind * p.count[k]) / subsisting; });
   computeQol(p, needCost);
 }
 /** Qualidade de vida (1–50) pela renda que sobra (depois dos impostos, quando houver): renda = necessidades básicas dá 25. */

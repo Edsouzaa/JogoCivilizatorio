@@ -64,7 +64,7 @@ export function wageOf(e: Economy, country: number) { // média do país (a cont
   const c = e.countries[country - 1];
   let earners = 0;
   POP_TYPES.forEach((t, k) => { if (!t.owner && t.wage) earners += c.pops.count[k]; });
-  return earners ? (Math.max(0, c.gdpWeek - c.subsistence) * (1 - POP_RULES.ownerShare)) / earners : 0;
+  return earners ? (Math.max(0, c.gdpWeek - (c.subSold ?? 0)) * (1 - POP_RULES.ownerShare)) / earners : 0;
 }
 /** Fração dos dividendos privados que os donos põem no fundo de investimento (lei de Economia). */
 export const fundShare = (e: Economy, country: number) => lawOf(e.countries[country - 1].politics, "Economia").fundShare ?? 0;

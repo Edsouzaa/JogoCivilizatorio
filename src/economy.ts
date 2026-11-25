@@ -2,6 +2,10 @@ import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, typ
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
 import { econ, debtCap } from "./eramods.ts";
+import { subsistAt, SUBSIST, type SubInfo } from "./subsistence.ts";
+/** Vagas das construções do hex: quem trabalha nelas não vive da terra. */
+export function jobsAt(e: Economy, i: number) { let j = 0; if (e.producers.has(i)) for (let b = 0; b < BUILDINGS.length; b++) if (e.levels[b][i]) j += e.levels[b][i] * BUILDINGS[b].workers; return j; }
+const addSub = (t: NonNullable<Country["sub"]>, s: SubInfo) => { t.capacity += s.capacity; t.dependants += s.dependants; t.gross += s.gross; t.self += s.self; t.surplus += s.surplus; t.deficit += s.deficit; };
 import { releaseStock, storeSurplus, updateAccess, updateNodes, updateComplexity, policyOf, advantage, powerShare, type TradeNode } from "./markets.ts";
 import { AIRW } from "./airwar.ts";
 import type { Battle } from "./battle.ts";
@@ -181,8 +185,8 @@ export function growPopulation(w: World, e: Economy) {
     if (!isLand(w.terrain[i])) continue;
     let r = k ? rate[k - 1] : 0;
     if (!k) { // sem cidade: só a comida da própria terra (subsistência) conta
-      const c = e.countries[w.owner[i] - 1];
-      const ratio = TERRAINS[w.terrain[i]].fertility * RULES.subsistence * (1 + techSum(c.research, "subsistence")) * (w.river[i] ? 1.25 : 1);
+      const c = e.countries[w.owner[i] - 1], sub = subsistAt(w, e, i, c, POP_DEMAND[FOOD[0]], jobsAt(e, i), BUILDINGS);
+      const ratio = w.pop[i] > 0 ? sub.gross / (w.pop[i] * POP_DEMAND[FOOD[0]] * 3) : 1; // comida da terra ÷ o que a gente come (pressão alta: cai)
       r = (Math.max(0, Math.min(1, (ratio - GROWTH.foodMin) / (GROWTH.foodFull - GROWTH.foodMin))) * GROWTH.yearly * (1 + techSum(c.research, "growth") + lawFx(c.politics, "growth", c.control))) / 13;
     }
     if (!r) continue;
@@ -269,6 +273,7 @@ export type Market = {
   trade: Float64Array; // > 0 importado de outras cidades do país, < 0 exportado
   stock?: Float64Array;    // estoque guardado (markets.ts): o que encalhou, até a capacidade
   released?: Float64Array; // quanto do estoque voltou à venda nesta semana (não conta como produção)
+  self?: Float64Array;     // comida de subsistência comida pela própria família (subsistence.ts): está na oferta, mas fora do PIB
 };
 export type City = {
   name: string; country: number; hex: number; size: number; urban: number[]; market: Market;
@@ -302,7 +307,9 @@ export type Country = {
   politics: Politics;   // grupos, governo, legitimidade e leis
   radicals: number;     // fração da população com lealdade baixa
   migration: number;    // saldo migratório do último mês (+ chegou, − saiu)
-  subsistence: number;  // valor da comida de subsistência na semana (renda de quem não tem salário)
+  subsistence: number;  // valor da comida de subsistência comida em casa na semana (renda em espécie de quem vive da terra)
+  subSold?: number;     // valor do excedente de subsistência vendido na semana
+  sub?: { capacity: number; dependants: number; gross: number; self: number; surplus: number; deficit: number }; // totais da subsistência (subsistence.ts)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
   researchWeek: number; // pontos de pesquisa na última semana
   admin?: number;       // pontos administrativos guardados (admin.ts)
@@ -785,7 +792,7 @@ function updatePops(e: Economy, c: Country, country: number) {
   if (!cap) return; // país sem cidades: sem mercado para medir qualidade de vida
   let needCost = 0; // só necessidades básicas: comida, peles e madeira (QV 25 = básicas cobertas)
   for (const gi of BASIC_NEEDS) needCost += POP_DEMAND[gi] * BASE_PRICE[gi] * cap.price[gi];
-  distributeIncome(c.pops, c.gdpWeek, c.subsistence, needCost, c.ownersTake ?? 0);
+  distributeIncome(c.pops, c.gdpWeek + c.subsistence, c.subsistence + (c.subSold ?? 0), needCost, c.ownersTake ?? 0, c.subsistence); // PIB já sem o autoconsumo; o excedente vendido é renda (tributável) de quem vive da terra
   c.taxNext = collectTaxes(e, c, country, c.taxEff ?? 0, cap.price); // impostos saem da renda; o Estado recebe na semana que vem
   computeQol(c.pops, needCost); // qualidade de vida pela renda que sobrou
 }
@@ -853,31 +860,37 @@ export function tick(w: World, e: Economy) {
   if (e.week % 52 === 26) stepClaims(w, e);
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
-  for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
+  for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; (m.self ??= new Float64Array(NG)).fill(0); }
   releaseStock(e); // estoque volta à venda (markets.ts)
-  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); c.adminWeek = 0; c.cpWeek = 0; resetBook(c); }
+  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.subSold = 0; c.sub = { capacity: 0, dependants: 0, gross: 0, self: 0, surplus: 0, deficit: 0 }; c.pops.count.fill(0); c.adminWeek = 0; c.cpWeek = 0; resetBook(c); }
 
   for (const i of e.owned) {
     const k = e.market[i];
     if (!k) { // território sem cidade: a gente conta no país (vive da terra, fora do mercado e do imposto)
       if (!isLand(w.terrain[i])) continue;
-      e.countries[w.owner[i] - 1].pop += w.pop[i]; ctrlCountry[w.owner[i] - 1] += w.pop[i] * e.control[i];
+      const c = e.countries[w.owner[i] - 1];
+      c.pop += w.pop[i]; ctrlCountry[w.owner[i] - 1] += w.pop[i] * e.control[i];
+      if (w.pop[i] > 0) addSub(c.sub!, subsistAt(w, e, i, c, POP_DEMAND[FOOD[0]], jobsAt(e, i), BUILDINGS, econ(c, "foodLoss") / 4));
       continue;
     }
-    const city = e.cities[k - 1];
-    if (!e.urban[i] && w.pop[i] > 1) { // cidades atraem a população em volta, enquanto houver lugar
+    const city = e.cities[k - 1], c = e.countries[w.owner[i] - 1];
+    const sub = subsistAt(w, e, i, c, POP_DEMAND[FOOD[0]], jobsAt(e, i), BUILDINGS, econ(c, "foodLoss") / 4);
+    if (!e.urban[i] && w.pop[i] > 1) { // cidades atraem a população em volta, enquanto houver lugar; terra apertada empurra mais gente
       const to = city.urban[(e.week + i) % city.urban.length];
-      const moved = Math.min(w.pop[i] * RULES.migrationWeek, Math.max(0, popCap(w, e, to) - w.pop[to]));
+      const moved = Math.min(w.pop[i] * RULES.migrationWeek * (1 + 2 * Math.max(0, sub.pressure - 1)), Math.max(0, popCap(w, e, to) - w.pop[to]));
       w.pop[i] -= moved; w.pop[to] += moved;
     }
     city.market.pop += w.pop[i]; ctrlCity[k - 1] += w.pop[i] * e.control[i];
-    const c = e.countries[w.owner[i] - 1];
     c.pop += w.pop[i]; ctrlCountry[w.owner[i] - 1] += w.pop[i] * e.control[i];
     if (e.occupier[i]) continue; // ocupado: a população continua, mas não produz para o dono
-    // subsistência: caça, coleta e roças sem construção; fazendas vêm por cima disso
-    const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence * (1 + techSum(c.research, "subsistence"))
-      * (w.river[i] ? 1.25 : 1) * (snowAt(w, i, e.week) ? 0.5 : 1) * (1 - econ(c, "foodLoss") / 4); // rio rega; neve cobre o campo; armazenamento perde (por mês ÷ 4)
-    for (const f of FOOD) { city.market.supply[f] += food; c.subsistence += food * BASE_PRICE[f] * city.market.price[f]; }
+    // subsistência (subsistence.ts): quem não trabalha nas construções vive da terra; a família come primeiro, parte do excedente vai ao mercado
+    addSub(c.sub!, sub);
+    const m = city.market, need = POP_DEMAND[FOOD[0]];
+    FOOD.forEach((f, n) => {
+      const got = sub.perGood[n], eat = Math.min(got, sub.dependants * need);
+      m.supply[f] += eat + (got - eat) * SUBSIST.sell; m.self![f] += eat; c.subsistence += eat * BASE_PRICE[f] * m.price[f]; c.subSold! += (got - eat) * SUBSIST.sell * BASE_PRICE[f] * m.price[f];
+    });
+    if (sub.extra) { const x = g(sub.extra[0]); m.supply[x] += sub.extra[1] * SUBSIST.sell; c.subSold! += sub.extra[1] * SUBSIST.sell * BASE_PRICE[x] * m.price[x]; }
   }
 
   // throughput[cidade][b] = soma de nível × ocupação das indústrias b no mercado da cidade;
@@ -1011,7 +1024,7 @@ export function tick(w: World, e: Economy) {
       if (city.country !== ci + 1) return;
       const m = city.market;
       let g = 0;
-      for (let gi = 1; gi < NG; gi++) g += (m.supply[gi] - (m.released?.[gi] ?? 0)) * BASE_PRICE[gi] * m.price[gi]; // estoque que volta não é produção nova
+      for (let gi = 1; gi < NG; gi++) g += (m.supply[gi] - (m.released?.[gi] ?? 0) - (m.self?.[gi] ?? 0)) * BASE_PRICE[gi] * m.price[gi]; // estoque que volta não é produção nova; o que a família come em casa não é mercado
       const exempt = hasIncentive(e, k, "Isenção fiscal") ? 0 : 1;
       gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
     });

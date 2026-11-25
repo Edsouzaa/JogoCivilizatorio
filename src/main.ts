@@ -3,7 +3,7 @@ import { weatherAt } from "./world.ts";
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, generateRiverSystems, HEX_MODES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
-  proposePact, cancelPact, hasPact, INFAMY, popCap, cityName, cityReach, maxRoad, maxHarbor,
+  proposePact, cancelPact, hasPact, INFAMY, popCap, jobsAt, cityName, cityReach, maxRoad, maxHarbor,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy, type Division,
 } from "./economy.ts";
 import { WAR_ECONOMY, WAR_ECON, CONVERSIONS } from "./wareconomy.ts";
@@ -11,6 +11,7 @@ import { MILITARY } from "./wareconomy.ts";
 import { BUDGET_IN, TAX_KINDS, classTaxOf, canTax } from "./budget.ts";
 import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./eramods.ts";
 import { artSVG } from "./art.ts";
+import { subsistAt, SUBSIST } from "./subsistence.ts";
 import { TECH_AREAS, TL, techLayout, techEdges } from "./techlayout.ts";
 import { POLICIES, policyOf, MARKET, commerceOf, complexityImpact, complexityCost } from "./markets.ts";
 import { deploy, widthOf, BATTLE, type Battle } from "./battle.ts";
@@ -283,6 +284,16 @@ function hexLayer(): ((i: number) => readonly number[] | null) | undefined {
       queue = next;
     }
     return (i) => { const d = dist[i]; if (d < 0) return null; const f = d / range; return f <= 0.34 ? [70, 170, 80] : f <= 0.67 ? [210, 190, 60] : f <= 1 ? [220, 130, 50] : [180, 60, 50]; };
+  }
+  if (mode === 16) { // subsistência: no país, pressão sobre a terra (verde folgado → vermelho apertado); fora, o potencial
+    const need = 1 / 200, ref = eco.countries[(active || 1) - 1];
+    return (i) => {
+      if (!isLand(world.terrain[i])) return null;
+      const own = world.owner[i], s = subsistAt(world, eco, i, own ? eco.countries[own - 1] : ref, need, own ? jobsAt(eco, i) : 0, BUILDINGS);
+      if (!own) { const v = Math.min(1, s.capacity / SUBSIST.capacity); return [60 + 40 * v, 70 + 110 * v, 60 + 30 * v]; }
+      const p = s.pressure;
+      return p < 0.5 ? [70, 170, 80] : p < 0.8 ? [170, 190, 70] : p < 1 ? [220, 170, 50] : p < 1.2 ? [220, 110, 50] : [180, 50, 45];
+    };
   }
   if (mode === 13) return (i) => { // expansão: território, área de influência (claro) e cidades isoladas (vermelho)
     if (world.owner[i]) { const k = eco.market[i]; return k && eco.cities[k - 1].isolated ? [200, 70, 60] : world.countries[world.owner[i] - 1].color; }
@@ -732,7 +743,7 @@ const LAYERS: [string, [number, string][]][] = [
   ["Geografia", [[0, "Terreno"], [5, "Clima"], [3, "Recursos"]]],
   ["Território", [[1, "Político"], [4, "Controle"], [13, "Expansão"]]],
   ["Sociedade", [[2, "População"], [7, "Satisfação"], [8, "Cultura"], [9, "Língua"], [10, "Religião"], [11, "Alfabetização"]]],
-  ["Economia", [[12, "Infraestrutura"], [14, "Construção"]]],
+  ["Economia", [[12, "Infraestrutura"], [14, "Construção"], [16, "Subsistência"]]],
   ["Militar", [[15, "Suprimento"]]],
   ["Ciência", [[6, "Tecnologia"]]],
 ];
@@ -923,7 +934,9 @@ function econOverview() {
   const card = (k: string, v: string, cls = "") => `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
   return `<div class="cards">${card("PIB anual", fmt(c.gdpWeek * 52))}${card("Crescimento (12 meses)", `${growth >= 0 ? "+" : ""}${Math.round(growth * 100)}%`, growth >= 0 ? "down" : "up")}` +
     `${card("Arrecadação / sem", fmt(c.income + c.tariffs))}${card("Despesas / sem", fmt(c.upkeep + c.interest))}${card("Saldo / sem", signed(weekly), weekly >= 0 ? "down" : "up")}` +
-    `${card("Fundo privado", fmt(c.investPool ?? 0))}${card("Dívida", fmt(c.debt), c.debt > 0 ? "up" : "")}</div>` + economyHtml();
+    `${card("Fundo privado", fmt(c.investPool ?? 0))}${card("Dívida", fmt(c.debt), c.debt > 0 ? "up" : "")}</div>` +
+    (c.sub ? `<h3>Subsistência</h3><div class="cards">${card("Vivem da terra", `${fmt(c.sub.dependants)} <small>(${pct(c.sub.dependants / Math.max(1, c.pop))})</small>`)}${card("Pressão sobre a terra", pct(c.sub.dependants / Math.max(1, c.sub.capacity)), c.sub.dependants > c.sub.capacity ? "up" : "")}` +
+      `${card("Comem em casa / sem", fmt(c.subsistence))}${card("Excedente vendido / sem", fmt(c.subSold ?? 0))}</div><small>O que a família come em casa fica fora do PIB e do imposto; o excedente vendido é renda tributável. Construções ocupam terra e empregam gente: a subsistência encolhe, mas nunca some.</small>` : "") + economyHtml();
 }
 
 function marketsHtml() {
@@ -1641,6 +1654,11 @@ function hexHtml() {
   if (active && world.owner[i] === active && !eco.urban[i] && isLand(world.terrain[i])) { // comprar como centro urbano da cidade vizinha
     const k = eco.cities.findIndex((cc) => cc.country === active && cc.urban.some((u) => hexDistance(u % W, (u / W) | 0, i % W, (i / W) | 0, W) === 1));
     if (k >= 0) { const ck = eco.cities[k], goal = (ck.popMark ?? ck.market.pop) * (1 + RULES.cityGrowthPct); h += `<br><small><i class=i-city></i> ${ck.name} ganha +1 hex com +${Math.round(RULES.cityGrowthPct * 100)}% de gente desde o último (${fmt(ck.market.pop)} de ${fmt(goal)}) ou com pontos administrativos sobrando.</small>`; }
+  }
+  if (world.owner[i] && isLand(world.terrain[i])) { // subsistência do hex (subsistence.ts)
+    const c = eco.countries[world.owner[i] - 1], s = subsistAt(world, eco, i, c, 1 / 200, jobsAt(eco, i), BUILDINGS);
+    h += `<br><small><b>${s.kind}</b> · sustenta ${fmt(s.capacity)} · vivem da terra ${fmt(s.dependants)} · pressão <b class="${s.pressure > 1 ? "up" : s.pressure < 0.8 ? "down" : ""}">${pct(s.pressure)}</b>` +
+      ` · produz ${s.gross.toFixed(1)}/sem (come em casa ${s.self.toFixed(1)}, sobra ${s.surplus.toFixed(1)}${s.deficit > 0.05 ? `, falta ${s.deficit.toFixed(1)}` : ""}) · terra ocupada ${pct(s.land)}</small>`;
   }
   const hst = city?.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
   if (hst) { // estado: população, PIB (valor do que os mercados oferecem) e qualidade de vida

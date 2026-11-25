@@ -119,6 +119,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Guerra naval e aérea (docs/batalhas.md): tempo no mar, batalha naval com dados, missões de frota (escolta, bombardeio costeiro...), comboio além-mar com interceptação; missões aéreas (apoio, bombardeio estratégico, reconhecimento, abastecimento) com combustível e tempo.
 - Oceano profundo visível: azul bem escuro no mapa (a faixa rasa do litoral continua clara). Além de barrar navio sem Navegação, atrapalha o comércio além-mar: entre países de continentes diferentes, quem não tem Navegação só consegue exportar 20% do que exportaria.
 - Mercados e comércio (docs/mercados.md): estoque por cidade (encalhe guardado, comida estraga), acesso de cada cidade ao mercado nacional, nós comerciais com poder por país, vantagem comercial, política por mercadoria e tarifa, 7 estruturas comerciais e Complexidade da Economia (encarece construção sofisticada). Página Comércio em 6 abas.
+- Subsistência (docs/subsistencia.md): tipo por terreno, capacidade por hex, pressão sobre a terra com curva suave, autoconsumo fora do PIB e do imposto, excedente vendido, construções ocupando terra, camada de mapa. Árvore de tecnologia redesenhada sem linhas sobre os cartões.
 
 ## Próximos (nesta ordem)
 
