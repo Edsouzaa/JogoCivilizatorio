@@ -15,6 +15,15 @@ export const UNITS: UnitType[] = [
   { name: "Infantaria mecanizada", cat: "Infantaria", tech: "Motor a combustão", atk: 3, def: 3.3, speed: 1.4, siege: 1.3, cost: 2.4 },
 ];
 export const unitOf = (name?: string) => UNITS.find((u) => u.name === name) ?? UNITS[0];
+/** Estatísticas de uma divisão: o tipo dela, ou num regimento a média pelos soldados de cada tipo
+ * (ataque e defesa pela média; anda no passo do mais lento; cerca com a melhor máquina). */
+export function statsOf(d: { unit?: string; mix?: Record<string, number> }): UnitType {
+  if (!d.mix) return unitOf(d.unit);
+  const parts = Object.entries(d.mix).map(([n, s]) => [unitOf(n), s] as const);
+  const avg = (f: (u: UnitType) => number) => parts.reduce((a, [u, s]) => a + f(u) * s, 0);
+  return { name: "Regimento", cat: "Regimento", atk: avg((u) => u.atk), def: avg((u) => u.def), speed: Math.min(...parts.map(([u]) => u.speed)),
+    siege: Math.max(...parts.map(([u]) => u.siege)), cost: avg((u) => u.cost) };
+}
 /** Tipos que o país já sabe formar. */
 export const unitsFor = (known: Set<string>) => UNITS.filter((u) => !u.tech || known.has(u.tech));
 /** Melhor tipo disponível (a IA recruta este): maior ataque + defesa por custo. */

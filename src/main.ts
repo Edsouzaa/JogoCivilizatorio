@@ -26,7 +26,7 @@ import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.
 import { icon, hydrateIcons } from "./icons.ts";
 import { foundingCost, distanceLabel, expansionCapacity, recentFoundings, EXPAND } from "./expansion.ts";
 import { rulerOf, ageOf, lifeText, CHAR } from "./characters.ts";
-import { unitOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
+import { unitOf, statsOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
@@ -157,6 +157,7 @@ async function doLoad(file: Blob) {
 const fileInput = Object.assign(document.createElement("input"), { type: "file", accept: ".save" });
 document.addEventListener("change", (ev) => { // construção em massa: escolhas mudam o cálculo
   const t = ev.target as HTMLInputElement;
+  queueMicrotask(() => t.blur()); // escolheu: o painel volta a se atualizar
   if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
   else if (t.dataset?.meth) { const [hex, b, cat] = t.dataset.meth.split("|").map(Number); cmd({ t: "method", hex, b, cat, k: +t.value }); return; }
   else if (t.id === "mb-levels") mbLevels = Math.max(1, Math.min(50, Math.round(+t.value) || 1)); else if (t.id === "mb-priv") mbPriv = t.checked;
@@ -404,6 +405,19 @@ idIn("cancel").onclick = () => (idBox.style.display = "none");
 const evBox = document.createElement("div");
 evBox.className = "doc"; // documento histórico (estilo no index.html)
 document.body.appendChild(evBox);
+// arrastar a caixa pelo cabeçalho (o resto dela continua clicável)
+evBox.addEventListener("pointerdown", (ev) => {
+  if (!(ev.target as HTMLElement).closest(".doc-head, .doc-art")) return;
+  const r = evBox.getBoundingClientRect(), dx = ev.clientX - r.left, dy = ev.clientY - r.top;
+  evBox.style.transform = "none"; evBox.style.left = `${r.left}px`; evBox.style.top = `${r.top}px`;
+  const move = (m: PointerEvent) => {
+    evBox.style.left = `${Math.max(0, Math.min(innerWidth - r.width, m.clientX - dx))}px`;
+    evBox.style.top = `${Math.max(0, Math.min(innerHeight - 40, m.clientY - dy))}px`;
+  };
+  const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); };
+  addEventListener("pointermove", move); addEventListener("pointerup", up);
+  ev.stopPropagation();
+});
 let evShown = "", evSince = 0;
 function watchChoice() {
   const ev = active ? eco.choices?.[active] : undefined;
@@ -631,11 +645,14 @@ document.addEventListener("pointerdown", (e) => {
   if (d.econ) { econTab = Number(d.econ); goodDetail = null; return updateUI(); }
   if (d.good !== undefined) { goodDetail = d.good || null; return updateUI(); }
   if (d.goto) { selected = Number(d.goto); if (d.sheetkey) openSheet = d.sheetkey; const [x, y] = hexCenter(selected % W, (selected / W) | 0); cam.x = x; cam.y = y; cam.zoom = Math.max(cam.zoom, 8); return updateUI(); }
-  if (d.menu) { menuCat = menuCat === d.menu ? null : d.menu; return updateUI(); }
+  if (d.menu) { menuCat = menuCat === d.menu ? null : d.menu; if (menuCat) { selected = -1; selectedDiv = null; group = []; } return updateUI(); } // abrir um menu tira o painel do hex da frente
   if (d.notes) return showNotes(d.notes);
   if (d.selectDiv) { selectedDiv = Number(d.selectDiv); group = [selectedDiv]; const u = eco.divisions.find((x) => x.id === selectedDiv); if (u) selected = u.hex; return updateUI(); }
   if (d.act === "close-panel") { selected = -1; selectedDiv = null; group = []; return updateUI(); }
-  if (d.mode) setMode(Number(d.mode));
+  if (d.act === "merge") { const ids = eco.divisions.filter((x) => group.includes(x.id) && x.kind === "army" && x.country === active).map((x) => x.id); cmd({ t: "merge", ids }); group = [ids[0]]; selectedDiv = ids[0]; return updateUI(); }
+  if (d.act === "split" && selectedDiv) { cmd({ t: "split", id: selectedDiv }); return updateUI(); }
+  if (d.act === "maps") { mapsOpen = !mapsOpen; return updateUI(); }
+  if (d.mode) { setMode(Number(d.mode)); mapsOpen = false; }
   if (d.pact && active) return cmd({ t: "pact", target: Number(d.pact) });
   if (d.unpact && active) return cmd({ t: "unpact", target: Number(d.unpact) });
   if (d.act === "save") doSave();
@@ -715,7 +732,9 @@ function topbarHtml() {
     `</div>`;
 }
 
-const maptoolsHtml = () => LAYERS.map(([g, ms]) => `<div class="grp"><span>${g}</span>${ms.map(([k, n]) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}" title="${k < 9 ? `Tecla ${k + 1}` : n}">${n}</button>`).join("")}</div>`).join("");
+let mapsOpen = false;
+const maptoolsHtml = () => `<button data-act="maps" class="${mapsOpen ? "on" : ""}" title="Camadas do mapa">${icon("globe")} Mapa: ${MAP_MODES[mode]}</button>` +
+  (mapsOpen ? `<div class="maps">${LAYERS.map(([g, ms]) => `<div class="grp"><span>${g}</span>${ms.map(([k, n]) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}" title="${k < 9 ? `Tecla ${k + 1}` : n}">${n}</button>`).join("")}</div>`).join("")}</div>` : "");
 
 function leftmenuHtml() {
   return MENU.map(([ic, n]) => `<button class="item ${menuCat === ic ? "on" : ""}" data-menu="${ic}">${icon(ic, 18)} ${n}</button>`).join("") +
@@ -865,10 +884,10 @@ const TECH_AREAS: [string, (t: (typeof TECHS)[number]) => boolean][] = [
 ];
 const techArea = (t: (typeof TECHS)[number]) => TECH_AREAS.findIndex(([, f]) => f(t));
 
-function techTreeHtml() {
+function techTreeHtml(all = false) {
   if (!active) return "";
   const r = eco.countries[active - 1].research, avail = new Set(available(r).map((t) => t.name));
-  const lastEra = Math.min(ERAS.length - 1, r.era + 1); // mostra até a próxima era
+  const lastEra = all ? ERAS.length - 1 : Math.min(ERAS.length - 1, r.era + 1); // tela cheia: todas as eras
   const cols = Array.from({ length: lastEra + 1 }, (_, e) => e);
   const cell = (area: number, era: number) => TECHS.filter((t) => t.era === era && techArea(t) === area).map((t) => {
     const st = r.known.has(t.name) ? "known" : avail.has(t.name) ? "avail" : "locked";
@@ -876,24 +895,61 @@ function techTreeHtml() {
     return `<div class="tcard ${st}${t.name === r.researching ? " cur" : ""}" data-tnode="${t.name}" ${st === "avail" ? `data-tech="${t.name}"` : ""} title="${t.requires.length ? "Requer: " + t.requires.join(", ") : "Sem pré-requisitos"}">` +
       `<b>${t.name}</b><small>${st === "known" ? "conhecida" : fmt(t.cost) + " pts"}${prog && st !== "known" ? ` · ${pct(prog / t.cost)}` : ""}</small><small class="fx">${techEffect(t)}</small></div>`;
   }).join("");
-  return researchHtml(r, eco.countries[active - 1].researchWeek, true) +
-    `<div class="tree" style="grid-template-columns: 90px repeat(${cols.length}, minmax(150px, 1fr))"><svg class="tlines"></svg>` +
+  return (all ? "" : researchHtml(r, eco.countries[active - 1].researchWeek, true)) +
+    `<div class="tree" style="grid-template-columns: 110px repeat(${cols.length}, 170px)"><svg class="tlines"></svg>` +
     `<div></div>${cols.map((e) => `<div class="thead">${ERAS[e]}</div>`).join("")}` +
     TECH_AREAS.map(([name], a) => `<div class="tarea">${name}</div>${cols.map((e) => `<div class="tcell">${cell(a, e)}</div>`).join("")}`).join("") + `</div>`;
+}
+
+let techCam = { x: 16, y: 16, z: 1 };
+/** Tecnologia em tela cheia: o quadro é montado uma vez; a árvore dentro dele só muda quando a pesquisa muda. */
+function techView(cat: HTMLElement) {
+  let view = cat.querySelector<HTMLElement>(".tview");
+  if (!view) {
+    lastHtml.delete(cat);
+    cat.innerHTML = `<div class="ttop"></div><div class="tview"><div class="tworld"></div></div>`;
+    view = cat.querySelector<HTMLElement>(".tview")!;
+    view.addEventListener("pointerdown", (ev) => { // arrastar com o botão esquerdo (clicar numa tecnologia continua pesquisando)
+      if (ev.button !== 0 || (ev.target as HTMLElement).closest("[data-tech]")) return;
+      const sx = ev.clientX - techCam.x, sy = ev.clientY - techCam.y;
+      view!.setPointerCapture(ev.pointerId); view!.style.cursor = "grabbing";
+      const move = (m: PointerEvent) => { techCam.x = m.clientX - sx; techCam.y = m.clientY - sy; placeTech(); };
+      const up = () => { view!.removeEventListener("pointermove", move); view!.removeEventListener("pointerup", up); view!.style.cursor = ""; };
+      view!.addEventListener("pointermove", move); view!.addEventListener("pointerup", up);
+    });
+    view.addEventListener("wheel", (ev) => { // zoom em volta do cursor
+      ev.preventDefault();
+      const r = view!.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+      const z = Math.min(2.5, Math.max(0.25, techCam.z * Math.exp(-ev.deltaY * 0.0015)));
+      techCam.x = mx - ((mx - techCam.x) * z) / techCam.z; techCam.y = my - ((my - techCam.y) * z) / techCam.z; techCam.z = z;
+      placeTech();
+    }, { passive: false });
+  }
+  const r = active ? eco.countries[active - 1].research : null;
+  setHtml(cat.querySelector(".ttop")!, `<h2>${icon("tech", 20)} Tecnologia <small>arraste para mover · roda do mouse para zoom</small> <button data-menu="tech" style="float:right" title="Fechar">${icon("close")}</button></h2>` +
+    (r ? researchHtml(r, eco.countries[active - 1].researchWeek, true) : "<small>Escolha um país.</small>"));
+  const world = cat.querySelector<HTMLElement>(".tworld")!, before = lastHtml.get(world);
+  setHtml(world, techTreeHtml(true));
+  if (lastHtml.get(world) !== before) { hydrateIcons(world); drawTechLines(); }
+  placeTech();
+}
+function placeTech() {
+  const world = document.querySelector<HTMLElement>("#catpanel .tworld");
+  if (world) world.style.transform = `translate(${techCam.x}px, ${techCam.y}px) scale(${techCam.z})`;
 }
 
 /** Depois de desenhar a árvore: linhas de cada tecnologia até os pré-requisitos (SVG por cima da grade). */
 function drawTechLines() {
   const tree = document.querySelector(".tree") as HTMLElement | null, svg = tree?.querySelector("svg");
   if (!tree || !svg) return;
-  const base = tree.getBoundingClientRect(), pos = new Map<string, DOMRect>();
+  const base = tree.getBoundingClientRect(), pos = new Map<string, DOMRect>(), z = tree.closest(".tworld") ? techCam.z : 1; // a árvore em tela cheia está em escala
   tree.querySelectorAll<HTMLElement>("[data-tnode]").forEach((el) => pos.set(el.dataset.tnode!, el.getBoundingClientRect()));
   svg.setAttribute("width", String(tree.scrollWidth)); svg.setAttribute("height", String(tree.scrollHeight));
   let paths = "";
   for (const t of TECHS) for (const q of t.requires) {
     const a = pos.get(q), b = pos.get(t.name);
     if (!a || !b) continue;
-    const x1 = a.right - base.left, y1 = a.top + a.height / 2 - base.top, x2 = b.left - base.left, y2 = b.top + b.height / 2 - base.top, mx = (x1 + x2) / 2;
+    const x1 = (a.right - base.left) / z, y1 = (a.top + a.height / 2 - base.top) / z, x2 = (b.left - base.left) / z, y2 = (b.top + b.height / 2 - base.top) / z, mx = (x1 + x2) / 2;
     paths += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
   }
   svg.innerHTML = paths;
@@ -1140,23 +1196,32 @@ function adminHtml() {
     `<h3>Estados</h3>` + (statesOf(eco, active).map((s) => `<div>${s.name} · ${s.interest} ${s.happy ? "" : '<span class="bad">insatisfeito</span>'}</div>`).join("") || "<small>Nenhum estado.</small>");
 }
 
+/** Troca o conteúdo só se mudou, e nunca enquanto o jogador mexe num campo de dentro (select aberto, número sendo digitado). */
+const lastHtml = new WeakMap<Element, string>();
+function setHtml(el: Element, html: string) {
+  if (lastHtml.get(el) === html) return;
+  const f = document.activeElement;
+  if (f && el.contains(f) && (f instanceof HTMLSelectElement || f instanceof HTMLInputElement)) return;
+  lastHtml.set(el, html); el.innerHTML = html;
+}
 function updateUI() {
-  document.getElementById("topbar")!.innerHTML = topbarHtml();
-  document.getElementById("maptools")!.innerHTML = maptoolsHtml();
-  document.getElementById("leftmenu")!.innerHTML = leftmenuHtml();
+  setHtml(document.getElementById("topbar")!, topbarHtml());
+  setHtml(document.getElementById("maptools")!, maptoolsHtml());
+  setHtml(document.getElementById("leftmenu")!, leftmenuHtml());
   const cat = document.getElementById("catpanel")!, title = MENU.find(([k]) => k === menuCat)?.[1];
-  cat.className = menuCat === "economy" || menuCat === "charts" || menuCat === "tech" ? "wide" : "";
-  cat.innerHTML = menuCat && title ? `<h2>${icon(menuCat, 20)} ${title} <button data-menu="${menuCat}" style="float:right" title="Fechar">${icon("close")}</button></h2>` + CAT_VIEWS[menuCat]() : "";
+  cat.className = menuCat === "tech" ? "full" : menuCat === "economy" || menuCat === "charts" ? "wide" : "";
+  if (menuCat === "tech") techView(cat); // tela cheia com arrastar e zoom: não é redesenhada a cada atualização
+  else setHtml(cat, menuCat && title ? `<h2>${icon(menuCat, 20)} ${title} <button data-menu="${menuCat}" style="float:right" title="Fechar">${icon("close")}</button></h2>` + CAT_VIEWS[menuCat]() : "");
   group = group.filter((id) => eco.divisions.some((d) => d.id === id));
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = group[0] ?? null; // destruída
   const show = selected >= 0 || selectedDiv;
-  panel.innerHTML = show ? `<button data-act="close-panel" style="float:right" title="Fechar">${icon("close")}</button>` + divisionHtml() + hexHtml() : "";
-  document.getElementById("bottombar")!.innerHTML = bottombarHtml();
+  setHtml(panel, show ? `<button data-act="close-panel" style="float:right" title="Fechar">${icon("close")}</button>` + divisionHtml() + hexHtml() : "");
+  setHtml(document.getElementById("bottombar")!, bottombarHtml());
   hydrateIcons(document.body); // marcadores <i class=i-…> viram SVG
   if (performance.now() >= hudMsgUntil) document.getElementById("toast")!.style.display = "none";
   const chart = document.getElementById("gdp") as HTMLCanvasElement | null;
   if (chart && active) drawChart(chart, eco.countries[active - 1].gdpHistory);
-  drawTechLines();
+  if (menuCat !== "tech") drawTechLines();
   const hist = active ? eco.countries[active - 1].history ?? {} : {};
   for (const [id, key] of [["ch-treasury", "Tesouro"], ["ch-debt", "Dívida"], ["ch-good", "$" + goodDetail]] as const) {
     const cv = document.getElementById(id) as HTMLCanvasElement | null;
@@ -1255,7 +1320,13 @@ function groupHtml() {
   const kinds = Object.keys(KIND_NAMES).filter((k) => ds.some((d) => d.kind === k));
   return `<div class="unit"><b>${ds.length} unidades selecionadas</b> <small>(botão direito: todas vão)</small><table>` +
     kinds.map((k) => { const of = ds.filter((d) => d.kind === k); return `<tr><td><button data-group-kind="${k}">${KIND_NAMES[k]}</button></td><td>${of.length}</td><td>${fmt(of.reduce((s, d) => s + d.strength, 0))} homens</td></tr>`; }).join("") +
-    `</table>` + frontHtml(group) + `</div>`;
+    `</table>` + (() => { // exércitos do jogador no mesmo hex: juntar num regimento só
+      const armies = ds.filter((d) => d.kind === "army" && d.country === active);
+      if (armies.length < 2) return "";
+      const same = armies.every((d) => d.hex === armies[0].hex);
+      return same ? `<button data-act="merge" title="Um regimento com todos os soldados; ataque e defesa pela média, anda no passo do mais lento">Juntar ${armies.length} exércitos em um regimento</button>`
+        : `<small>Para juntar num regimento, os exércitos precisam estar no mesmo hex.</small>`;
+    })() + frontHtml(group) + `</div>`;
 }
 
 function divisionHtml() {
@@ -1279,9 +1350,11 @@ function divisionHtml() {
   if (d.kind === "fleet") return `<div class="unit"><b><i class=i-ship></i> ${craftOf(SHIPS, d.unit).name} ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
     `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · <small>leva exércitos nessa zona</small> <button data-act="disband">Desfazer</button></div>`;
   const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
-  const u = unitOf(d.unit), gen = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined;
+  const u = statsOf(d), gen = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined;
   return `<div class="unit"><b><i class=i-military></i> ${u.name} ${d.id}</b> <small>${u.cat} · ataque ${u.atk} · defesa ${u.def}</small> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
-    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize} · org. ${pct(d.org)} · armas ${pct(d.equip)} · ` +
+    (d.mix ? `<table>${Object.entries(d.mix).sort((a, b) => b[1] - a[1]).map(([n, f]) => `<tr><td>${n}</td><td>${fmt(d.strength * f)} soldados</td><td><small>${unitOf(n).cat} · atq ${unitOf(n).atk} · def ${unitOf(n).def}</small></td></tr>`).join("")}</table>` +
+      (d.country === active ? `<button data-act="split" title="Volta a ser uma divisão por tipo de soldado">Separar o regimento</button><br>` : "") : "") +
+    `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize * (d.size ?? 1)} · org. ${pct(d.org)} · armas ${pct(d.equip)} · ` +
     (d.supplied === false ? `<span class="bad">sem suprimento (depósito a ${depotDistance(world, eco, d)} hexes, alcance ${supplyRange(eco, d.country)})</span>` : `suprimento ok`) + ` <button data-act="disband">Desfazer</button>` +
     (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b>Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`
       : d.country === active ? `<br><button data-act="hire-general">Contratar general (${CHAR.generalCost})</button>` : "") + frontHtml([d.id]) + `</div>`;

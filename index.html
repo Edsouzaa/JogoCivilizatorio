@@ -21,6 +21,11 @@
     .ic { vertical-align: -3px; flex: none; }
     button { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 3px 9px; cursor: pointer; }
     button:hover { border-color: var(--gold); }
+    select, input[type=number], input[type=text] { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 3px 6px; }
+    select:hover, select:focus, input:focus { border-color: var(--gold); outline: none; }
+    select option { background: var(--panel); color: var(--text); }
+    select option:disabled { color: #666; }
+    input[type=checkbox] { accent-color: var(--gold); }
     button.on { border-color: var(--gold); color: var(--gold); background: #2a2a24; }
     .num { font-variant-numeric: tabular-nums; }
     .up { color: var(--red); } .down { color: var(--green); } .bad { color: var(--red); font-weight: 600; } .warn { color: var(--orange); }
@@ -57,6 +62,12 @@
     #catpanel.wide { width: min(980px, calc(100vw - var(--menu) - 420px)); }
     #panel { right: 8px; width: 350px; }
     #catpanel:empty, #panel:empty { display: none; }
+    #catpanel.full { left: 8px; right: 8px; z-index: 20; width: auto; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+    #catpanel.full .ttop { padding: 10px 14px 6px; border-bottom: 1px solid var(--line); max-height: 40%; overflow: auto; }
+    #catpanel.full .tview { position: relative; flex: 1; overflow: hidden; cursor: grab; background: #16181c; }
+    #catpanel.full .tworld { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+    #catpanel.full .tarea { position: sticky; left: 0; color: var(--gold); font: 600 15px var(--serif); padding: 6px 8px; border-top: 1px solid var(--line); }
+    #catpanel.full .tcell { border-top: 1px solid #2a2d33; padding-top: 6px; min-height: 40px; }
     h2 { font: 600 22px/1.1 var(--serif); color: var(--gold); margin: 0 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
     h3 { font: 600 17px var(--serif); margin: 10px 0 4px; }
     #panel h3 small, h2 small { font: 400 12px var(--sans); color: var(--dim); }
@@ -76,9 +87,11 @@
     .law-cat { padding-top: 8px !important; color: var(--gold); }
 
     /* camadas do mapa */
-    #maptools { position: fixed; top: calc(var(--top) + 8px); left: calc(var(--menu) + 424px); display: flex; flex-wrap: wrap; gap: 10px; z-index: 2;
-      background: #1b1e24e6; border: 1px solid var(--line); padding: 4px 8px; }
-    #maptools .grp { display: flex; gap: 2px; align-items: center; }
+    #maptools { position: fixed; bottom: calc(var(--bottom) + 10px); left: calc(var(--menu) + 10px); z-index: 4; }
+    #maptools > button { background: #1b1e24ee; padding: 5px 10px; }
+    #maptools .maps { position: absolute; bottom: 34px; left: 0; display: flex; flex-direction: column; gap: 6px; background: #1b1e24f2;
+      border: 1px solid var(--line); padding: 8px 10px; min-width: 260px; }
+    #maptools .grp { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
     #maptools .grp span { color: var(--dim); font-size: 10px; text-transform: uppercase; margin-right: 3px; }
     #maptools button { padding: 2px 7px; font-size: 12px; }
 
@@ -112,7 +125,7 @@
     /* evento: documento histórico com moldura discreta */
     .doc { display: none; position: fixed; top: 18%; left: 50%; transform: translateX(-50%); width: 420px; z-index: 10; padding: 16px 18px;
       background: linear-gradient(#26241f, #1f1d19); border: 1px solid var(--gold); outline: 1px solid #5a4d33; outline-offset: -6px; color: #ece4cf; }
-    .doc-head { display: flex; gap: 10px; align-items: center; }
+    .doc-head { display: flex; gap: 10px; align-items: center; cursor: move; user-select: none; }
     .doc-head img { width: 42px; height: 28px; border: 1px solid #5a4d33; }
     .doc-head h2 { border: 0; margin: 0; padding: 0; }
     .doc-date { color: #b4a782; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }

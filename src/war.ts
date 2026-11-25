@@ -7,7 +7,7 @@ import { warAllies } from "./subjects.ts";
 import { lostCity, hasClaimOn, CLAIM } from "./claims.ts";
 import { anchors } from "./expansion.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, note } from "./characters.ts";
-import { UNITS, unitOf, SHIPS, PLANES, craftOf } from "./units.ts";
+import { UNITS, unitOf, statsOf, SHIPS, PLANES, craftOf } from "./units.ts";
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
@@ -240,11 +240,41 @@ export function crossesRiver(w: World, a: number, b: number) {
   return false;
 }
 
+/** Junta exércitos do país parados no mesmo hex num regimento só (a 1ª divisão fica; as outras somem dentro dela). */
+export function mergeArmies(e: Economy, country: number, ids: number[]): string | null {
+  const ds = ids.map((id) => e.divisions.find((d) => d.id === id)).filter((d): d is Division => !!d && d.kind === "army" && d.country === country);
+  if (ds.length < 2) return "Selecione pelo menos dois exércitos seus";
+  if (ds.some((d) => d.hex !== ds[0].hex)) return "Os exércitos precisam estar no mesmo hex";
+  const total = ds.reduce((s, d) => s + d.strength, 0) || 1, mix: Record<string, number> = {};
+  for (const d of ds) for (const [n, f] of Object.entries(d.mix ?? { [unitOf(d.unit).name]: 1 })) mix[n] = (mix[n] ?? 0) + (f * d.strength) / total;
+  const head = ds[0], w = (f: (d: Division) => number) => ds.reduce((s, d) => s + f(d) * d.strength, 0) / total;
+  head.org = w((d) => d.org); head.equip = w((d) => d.equip);
+  head.strength = total; head.mix = mix; head.size = ds.reduce((s, d) => s + (d.size ?? 1), 0);
+  head.unit = Object.entries(mix).sort((a, b) => b[1] - a[1])[0][0];
+  head.general ??= ds.find((d) => d.general)?.general;
+  head.target = null; head.path = undefined; head.progress = 0;
+  const gone = new Set(ds.slice(1));
+  e.divisions = e.divisions.filter((d) => !gone.has(d));
+  return null;
+}
+/** Desfaz o regimento: uma divisão por tipo de soldado, no mesmo hex. */
+export function splitRegiment(e: Economy, country: number, id: number): string | null {
+  const d = e.divisions.find((x) => x.id === id);
+  if (!d || d.country !== country || !d.mix) return "Não é um regimento seu";
+  const parts = Object.entries(d.mix), strength = d.strength;
+  parts.forEach(([n, f], k) => {
+    const x: Division = k === 0 ? d : { ...d, id: e.nextDivision++, general: undefined, path: undefined };
+    x.unit = n; x.strength = strength * f; x.mix = undefined; x.size = undefined;
+    if (k > 0) e.divisions.push(x);
+  });
+  return null;
+}
+
 /** Força de combate: soldados × organização × armas × tecnologia militar do país. */
 const fleetPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (1 + techSum(e.countries[d.country - 1].research, "fleet")) * craftOf(SHIPS, d.unit).power, 0);
 /** Força de combate: soldados × organização × armas × tecnologia × tipo (ataque ou defesa) × governante × general. */
 const power = (e: Economy, ds: Division[], role: "atk" | "def") => ds.reduce((s, d) => {
-  const r = rulerOf(e, d.country), g = d.general ? e.characters?.find((c) => c.id === d.general) : undefined, u = unitOf(d.unit);
+  const r = rulerOf(e, d.country), g = d.general ? e.characters?.find((c) => c.id === d.general) : undefined, u = statsOf(d);
   return s + d.strength * d.org * d.equip * (1 + techSum(e.countries[d.country - 1].research, "army")) * u[role]
     * (1 + (r ? CHAR.milArmy * attrMod(r.mil) : 0)) * (1 + (g ? CHAR.generalArmy * attrMod(g.mil) + CHAR.generalBase : 0));
 }, 0);
@@ -322,7 +352,7 @@ export function stepWar(w: World, e: Economy) {
     }
     const ctrl = controller(w, e, next);
     if (!sea && (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country))) { d.target = null; continue; }
-    d.progress += sea ? 1 : unitOf(d.kind === "army" ? d.unit : undefined).speed / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
+    d.progress += sea ? 1 : (d.kind === "army" ? statsOf(d) : unitOf(undefined)).speed / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
     if (d.progress < 1) continue;
     d.progress = 0; d.siege = 0; // saiu do lugar: o cerco recomeça
     at.set(d.hex, (at.get(d.hex) ?? []).filter((x) => x !== d));
@@ -356,7 +386,7 @@ export function stepWar(w: World, e: Economy) {
     if (!besiegers.length) return;
     const who = besiegers[0].country, mine = besiegers.filter((d) => d.country === who);
     for (const d of mine) d.siege = (d.siege ?? 0) + 1;
-    const siegePower = Math.max(...mine.map((d) => unitOf(d.unit).siege)); // máquinas de cerco e artilharia abrem as muralhas
+    const siegePower = Math.max(...mine.map((d) => statsOf(d).siege)); // máquinas de cerco e artilharia abrem as muralhas
     if (Math.max(...mine.map((d) => d.siege!)) < siegeWeeks(city.size, mine.length) / siegePower) return;
     for (const i of e.owned) if (e.market[i] === k + 1 && w.owner[i] === city.country) e.occupier[i] = who;
     for (const d of mine) d.siege = 0;
@@ -458,7 +488,7 @@ export function stepWar(w: World, e: Economy) {
     if (fighting.has(d) || d.strength < 1) continue; // morta não se recupera nem recebe reforço
     d.org = Math.min(1, d.org + WAR.orgRecovery);
     const c = e.countries[d.country - 1];
-    const full = d.kind === "fleet" ? NAVY.sailors : d.kind === "air" ? AIR.pilots : WAR.divisionSize;
+    const full = d.kind === "fleet" ? NAVY.sailors : d.kind === "air" ? AIR.pilots : WAR.divisionSize * (d.size ?? 1);
     if (controller(w, e, d.hex) === d.country && d.strength < full && c.manpower > 0) { // reforço em território (ou águas) próprio
       const add = Math.min(WAR.reinforce, c.manpower, full - d.strength);
       d.strength += add; c.manpower -= add;
