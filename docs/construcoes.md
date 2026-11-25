@@ -94,3 +94,30 @@ As indústrias rodam nesta ordem a cada semana, por isso o Bronze fica pronto an
 - **Fortalezas e muralhas.**
 - **Prédios culturais e religiosos:** templos, escolas, universidades. Hoje a alfabetização vem só das tecnologias.
 - **Indústrias de era tardia:** química, eletrônicos, automóveis.
+
+## Obras por etapas (construction.ts)
+
+Construir não é mais instantâneo. Cada nível vira uma **obra** na fila do país:
+
+- **Pontos de construção (PC):** cada obra precisa de PC = trabalhadores da construção × 0,5 (Fazenda 10, Mina 15, Fundição de bronze 20).
+- **Capacidade semanal:** 2 PC da comunidade + 1 por cidade + o que os **Setores de construção** fazem.
+  - O Setor de construção é uma indústria urbana de 30 trabalhadores.
+  - Compra os materiais do método da era no mercado da cidade e gera PC. Sem material, gera menos.
+
+| Método | Desde a era | Materiais por nível | PC por nível |
+|---|---|---|---|
+| Construção rudimentar | Tribal | 1 Madeira + 1 Pedra | 3 |
+| Alvenaria | Clássica | 1 Madeira + 1 Pedra + 0,5 Argila + 0,5 Ferramentas | 5 |
+| Alvenaria especializada | Medieval | 1 Madeira + 1,5 Pedra + 0,5 Ferramentas + 0,5 Ferro | 7 |
+| Estruturas de ferro | Revoluções | 1 Madeira + 1 Ferro + 1 Ferramentas + 0,5 Carvão mineral | 10 |
+| Construção industrial | Industrialização | 2 Ferro + 1 Ferramentas + 1 Carvão mineral | 14 |
+
+- **Duas filas:**
+  - Pública: paga pelo tesouro.
+  - Privada: paga pelo fundo de investimento. Sem dinheiro no fundo, a obra privada espera.
+  - A lei de Economia diz quanto da capacidade vai para a privada: Subsistência 0%, Tradicionalismo 20%, Mercantilismo 35%, Livre comércio 60%. O que uma fila não usa vai para a outra.
+- **Limite por obra:** cada obra recebe no máximo 4 × (1 + era/2) PC por semana, então obra grande leva tempo.
+- **Pagamento:** o dinheiro (100 × nível, como antes) sai junto com o progresso. Na fila pública, o que faltar no tesouro vira dívida.
+- **Limite físico do hex:** as vagas de todas as construções de um hex cabem em 2 × metade do teto de população dele.
+- **Construção em massa:** no menu Construções, escolha a construção, a cidade (ou todas), os níveis por hex e a fila. O painel mostra os hexes elegíveis, o custo, os PC e a previsão, e põe tudo na fila de uma vez.
+- **Gerenciar a fila:** obras podem ser pausadas ou canceladas. O que já foi pago numa obra cancelada fica gasto.

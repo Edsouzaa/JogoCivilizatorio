@@ -43,6 +43,9 @@ console.log(`ai ok (${cities0} → ${e.cities.length} cidades, ${e.divisions.fil
   const levels = () => e2.levels.reduce((s, l) => s + l.reduce((a, v) => a + v, 0), 0);
   const before = levels();
   privateInvest(w2, e2);
+  const { queueOf, stepConstruction } = await import("../src/construction.ts");
+  assert.ok(queueOf(e2, 1).some((p) => p.priv), "investidores deveriam pôr obra na fila privada");
+  for (let k = 0; k < 30; k++) stepConstruction(w2, e2); // obra anda com os pontos de construção, paga pelo fundo
   assert.ok(levels() > before, "investidores deveriam construir");
   assert.equal(c.treasury, 50, "o tesouro não paga");
   assert.ok(c.investPool < 1e5);

@@ -54,7 +54,7 @@ const KIND: Record<string, Kind> = {
   "Acampamento de caça": "hunt",
   "Serraria": "labor", "Trilhas de transporte": "labor", "Mina": "labor", "Galerias escoradas": "labor", "Barreiro": "labor", "Poço": "labor",
   "Fundição de bronze": "industry", "Tecelagem": "industry", "Ferraria": "industry", "Armeiro": "industry",
-  "Siderúrgica": "industry", "Fábrica têxtil": "industry", "Arsenal": "industry", "Oficina de papel": "industry", "Centro administrativo": "admin",
+  "Siderúrgica": "industry", "Fábrica têxtil": "industry", "Arsenal": "industry", "Oficina de papel": "industry", "Centro administrativo": "admin", "Setor de construção": "labor",
 };
 
 /** Dono das construções na era: chefes tribais → aristocratas → capitalistas (indústria). */

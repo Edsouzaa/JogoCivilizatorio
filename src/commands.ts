@@ -1,5 +1,6 @@
 // Comandos do jogador. Toda ação que muda a partida passa por aqui, para valer igual no single-player,
 // no servidor e em todos os navegadores do multiplayer (lockstep). Cada comando só age sobre o país de quem mandou.
+import { queueBuild, cancelProject, pauseProject } from "./construction.ts";
 import { toggleRiver } from "./navigation.ts";
 import {
   build, foundCity, trainSettlers, transferSize, urbanize, buildRoad, buildHarbor, proposePact, cancelPact, type Economy,
@@ -19,7 +20,9 @@ import { available } from "./tech.ts";
 import type { World } from "./world.ts";
 
 export type Cmd =
-  | { t: "build"; i: number; b: number }
+  | { t: "build"; i: number; b: number; priv?: boolean }
+  | { t: "buildMany"; hexes: number[]; b: number; levels: number; priv?: boolean } // construção em massa
+  | { t: "cancelBuild"; id: number } | { t: "pauseBuild"; id: number }
   | { t: "found"; unit: number; name?: string; flag?: Flag }
   | { t: "outpost"; unit: number } // colonos viram posto avançado
   | { t: "settlers" }
@@ -84,7 +87,20 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
   const own = (id: number) => e.divisions.find((d) => d.id === id && d.country === country);
   const ownCity = (k: number) => isInt(k) && e.cities[k]?.country === country;
   switch (c?.t) {
-    case "build": return isInt(c.i) && w.owner[c.i] === country ? build(w, e, c.i, c.b) : "Hex não é seu";
+    case "build": return isInt(c.i) && w.owner[c.i] === country ? queueBuild(w, e, c.i, c.b, !!c.priv) : "Hex não é seu";
+    case "buildMany": { // construção em massa: n níveis em cada hex da lista; para no primeiro erro de fila cheia
+      if (!Array.isArray(c.hexes) || c.hexes.length > 2000 || !isInt(c.levels, 1) || c.levels > 50) return "Pedido inválido";
+      let ok = 0, err: string | null = null;
+      for (const i of c.hexes) for (let n = 0; n < c.levels; n++) {
+        if (!isInt(i) || w.owner[i] !== country) { err = "Hex não é seu"; break; }
+        const r = queueBuild(w, e, i, c.b, !!c.priv);
+        if (r) { err = r; break; }
+        ok++;
+      }
+      return ok ? null : err ?? "Nada para construir";
+    }
+    case "cancelBuild": return isInt(c.id, 1) ? cancelProject(e, country, c.id) : "Obra inválida";
+    case "pauseBuild": return isInt(c.id, 1) ? pauseProject(e, country, c.id) : "Obra inválida";
     case "outpost": return own(c.unit) ? buildOutpost(w, e, c.unit) : "Unidade não é sua";
     case "found": {
       if (!own(c.unit)) return "Unidade não é sua";

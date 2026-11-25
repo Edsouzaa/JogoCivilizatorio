@@ -1,9 +1,11 @@
 // IA dos países que não têm jogador. Decide uma vez por mês, com regras simples e baratas:
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
+import { queueBuild, queueOf } from "./construction.ts";
 import {
   build, buildCost, buildingsFor, outputOf, urbanize, urbanCost, buildRoad, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
+  SECTOR,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
 import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
@@ -18,6 +20,8 @@ import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 export const AI = {
   subjectChancePerMonth: 0.05, // chance de propor dependência a um vizinho
   reserve: 1.5,         // só gasta se o tesouro passar de reserve × custo
+  publicQueue: 2,       // obras públicas na fila ao mesmo tempo
+  privateQueue: 3,      // obras privadas na fila ao mesmo tempo
   maxCitiesBase: 3,     // cidades que a IA quer na era tribal (+2 por era)
   lawSupport: 0.25,     // apoio mínimo para propor uma lei
   warChancePerMonth: 0.01,
@@ -101,6 +105,7 @@ function bestInvestment(w: World, e: Economy, country: number): [number, number]
       const def = BUILDINGS[b], tech = techFor(b);
       if (tech && !c.research.known.has(tech)) continue;
       if (def.boosts !== undefined && !e.levels[def.boosts][i]) continue;
+      if (def.industry && !def.industry.outputs.length) continue; // sem produto (administração, construção): decidido à parte
       const out = def.industry ? def.industry.outputs[0][0] : outputOf(w, b, i);
       const workersOk = w.pop[i] * RULES.hexLaborShare >= def.workers * (e.levels[b][i] + 1) * 0.5;
       const v = (city.market.price[out] * (workersOk ? 1 : 0.2)) / buildCost(e, b, i);
@@ -111,21 +116,26 @@ function bestInvestment(w: World, e: Economy, country: number): [number, number]
 }
 
 function invest(w: World, e: Economy, country: number) {
+  const c = e.countries[country - 1], mine = queueOf(e, country);
+  // obras paradas por falta de capacidade: amplia o setor de construção na capital
+  const cap = e.cities.find((k) => k.country === country);
+  if (cap && mine.some((p) => p.waiting === "sem capacidade") && !mine.some((p) => p.b === SECTOR) && c.treasury > buildCost(e, SECTOR, cap.hex) * AI.reserve) queueBuild(w, e, cap.hex, SECTOR);
+  if (mine.filter((p) => !p.priv).length >= AI.publicQueue) return; // não enche a fila: o dinheiro sai aos poucos
   const best = bestInvestment(w, e, country);
-  if (best && e.countries[country - 1].treasury > buildCost(e, best[1], best[0]) * AI.reserve) build(w, e, best[0], best[1]);
+  if (best && c.treasury > buildCost(e, best[1], best[0]) * AI.reserve) queueBuild(w, e, best[0], best[1]);
 }
 
 /** Uma vez por mês, todo país (jogador também): os investidores privados constroem com o fundo deles. */
 export function privateInvest(w: World, e: Economy) {
   e.countries.forEach((c, ci) => {
-    for (let n = 0; n < 3; n++) { // até 3 obras por mês
+    for (let n = 0; n < 3; n++) { // até 3 obras novas por mês, se o fundo cobre o que já está na fila e a nova
+      const queued = queueOf(e, ci + 1).filter((p) => p.priv);
+      if (queued.length >= AI.privateQueue) return;
       const best = bestInvestment(w, e, ci + 1);
       if (!best) return;
-      const cost = buildCost(e, best[1], best[0]);
-      if ((c.investPool ?? 0) < cost) return;
-      c.treasury += cost; // o fundo paga: põe o valor e build() tira (o tesouro fica igual)
-      if (build(w, e, best[0], best[1])) { c.treasury -= cost; return; }
-      c.investPool! -= cost;
+      const owed = queued.reduce((s, p) => s + p.cost - p.paid, 0) + buildCost(e, best[1], best[0]);
+      if ((c.investPool ?? 0) < owed) return;
+      if (queueBuild(w, e, best[0], best[1], true)) return;
     }
   });
 }

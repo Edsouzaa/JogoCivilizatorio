@@ -1,6 +1,7 @@
 import { RESOURCES, TERRAINS, T, isLand, claim, snowAt, exhaust, mulberry32, type World } from "./world.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
+import { stepConstruction, methodInputs, constructionMethod, CONSTRUCTION_METHODS, type Project } from "./construction.ts";
 import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
 import { newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
@@ -43,7 +44,7 @@ type Building = {
   name: string; workers: number;
   for: number[];                 // recursos do hex onde pode ser construída (vazio = qualquer, se industrial)
   boosts?: number; mult?: number; // melhoria: multiplica a extratora `boosts`
-  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number }; // só em hex urbano; admin = pontos administrativos por nível
+  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number; construction?: boolean }; // só em hex urbano; admin = pontos administrativos por nível; construction = setor de construção (insumos e PC pelo método da era, construction.ts)
 };
 /**
  * Construções. Extratora: produz o recurso do hex. Melhoria: multiplica uma extratora.
@@ -71,11 +72,14 @@ add({ name: "Ferraria", for: [], workers: 35, industry: { inputs: [[g("Ferro"), 
 add({ name: "Armeiro", for: [], workers: 35, industry: { inputs: [[g("Bronze"), 1], [g("Madeira"), 1]], outputs: [[g("Armas"), 1]] } });
 add({ name: "Oficina de papel", for: [], workers: 25, industry: { inputs: [[g("Madeira"), 2]], outputs: [[g("Papel"), 2]] } });
 add({ name: "Centro administrativo", for: [], workers: 30, industry: { inputs: [[g("Papel"), 1]], outputs: [], admin: ADMIN.perLevel } });
+export const SECTOR = add({ name: "Setor de construção", for: [], workers: 30, industry: { inputs: [], outputs: [], construction: true } });
 // Revolução Industrial: fábricas grandes, mais produção por trabalhador
 add({ name: "Siderúrgica", for: [], workers: 60, industry: { inputs: [[g("Ferro"), 1], [g("Carvão mineral"), 1]], outputs: [[g("Ferramentas"), 4]] } });
 add({ name: "Fábrica têxtil", for: [], workers: 50, industry: { inputs: [[g("Fibras"), 2]], outputs: [[g("Tecidos"), 5]] } });
 add({ name: "Arsenal", for: [], workers: 60, industry: { inputs: [[g("Ferro"), 1], [g("Carvão mineral"), 1]], outputs: [[g("Armas"), 3]] } });
 const NB = BUILDINGS.length;
+/** Insumos de 1 nível da indústria b nesta cidade (o setor de construção usa o método da era do país). */
+const industryInputs = (e: Economy, b: number, city: City) => (b === SECTOR ? methodInputs(e.countries[city.country - 1].research.era) : BUILDINGS[b].industry!.inputs);
 const INDUSTRIES = BUILDINGS.map((_, b) => b).filter((b) => BUILDINGS[b].industry);
 for (const [name] of TECH_FOR_BUILDING) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`tecnologia libera construção inexistente: ${name}`);
 for (const t of TECHS) for (const [name] of t.bonus ?? []) if (!BUILDINGS.some((b) => b.name === name)) throw new Error(`bônus para construção inexistente: ${name}`);
@@ -104,6 +108,7 @@ export const RULES = {
   manpowerShare: 0.5,       // fração da população que pode ser mobilizada (trabalho ou exército); tribal = quase todos
   subsistence: 0.8,         // comida que cada hex produz sozinho, em fração do que a população dele come × fertilidade
   hexLaborShare: 0.5,       // fração da população do hex que trabalha nas construções dele
+  hexOverstaff: 2,          // vagas do hex até 2× a metade do teto de população (gente vem das redondezas)
   startSettlers: 2,
   settlerCost: 200,         // dinheiro para treinar colonos
   settlerPop: 20,           // pessoas que saem da capital para virar colonos
@@ -186,6 +191,8 @@ export type Country = {
   primaryCulture?: number; acceptedCultures?: number[]; officialLanguage?: number; stateReligion?: number; // culture.ts
   investPool?: number;  // fundo de investimento privado (sim.ts → ai.ts privateInvest)
   investWeek?: number;  // quanto entrou na última semana
+  cpWeek?: number;      // pontos de construção da última semana (base + setores; construction.ts)
+  cpUsed?: number;      // quanto deles as obras usaram
   ruler?: number;       // id do governante (characters.ts)
   tributeWeek?: number; // tributo da semana: + recebido (soberano), − pago (súdito)
   glory?: number;       // prestígio de guerras (diplomacy.ts), se apaga devagar
@@ -240,6 +247,7 @@ export type Economy = {
   proposals?: Proposal[]; nextProposal?: number; votes?: Vote[]; // propostas esperando jogador (proposals.ts)
   influence?: Uint16Array;            // área de influência: país que influencia cada hex livre (expansion.ts)
   outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
+  construction?: Project[]; nextProject?: number; // filas de obras (construction.ts)
   closedRivers?: Record<number, number>; // rio navegável → país que o fechou ao comércio dos outros
   claims?: Claim[];                   // reivindicações sobre cidades (claims.ts)
   subjects?: Record<number, Subject>; // súdito → ligação com o soberano (subjects.ts)
@@ -396,17 +404,33 @@ export const borderRadius = (size: number) => Math.min(3, 1 + Math.floor(size / 
 export function buildCost(e: Economy, b: number, i: number) { return RULES.buildCost * (e.levels[b][i] + 1); }
 
 /** Constrói (ou melhora) a construção b no hex i. O que faltar no tesouro vira dívida. Retorna erro ou null. */
-export function build(w: World, e: Economy, i: number, b: number): string | null {
+/** Pode construir mais um nível de b no hex i? `queued` = níveis já na fila (construction.ts). Retorna erro ou null. */
+export function canBuild(w: World, e: Economy, i: number, b: number, queued = 0): string | null {
   const def = BUILDINGS[b];
   if (!w.owner[i]) return "Hex sem dono";
   if (!def) return "Construção inválida";
   if (def.industry ? !e.urban[i] : !def.for.includes(w.resource[i]) && !(w.resource2[i] && def.for.includes(w.resource2[i]))) return def.industry ? "Indústria só em hex de cidade" : "Construção não serve para este recurso";
-  if (def.boosts !== undefined && !e.levels[def.boosts][i]) return `Precisa de ${BUILDINGS[def.boosts].name} antes`;
-  if (e.levels[b][i] >= 255) return "Nível máximo";
+  if (def.boosts !== undefined && !e.levels[def.boosts][i] && !queued) return `Precisa de ${BUILDINGS[def.boosts].name} antes`;
+  if (e.levels[b][i] + queued >= 255) return "Nível máximo";
   const c = e.countries[w.owner[i] - 1], tech = techFor(b);
   if (tech && !c.research.known.has(tech)) return `Precisa pesquisar ${tech}`;
-  c.treasury -= buildCost(e, b, i);
-  if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
+  // limite físico do hex: as vagas de todas as construções dele cabem no que a terra sustenta (teto de população)
+  let workers = def.workers * (queued + 1);
+  for (let k = 0; k < NB; k++) workers += e.levels[k][i] * BUILDINGS[k].workers;
+  if (workers > popCap(w, e, i) * RULES.hexLaborShare * RULES.hexOverstaff) return "O hex não comporta mais um nível (vagas acima do que a terra sustenta)";
+  return null;
+}
+
+/** Constrói (ou melhora) a construção b no hex i, na hora. `free` = obra da fila, já paga aos poucos (construction.ts).
+ * Sem `free`, cobra do tesouro e o que faltar vira dívida. Retorna erro ou null. */
+export function build(w: World, e: Economy, i: number, b: number, free = false): string | null {
+  const err = canBuild(w, e, i, b);
+  if (err) return err;
+  const c = e.countries[w.owner[i] - 1];
+  if (!free) {
+    c.treasury -= buildCost(e, b, i);
+    if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; }
+  }
   e.producers.add(i);
   e.levels[b][i]++;
   return null;
@@ -648,7 +672,7 @@ export function tick(w: World, e: Economy) {
   if (e.week % 52 === 0) stepCulture(w, e).forEach((p, ci) => (e.countries[ci].culturePenalty = p));
   const ctrlCity = new Float64Array(e.cities.length), ctrlCountry = new Float64Array(e.countries.length); // soma de pop × controle
   for (const k of e.cities) { const m = k.market; m.supply.fill(0); m.demand.fill(0); m.used.fill(0); m.trade.fill(0); m.pop = 0; }
-  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); c.adminWeek = 0; }
+  for (const c of e.countries) { c.upkeep = 0; c.pop = 0; c.subsistence = 0; c.pops.count.fill(0); c.adminWeek = 0; c.cpWeek = 0; }
 
   for (const i of e.owned) {
     const k = e.market[i];
@@ -712,7 +736,7 @@ export function tick(w: World, e: Economy) {
   e.cities.forEach((city, k) => {
     const m = city.market;
     for (let gi = 1; gi < NG; gi++) m.need[gi] = m.pop * POP_DEMAND[gi];
-    for (const b of INDUSTRIES) for (const [gi, q] of BUILDINGS[b].industry!.inputs) m.need[gi] += q * throughput[k][b];
+    for (const b of INDUSTRIES) for (const [gi, q] of industryInputs(e, b, city)) m.need[gi] += q * throughput[k][b];
   });
   trade(e, (m, gi) => m.need[gi]); // matéria-prima vai para onde falta, antes de virar produto
 
@@ -721,13 +745,14 @@ export function tick(w: World, e: Economy) {
     for (const b of INDUSTRIES) { // na ordem de BUILDINGS: o bronze feito aqui já serve ao armeiro
       const thr = throughput[k][b];
       if (!thr) continue;
-      const { inputs, outputs } = BUILDINGS[b].industry!;
+      const { outputs } = BUILDINGS[b].industry!, inputs = industryInputs(e, b, city);
       let eff = 1;
       for (const [gi, q] of inputs) { m.demand[gi] += q * thr; eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / (q * thr)); }
       for (const [gi, q] of inputs) m.used[gi] += q * thr * eff;
       for (const [go, q] of outputs) m.supply[go] += q * thr * eff;
       const adm = BUILDINGS[b].industry!.admin;
       if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * thr * eff; }
+      if (b === SECTOR) { const c = e.countries[city.country - 1]; c.cpWeek = (c.cpWeek ?? 0) + CONSTRUCTION_METHODS[constructionMethod(c.research.era)].cp * thr * eff; }
     }
   });
   trade(e, (m, gi) => m.pop * POP_DEMAND[gi]); // produtos prontos circulam
@@ -806,6 +831,7 @@ export function tick(w: World, e: Economy) {
 
   stepAdmin(e);
   payTribute(e);
+  stepConstruction(w, e);
   e.week++;
 }
 

@@ -3,8 +3,9 @@ import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BI
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
   proposePact, cancelPact, hasPact, INFAMY, popCap, urbanCost, cityName, maxRoad, maxHarbor,
-  BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, type Economy,
+  BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy,
 } from "./economy.ts";
+import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, constructionMethod, CONSTRUCTION_METHODS, CONSTRUCT } from "./construction.ts";
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
@@ -149,6 +150,12 @@ async function doLoad(file: Blob) {
   }
 }
 const fileInput = Object.assign(document.createElement("input"), { type: "file", accept: ".save" });
+document.addEventListener("change", (ev) => { // construção em massa: escolhas mudam o cálculo
+  const t = ev.target as HTMLInputElement;
+  if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
+  else if (t.id === "mb-levels") mbLevels = Math.max(1, Math.min(50, Math.round(+t.value) || 1)); else if (t.id === "mb-priv") mbPriv = t.checked; else return;
+  updateUI();
+});
 fileInput.addEventListener("change", () => { if (fileInput.files?.[0]) doLoad(fileInput.files[0]); fileInput.value = ""; });
 import { snowAt } from "./world.ts";
 
@@ -562,6 +569,9 @@ document.addEventListener("pointerdown", (e) => {
     return openNamer(kind === "city" ? "<i class=i-city></i> Cidade" : "<i class=i-map></i> Estado", cur, kind === "city" ? cityFlag(+id) : stateFlag(+id), () => cmd({ t: "rename", kind, id: +id, name: idIn("name").value, flag: idFlag() }));
   }
   if (d.act === "settlers") return cmd({ t: "settlers" });
+  if (d.act === "massbuild") return cmd({ t: "buildMany", hexes: massTargets(), b: mbB, levels: mbLevels, priv: mbPriv });
+  if (d.cancelbuild) return cmd({ t: "cancelBuild", id: +d.cancelbuild });
+  if (d.pausebuild) return cmd({ t: "pauseBuild", id: +d.pausebuild });
   if (d.tech && active) return cmd({ t: "tech", name: d.tech });
   if (d.law && active) {
     const [cat, name] = d.law.split("|"), c = eco.countries[active - 1];
@@ -886,11 +896,52 @@ function overviewHtml() {
     headerHtml() + warsHtml();
 }
 
+// construção em massa (docs/construcoes.md): escolhas do jogador no painel
+let mbB = 0, mbCity = -1, mbLevels = 1, mbPriv = false;
+/** Hexes do país onde cabe mais `mbLevels` níveis da construção escolhida (na cidade escolhida ou em todas). */
+function massTargets() {
+  const out: number[] = [];
+  for (const i of eco.owned) {
+    if (world.owner[i] !== active || (mbCity >= 0 && eco.market[i] - 1 !== mbCity)) continue;
+    let ok = true;
+    for (let n = 0; n < mbLevels && ok; n++) ok = !canBuild(world, eco, i, mbB, queuedLevels(eco, i, mbB) + n);
+    if (ok) out.push(i);
+  }
+  return out;
+}
+
 function buildingsHtml() {
   if (!active) return "";
+  const c = eco.countries[active - 1], q = queueOf(eco, active);
   const total = BUILDINGS.map((_, b) => { let n = 0; for (const i of eco.owned) if (world.owner[i] === active) n += eco.levels[b][i]; return n; });
   const rows = BUILDINGS.map((b, k) => (total[k] ? `<tr><td>${b.name}</td><td>${total[k]}</td><td>${b.workers * total[k]}</td></tr>` : "")).join("");
-  return `<table><tr><td><b>Construção</b></td><td><b>Níveis</b></td><td><b>Vagas</b></td></tr>${rows}</table><small>Para construir, clique num hex seu no mapa.</small>` +
+  const method = CONSTRUCTION_METHODS[constructionMethod(c.research.era)], base = baseCp(eco, active);
+  const cap = `<div class="card"><b>Capacidade de construção</b>: ${fmt(c.cpWeek ?? 0)} PC/semana <small>(comunidade ${base} + setores ${fmt(Math.max(0, (c.cpWeek ?? 0) - base))})</small> · usados ${fmt(c.cpUsed ?? 0)}` +
+    `<br><small>Método dos setores: ${method.name} (${method.inputs.map(([g, n]) => `${n} ${g}`).join(" + ")} → ${method.cp} PC por nível) · fila privada ${pct(privateShare(eco, active))} da capacidade (lei de Economia) · fundo de investimento ${fmt(c.investPool ?? 0)}</small>` +
+    `<br><small>Cada obra recebe até ${fmt(CONSTRUCT.maxPerProject * (1 + c.research.era / 2))} PC por semana; o dinheiro sai junto com o progresso.</small></div>`;
+  const qrows = q.map((p) => {
+    const city = eco.cities[eco.market[p.hex] - 1], eta = etaWeeks(eco, p);
+    return `<tr><td>${BUILDINGS[p.b].name}<br><small>${city?.name ?? "—"} · ${p.priv ? "privada" : "pública"}</small></td>` +
+      `<td><div style="width:70px;height:5px;background:var(--line,#333);border-radius:3px"><div style="height:5px;border-radius:3px;background:var(--accent,#c9a45c);width:${Math.round((p.done / p.cp) * 100)}%"></div></div><small>${fmt(p.cp - p.done)} PC</small></td>` +
+      `<td>${fmt(p.cost - p.paid)}</td><td><small>${p.paused ? "pausada" : p.waiting ?? (Number.isFinite(eta) ? `~${eta} sem.` : "—")}</small></td>` +
+      `<td><button data-pausebuild="${p.id}">${p.paused ? "Retomar" : "Pausar"}</button> <button data-cancelbuild="${p.id}">Cancelar</button></td></tr>`;
+  }).join("");
+  const queue = `<h3>Obras (${q.length})</h3>` + (q.length ? `<table><tr><td><b>Obra</b></td><td><b>Progresso</b></td><td><b>Falta pagar</b></td><td><b>Previsão</b></td><td></td></tr>${qrows}</table>` : "<small>Nenhuma obra. Clique num hex seu ou use a construção em massa.</small>");
+  // construção em massa
+  const targets = massTargets(), n = targets.length * mbLevels;
+  let money = 0;
+  for (const i of targets) for (let k = 0; k < mbLevels; k++) money += RULES.buildCost * (eco.levels[mbB][i] + queuedLevels(eco, i, mbB) + k + 1);
+  const cps = n * cpCost(mbB), weeks = (c.cpWeek ?? 0) > 0 ? Math.ceil(cps / (c.cpWeek ?? 1)) : Infinity;
+  const tech = techFor(mbB), locked = tech && !c.research.known.has(tech);
+  const mass = `<h3>Construção em massa</h3><div class="card">` +
+    `<select id="mb-b">${BUILDINGS.map((b, k) => `<option value="${k}"${k === mbB ? " selected" : ""}>${b.name}</option>`).join("")}</select> ` +
+    `<select id="mb-city"><option value="-1">Todas as cidades</option>${eco.cities.map((k, ci) => (k.country === active ? `<option value="${ci}"${ci === mbCity ? " selected" : ""}>${k.name}</option>` : "")).join("")}</select> ` +
+    `níveis por hex <input id="mb-levels" type="number" min="1" max="50" value="${mbLevels}" style="width:48px"> ` +
+    `<label><input id="mb-priv" type="checkbox"${mbPriv ? " checked" : ""}> fila privada</label>` +
+    `<br><small>${BUILDINGS[mbB].industry ? "Indústria: só em centro urbano." : BUILDINGS[mbB].boosts !== undefined ? `Melhoria: precisa de ${BUILDINGS[BUILDINGS[mbB].boosts!].name} no hex.` : `Extratora: hex com ${BUILDINGS[mbB].for.map((g) => GOODS[g]).join(", ")}.`} ${BUILDINGS[mbB].workers} trabalhadores e ${cpCost(mbB)} PC por nível.${locked ? ` <span class="bad">Precisa pesquisar ${tech}.</span>` : ""}</small>` +
+    `<br>Hexes elegíveis: <b>${targets.length}</b> · obras: <b>${n}</b> · custo ${fmt(money)} · ${fmt(cps)} PC · ~${Number.isFinite(weeks) ? weeks : "∞"} semanas com a capacidade atual` +
+    (n ? ` <button data-act="massbuild">Pôr ${n} obra${n > 1 ? "s" : ""} na fila</button>` : "") + `</div>`;
+  return cap + queue + mass + `<h3>Construções do país</h3><table><tr><td><b>Construção</b></td><td><b>Níveis</b></td><td><b>Vagas</b></td></tr>${rows}</table>` +
     `<br><button data-act="settlers" title="Cria um grupo de colonos na capital">Treinar colonos (${RULES.settlerCost} + ${RULES.settlerPop} pessoas)</button>`;
 }
 
@@ -1265,10 +1316,11 @@ function hexHtml() {
   const rows = buildingsFor(res, !!eco.urban[i], world.resource2[i]).map((b) => {
     const def = BUILDINGS[b], lv = eco.levels[b][i];
     const tip = def.boosts !== undefined ? ` <small>(+${Math.round(def.mult! * 100)}% ${BUILDINGS[def.boosts].name}/nível)</small>`
+      : def.industry?.construction ? ` <small>(materiais da era → pontos de construção)</small>`
       : def.industry ? ` <small>(${def.industry.inputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")} → ${def.industry.admin ? `${def.industry.admin} pontos adm.` : def.industry.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")})</small>` : "";
     const tech = techFor(b), locked = tech && !eco.countries[active - 1].research.known.has(tech);
     return `<tr><td>${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} <i class=i-worker></i></td>` +
-      `<td>${locked ? `<small><i class=i-lock></i> ${tech}</small>` : `<button data-build="${b}">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>`}</td></tr>`;
+      `<td>${locked ? `<small><i class=i-lock></i> ${tech}</small>` : `<button data-build="${b}" title="Põe 1 nível na fila pública: ${cpCost(b)} PC; o dinheiro sai aos poucos">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>${queuedLevels(eco, i, b) ? ` <small>+${queuedLevels(eco, i, b)} na fila</small>` : ""}`}</td></tr>`;
   });
   h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
   for (let b = 1; b <= eco.countries.length; b++) if (atWar(eco, active, b)) {
