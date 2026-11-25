@@ -1,3 +1,4 @@
+import { techSum } from "./tech.ts";
 // Fomes e pestes. Fome: o mercado da cidade tem bem menos comida do que precisa; o povo da região morre aos poucos.
 // Peste: começa por acaso numa cidade grande, pula para as cidades que comerciam com ela e some depois de um tempo.
 // A medicina (tecnologias com unrest < 0, como Medicina moderna) reduz chance e mortes.
@@ -21,7 +22,7 @@ export const EVENTS = {
 const FOOD = ["Grãos", "Frutas e vegetais", "Carne e caça"].map((n) => GOODS.indexOf(n));
 
 const medicineMult = (e: Economy, country: number) =>
-  EVENTS.medicine.reduce((m, t) => (e.countries[country - 1].research.known.has(t) ? m / 2 : m), 1);
+  EVENTS.medicine.reduce((m, t) => (e.countries[country - 1].research.known.has(t) ? m / 2 : m), 1) * Math.max(0.1, 1 - techSum(e.countries[country - 1].research, "plague")); // tecnologias de saúde
 
 /** Uma semana: atualiza fomes e pestes, mata gente e devolve o que começou nesta semana (para avisar). */
 export function stepEvents(w: World, e: Economy) {

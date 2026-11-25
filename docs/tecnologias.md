@@ -1,6 +1,19 @@
-# Tecnologias (proposta)
+# Tecnologias
 
-Lista grande para substituir e ampliar as 47 de hoje. ✓ marca as que já existem no jogo (src/tech.ts).
+**No jogo desde esta versão** (src/tech.ts): as 113 abaixo. ✓ marca as 47 que já existiam antes.
+
+Alguns efeitos do texto foram simplificados para campos que o jogo já tem: pesquisa, comércio, exército, frota, aviação, manpower, lealdade e bônus de construção. Os campos novos são crescimento da população, teto de população, teto urbano, peste, comida de subsistência e controle.
+
+**Unidades** agora presas a tecnologias próprias:
+
+| Unidade | Tecnologia |
+|---|---|
+| Cavalaria | Cavalaria |
+| Mosqueteiros | Mosquete |
+| Couraçados | Couraçados |
+| Submarinos | Submarinos |
+| Porta-aviões | Porta-aviões |
+| Caças a jato | Caças a jato |
 
 **Regra de custo** (a mesma de src/tech.ts):
 

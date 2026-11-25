@@ -22,5 +22,5 @@ const plain = before - pop();
 assert.ok(plain > 0 && e.plague![k] === 2);
 e.countries[e.cities[k].country - 1].research.known.add("Medicina moderna");
 before = pop(); stepEvents(w, e);
-assert.ok(Math.abs((before - pop()) / before - EVENTS.plagueDeath / 2) < 1e-6);
+assert.ok(Math.abs((before - pop()) / before - (EVENTS.plagueDeath / 2) * 0.7) < 1e-6); // metade pela medicina e −30% da tecnologia (plague)
 console.log("events ok");

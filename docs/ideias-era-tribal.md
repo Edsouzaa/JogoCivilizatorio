@@ -1,5 +1,16 @@
 # Ideias: tirar a era tribal do marasmo
 
+> **Feito:**
+> - Crescimento natural por comida (`growPopulation`, economy.ts): até 1% ao ano com comida farta, de 80% a 120% de comida ÷ consumo, até o teto do hex.
+> - Teto e crescimento sobem com as tecnologias: Fogo controlado, Agricultura, Irrigação, Aquedutos, medicina...
+> - As 113 tecnologias de docs/tecnologias.md estão no jogo.
+> - A pesquisa cresce pela raiz da população, para um país grande não disparar.
+>
+> **Simulação de 200 anos (mapa 800×320):**
+> - A população vai de 25 mil (ano 25) a 62 mil (ano 200).
+> - Sai uma tecnologia tribal a cada uns 12 anos.
+> - Os primeiros chegam à Clássica por volta de 450 a.C. e quase todos até 400 a.C.
+
 ## Diagnóstico (código atual)
 
 1. **Não existe crescimento natural da população.**

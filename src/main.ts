@@ -1486,6 +1486,14 @@ const techEffect = (t: (typeof TECHS)[number]) => [
     ...(t.army ? [`+${Math.round(t.army * 100)}% força do exército`] : []),
     ...(t.manpower ? [`+${Math.round(t.manpower * 100)}% manpower`] : []),
     ...(t.unrest ? [t.unrest > 0 ? `−${t.unrest} lealdade (agita o povo)` : `+${-t.unrest} lealdade`] : []),
+    ...(t.growth ? [`+${Math.round(t.growth * 100)}% crescimento da população`] : []),
+    ...(t.popCap ? [`+${Math.round(t.popCap * 100)}% teto de população`] : []),
+    ...(t.urbanCap ? [`+${Math.round(t.urbanCap * 100)}% teto urbano`] : []),
+    ...(t.plague ? [`−${Math.round(t.plague * 100)}% peste`] : []),
+    ...(t.subsistence ? [`+${Math.round(t.subsistence * 100)}% comida de subsistência`] : []),
+    ...(t.control ? [`+${Math.round(t.control * 100)}% controle`] : []),
+    ...(t.fleet ? [`+${Math.round(t.fleet * 100)}% frota`] : []),
+    ...(t.air ? [`+${Math.round(t.air * 100)}% aviação`] : []),
   ].join(", ");
 
 function researchHtml(r: Economy["countries"][number]["research"], perWeek: number, headerOnly = false) {

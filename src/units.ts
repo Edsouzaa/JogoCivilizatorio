@@ -5,10 +5,10 @@ export type UnitType = { name: string; cat: string; tech?: string; atk: number; 
 export const UNITS: UnitType[] = [
   { name: "Lanceiros", cat: "Infantaria", atk: 1, def: 1.15, speed: 1, siege: 1, cost: 1 },
   { name: "Arqueiros", cat: "Infantaria", atk: 1.15, def: 0.9, speed: 1, siege: 0.8, cost: 1 },
-  { name: "Cavalaria", cat: "Montaria", tech: "Domesticação", atk: 1.35, def: 0.8, speed: 1.7, siege: 0.6, cost: 1.6 },
+  { name: "Cavalaria", cat: "Montaria", tech: "Cavalaria", atk: 1.35, def: 0.8, speed: 1.7, siege: 0.6, cost: 1.6 },
   { name: "Infantaria pesada", cat: "Infantaria", tech: "Trabalho do ferro", atk: 1.35, def: 1.4, speed: 0.85, siege: 1, cost: 1.4 },
   { name: "Máquinas de cerco", cat: "Cerco", tech: "Castelos", atk: 0.6, def: 0.6, speed: 0.6, siege: 3, cost: 1.5 },
-  { name: "Mosqueteiros", cat: "Infantaria", tech: "Pólvora", atk: 1.8, def: 1.7, speed: 1, siege: 1.2, cost: 1.5 },
+  { name: "Mosqueteiros", cat: "Infantaria", tech: "Mosquete", atk: 1.8, def: 1.7, speed: 1, siege: 1.2, cost: 1.5 },
   { name: "Artilharia", cat: "Artilharia", tech: "Pólvora", atk: 2.2, def: 0.9, speed: 0.7, siege: 2.5, cost: 2 },
   { name: "Fuzileiros", cat: "Infantaria", tech: "Conscrição", atk: 2.4, def: 2.5, speed: 1, siege: 1.2, cost: 1.6 },
   { name: "Blindados", cat: "Blindados", tech: "Blindados", atk: 4, def: 3, speed: 1.5, siege: 1.6, cost: 3 },
@@ -35,13 +35,13 @@ export const SHIPS: CraftType[] = [
   { name: "Galés", tech: "Galés", power: 1, cost: 1 },
   { name: "Caravelas", tech: "Navegação", power: 1.5, cost: 1.3 },
   { name: "Navios de linha", tech: "Pólvora", power: 2.5, cost: 1.8 },
-  { name: "Couraçados", tech: "Eletricidade", power: 5, cost: 3 },
-  { name: "Submarinos", tech: "Motor a combustão", power: 4, cost: 2.5 },
-  { name: "Porta-aviões", tech: "Aviação", power: 6, cost: 4 },
+  { name: "Couraçados", tech: "Couraçados", power: 5, cost: 3 },
+  { name: "Submarinos", tech: "Submarinos", power: 4, cost: 2.5 },
+  { name: "Porta-aviões", tech: "Porta-aviões", power: 6, cost: 4 },
 ];
 export const PLANES: CraftType[] = [
   { name: "Caças", tech: "Aviação", power: 1, cost: 1 },
-  { name: "Caças a jato", tech: "Computadores", power: 3, cost: 2 },
+  { name: "Caças a jato", tech: "Caças a jato", power: 3, cost: 2 },
   { name: "Drones", tech: "Drones", power: 4, cost: 2.2 },
 ];
 export const craftOf = (list: CraftType[], name?: string) => list.find((u) => u.name === name) ?? list[0];

@@ -88,8 +88,8 @@ console.log("navy ok");
   const { buildFleet } = await import("../src/war.ts");
   const c = e.countries[A - 1]; c.treasury = 1e4; c.manpower = 1e4;
   const city = e.cities.find((k) => k.country === A && k.urban.some((j) => coastOf(w, j) >= 0))!, coast = city.urban.find((j) => coastOf(w, j) >= 0)!;
-  assert.match(buildFleet(w, e, A, coast, "Couraçados")!, /Eletricidade/);
-  c.research.known.add("Eletricidade");
+  assert.match(buildFleet(w, e, A, coast, "Couraçados")!, /Couraçados/);
+  c.research.known.add("Couraçados");
   assert.equal(buildFleet(w, e, A, coast, "Couraçados"), null);
   assert.ok(e.divisions.some((d) => d.unit === "Couraçados"));
 }

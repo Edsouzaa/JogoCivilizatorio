@@ -144,6 +144,33 @@ const JOBS = ERAS.map((_, era) => BUILDINGS.map((b) => jobsFor(b.name, era))); /
 /** Tecnologia que a construção b exige, se exigir alguma. */
 export const techFor = (b: number) => TECH_FOR_BUILDING.get(BUILDINGS[b].name);
 
+/**
+ * Crescimento natural (uma vez por mês): cada hex cresce pela sobra de comida no mercado da cidade dele, até o teto do hex.
+ * Comida = oferta ÷ consumo dos 3 alimentos depois do comércio. Abaixo de foodMin não cresce (a fome é events.ts);
+ * em foodFull ou mais cresce a taxa cheia. Tecnologias (Agricultura, medicina...) somam à taxa.
+ */
+export function growPopulation(w: World, e: Economy) {
+  const rate = e.cities.map((k, ci) => {
+    const m = k.market; let have = 0, need = 0;
+    for (const f of FOOD) { have += m.supply[f]; need += m.pop * POP_DEMAND[f]; }
+    const ratio = need > 0 ? have / need : 0, c = e.countries[k.country - 1];
+    const food = Math.max(0, Math.min(1, (ratio - GROWTH.foodMin) / (GROWTH.foodFull - GROWTH.foodMin)));
+    return (food * GROWTH.yearly * (1 + techSum(c.research, "growth")) * (e.plague?.[ci] ? 0 : 1)) / 13; // 13 meses de 4 semanas
+  });
+  for (const i of e.owned) {
+    const k = e.market[i];
+    if (!k || !rate[k - 1] || !isLand(w.terrain[i])) continue;
+    const cap = popCap(w, e, i);
+    if (w.pop[i] < cap) w.pop[i] = Math.min(cap, w.pop[i] * (1 + rate[k - 1]) + GROWTH.seed * rate[k - 1] / GROWTH.yearly);
+  }
+}
+export const GROWTH = {
+  yearly: 0.01,  // crescimento por ano com comida farta (antes das tecnologias)
+  foodMin: 0.8,  // comida ÷ consumo abaixo disto: não cresce
+  foodFull: 1.2, // acima disto: cresce a taxa cheia
+  seed: 0.5,     // pessoas por ano que chegam a um hex quase vazio com comida (família que se muda)
+};
+
 export const MIN_PRICE = 0.5, MAX_PRICE = 1.75; // -50% a +75% do preço base
 
 /** Fator de preço pela oferta e demanda: falta empurra para +75%, sobra para -50%. */
@@ -197,7 +224,7 @@ export const RULES = {
   urbanIndustry: 1.25,      // ...mas a indústria rende mais
   maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
   researchBase: 3,          // pontos de pesquisa por semana de qualquer país (tribo média ≈ 3,5 da tabela; atrasadas só pela "vontade")
-  researchPerPop: 1000,     // +1 ponto por semana a cada tantas pessoas
+  researchPerPop: 1000,     // pontos por semana = √(população ÷ isto): 4 mil pessoas dão 2, 100 mil dão 10 (país grande pesquisa mais, sem disparar)
   // letrados: o alvo vem das tecnologias de ensino; anda devagar até ele; pesquisa × (1 + literacyResearch × letrados)
   literacyTechs: [["Escrita", 0.05], ["Universidades", 0.1], ["Imprensa", 0.15], ["Iluminismo", 0.15], ["Telégrafo", 0.1], ["Rádio", 0.1], ["Computadores", 0.15], ["Internet", 0.15]] as [string, number][],
   literacyYear: 0.01,       // quanto a fração anda por ano até o alvo
@@ -403,8 +430,8 @@ export function createEconomy(w: World): Economy {
 /** Raio de território de uma cidade pelo tamanho: 1, 2 a partir do tamanho 2, 3 a partir do 4. */
 /** Quanta gente cabe no hex: rural pela fertilidade; centro urbano bem mais, crescendo com a era. */
 export const popCap = (w: World, e: Economy, i: number) => {
-  const era = w.owner[i] ? e.countries[w.owner[i] - 1].research.era : 0;
-  return e.urban[i] ? RULES.popCapUrban * (1 + RULES.popCapPerEra * era) : RULES.popCapRural * Math.max(0.1, TERRAINS[w.terrain[i]].fertility);
+  const r = w.owner[i] ? e.countries[w.owner[i] - 1].research : null, era = r?.era ?? 0, tech = r ? 1 + techSum(r, "popCap") : 1;
+  return tech * (e.urban[i] ? RULES.popCapUrban * (1 + RULES.popCapPerEra * era) * (1 + (r ? techSum(r, "urbanCap") : 0)) : RULES.popCapRural * Math.max(0.1, TERRAINS[w.terrain[i]].fertility));
 };
 
 /** Cidade com saída para água (rio navegável ou mar com porto): troca mais e mais longe. */
@@ -757,7 +784,7 @@ export function tick(w: World, e: Economy) {
     c.pop += w.pop[i]; ctrlCountry[w.owner[i] - 1] += w.pop[i] * e.control[i];
     if (e.occupier[i]) continue; // ocupado: a população continua, mas não produz para o dono
     // subsistência: caça, coleta e roças sem construção; fazendas vêm por cima disso
-    const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence
+    const food = w.pop[i] * POP_DEMAND[FOOD[0]] * TERRAINS[w.terrain[i]].fertility * RULES.subsistence * (1 + techSum(c.research, "subsistence"))
       * (w.river[i] ? 1.25 : 1) * (snowAt(w, i, e.week) ? 0.5 : 1); // rio rega; neve cobre o campo
     for (const f of FOOD) { city.market.supply[f] += food; c.subsistence += food * BASE_PRICE[f] * city.market.price[f]; }
   }
@@ -925,7 +952,7 @@ export function tick(w: World, e: Economy) {
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
     const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01);
     c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);
-    c.researchWeek = (1 + RULES.literacyResearch * c.literacy) * (RULES.researchBase + c.pop / RULES.researchPerPop + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
+    c.researchWeek = (1 + RULES.literacyResearch * c.literacy) * (RULES.researchBase + Math.sqrt(c.pop / RULES.researchPerPop) + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
     if (c.research.era === 0) { // comércio puxa a tribo para fora do isolamento, mas não garante
       let partners = 0;
       for (const key of e.pacts) if (key.split("-").includes(String(ci + 1))) partners++;
@@ -941,7 +968,7 @@ export function tick(w: World, e: Economy) {
     if (c.infamy >= INFAMY.pactsBreak) for (const k of [...e.pacts]) if (k.split("-").map(Number).includes(ci + 1)) e.pacts.delete(k); // ninguém quer negócio
   });
 
-  if (e.week % 4 === 0) migrate(w, e);
+  if (e.week % 4 === 0) { migrate(w, e); growPopulation(w, e); }
 
   stepAdmin(e);
   payTribute(e);

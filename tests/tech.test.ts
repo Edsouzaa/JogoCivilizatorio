@@ -15,11 +15,11 @@ const r = newResearch();
 assert.ok(available(r).every((t) => t.era === 0 && t.requires.length === 0), "só tribais sem exigência no início");
 
 // pesquisa escolhe sozinha a mais barata e conclui quando atinge o custo
-const agri = TECHS.find((t) => t.name === "Agricultura")!;
-assert.equal(research(r, agri.cost - 1), null);
-assert.equal(r.researching, "Agricultura");
-assert.equal(research(r, 1)?.name, "Agricultura");
-assert.ok(r.known.has("Agricultura"));
+const first = [...available(r)].sort((a, b) => a.cost - b.cost)[0];
+assert.equal(research(r, first.cost - 1), null);
+assert.equal(r.researching, first.name);
+assert.equal(research(r, 1)?.name, first.name);
+assert.ok(r.known.has(first.name));
 
 // conhecer todas as tribais passa para a Clássica, que libera as tecnologias dela
 for (let k = 0; k < 100 && r.era === 0; k++) research(r, 1e5);
@@ -27,9 +27,9 @@ assert.equal(r.era, 1);
 assert.ok(TECHS.filter((t) => t.era === 0).every((t) => r.known.has(t.name)));
 assert.ok(available(r).some((t) => t.era === 1));
 
-// Escrita acelera a pesquisa
+// Escrita acelera a pesquisa (somada às tribais já conhecidas)
 r.known.add("Escrita");
-assert.equal(researchMult(r), 1.25);
+assert.equal(researchMult(r), 1.35); // Escrita +25% e Tradição oral (tribal) +10%
 
 // pesquisando tudo, o país passa por todas as eras até a Moderna, e toda era tem tecnologias
 for (let k = 0; k < 5000 && available(r).length; k++) research(r, 1e6);
@@ -41,6 +41,7 @@ for (let era = 0; era < ERAS.length; era++) assert.ok(TECHS.some((t) => t.era ==
 assert.ok(techSum(r, "army") > 0 && techSum(r, "trade") > 0 && techSum(r, "manpower") > 0);
 const calm = newResearch(); calm.known.add("Medicina moderna");
 assert.equal(techSum(calm, "unrest"), -5);
+assert.ok(techSum(calm, "growth") > 0 && techSum(calm, "plague") > 0, "medicina: mais crescimento, menos peste");
 console.log("tech ok");
 
 // letrados: sobem devagar com as tecnologias de ensino e aceleram a pesquisa
