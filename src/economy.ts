@@ -26,7 +26,7 @@ import { updateControl, CONTROL } from "./control.ts";
 import { relation, DIPLO, stepDiplomacy } from "./diplomacy.ts";
 import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
 import { stepClaims, type Claim } from "./claims.ts";
-import { foundingCost, expansionCapacity, recentFoundings, updateExpansion } from "./expansion.ts";
+import { foundingCost, updateExpansion } from "./expansion.ts";
 import { expireProposals, type Proposal, type Vote } from "./proposals.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
@@ -224,7 +224,7 @@ export const RULES = {
   startSettlers: 2,
   settlerCost: 200,         // dinheiro para treinar colonos
   settlerPop: 20,           // pessoas que saem da capital para virar colonos
-  minCityDistance: 4,       // hexágonos entre cidades
+  minCityDistance: 2,       // hexágonos entre cidades (2 = um hex livre entre elas)
   settlerSupplyRange: 6,    // colonos a mais que isto de uma cidade do país ficam sem suprimentos
   settlerAttrition: 0.05,   // fração das pessoas dos colonos que morre por semana sem suprimentos
   settleClaimRadius: 1,     // território que uma cidade nova reivindica (cresce com o tamanho)
@@ -255,7 +255,7 @@ export const RULES = {
   popCapPerEra: 0.25,       // ...que sobe isto por era (saneamento, técnicas)
   urbanExtract: 0.5,        // centro urbano tira só metade dos recursos naturais...
   urbanIndustry: 1.25,      // ...mas a indústria rende mais
-  maxCitySize: 37,          // 1 + 6 + 12 + 18 = raio 3
+  maxCitySize: 91,          // raio 5 em volta do centro (1 + 6 + 12 + 18 + 24 + 30)
   researchBase: 3,          // pontos de pesquisa por semana de qualquer país (tribo média ≈ 3,5 da tabela; atrasadas só pela "vontade")
   researchPerPop: 1000,     // pontos por semana = √(população ÷ isto): 4 mil pessoas dão 2, 100 mil dão 10 (país grande pesquisa mais, sem disparar)
   // letrados: o alvo vem das tecnologias de ensino; anda devagar até ele; pesquisa × (1 + literacyResearch × letrados)
@@ -446,7 +446,7 @@ export function refresh(w: World, e: Economy) {
   let queue: number[] = [];
   e.cities.forEach((c, k) => {
     const ok = (j: number) => w.owner[j] === c.country && isLand(w.terrain[j]);
-    c.urban = [...new Set([c.hex, ...(c.picked ?? []).filter(ok), ...hexesInRadius(c.hex, 3, w.W, w.H).filter(ok)])].slice(0, c.size);
+    c.urban = [...new Set([c.hex, ...(c.picked ?? []).filter(ok), ...hexesInRadius(c.hex, 5, w.W, w.H).filter(ok)])].slice(0, c.size);
     for (const j of c.urban) e.urban[j] = 1;
     c.port = c.urban.some((j) => w.navigable[j] > 0);
     c.river = c.urban.map((j) => w.riverOf?.[j] ?? 0).find((r) => r > 0);
@@ -555,7 +555,7 @@ export function growCities(w: World, e: Economy) {
     if (city.size >= RULES.maxCitySize) return false;
     let best = -1;
     for (const u of city.urban) forNeighbors(u % w.W, (u / w.W) | 0, w.W, w.H, (j) => {
-      if (w.owner[j] === city.country && !e.urban[j] && isLand(w.terrain[j]) && !e.occupier[j] && (best < 0 || w.pop[j] > w.pop[best])) best = j;
+      if (hexDistance(j % w.W, (j / w.W) | 0, city.hex % w.W, (city.hex / w.W) | 0, w.W) <= 5 && w.owner[j] === city.country && !e.urban[j] && isLand(w.terrain[j]) && !e.occupier[j] && (best < 0 || w.pop[j] > w.pop[best])) best = j;
     });
     if (best < 0) return false;
     city.size++; city.picked = [...(city.picked ?? []), best]; e.urban[best] = 1; // marca já: outra cidade não pega o mesmo hex
@@ -577,7 +577,7 @@ export function growCities(w: World, e: Economy) {
   if (changed) refresh(w, e);
 }
 
-export const borderRadius = (size: number) => Math.min(3, 1 + Math.floor(size / 2));
+export const borderRadius = (size: number) => Math.min(5, 1 + Math.floor(size / 2));
 
 export function buildCost(e: Economy, b: number, i: number) { return RULES.buildCost * (e.levels[b][i] + 1); }
 
@@ -632,7 +632,6 @@ export function foundCity(w: World, e: Economy, unit: number, later = false): st
   const col = i % w.W, row = (i / w.W) | 0;
   const dist = (h: number) => hexDistance(col, row, h % w.W, (h / w.W) | 0, w.W);
   if (e.cities.some((k) => dist(k.hex) < RULES.minCityDistance)) return `Muito perto de outra cidade (mínimo ${RULES.minCityDistance})`;
-  if (recentFoundings(e, country) >= expansionCapacity(e, country)) return `Capacidade de expansão esgotada (${expansionCapacity(e, country)} cidades a cada 2 anos)`;
   const fc = foundingCost(w, e, country, i, RESOURCES), c = e.countries[country - 1];
   if (c.treasury < fc.cost) return `Fundar aqui custa ${fc.cost} (${fc.claim}, distância ${Math.round(fc.distance)})`;
   c.treasury -= fc.cost;

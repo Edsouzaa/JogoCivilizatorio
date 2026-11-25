@@ -35,7 +35,7 @@ import { proposalsTo, PROPOSAL_WEEKS } from "./proposals.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
-import { foundingCost, distanceLabel, expansionCapacity, recentFoundings, EXPAND } from "./expansion.ts";
+import { foundingCost, distanceLabel, hexPrice, EXPAND } from "./expansion.ts";
 import { rulerOf, ageOf, lifeText, CHAR } from "./characters.ts";
 import { unitOf, statsOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
@@ -680,6 +680,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.air) return cmd({ t: "air", hex: selected, unit: d.air });
   if (d.act === "war") return cmd({ t: "war", target: world.owner[selected] });
   if (d.peace) return cmd({ t: "peace", target: Number(d.peace) });
+  if (d.buyhex) return cmd({ t: "buyHex", hex: Number(d.buyhex) });
   if (d.act === "disband" && selectedDiv) { cmd({ t: "disband", id: selectedDiv }); selectedDiv = null; return updateUI(); }
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
   if (d.econ) { econTab = Number(d.econ); goodDetail = null; return updateUI(); }
@@ -1454,7 +1455,7 @@ function divisionHtml() {
     const dist = settlerDistance(world, eco, d), out = dist > RULES.settlerSupplyRange;
     return `<div class="unit"><b><i class=i-tent></i> Colonos</b> · ${t} · ${Math.round(d.strength)} pessoas · ${dist} hex da cidade` +
       (out ? ` <span class="bad">sem suprimentos (máx. ${RULES.settlerSupplyRange}): morrendo</span>` : "") +
-      (() => { const fc = foundingCost(world, eco, d.country, d.hex, RESOURCES); return `<br><small>Aqui: claim de <b>${fc.claim}</b> · ${distanceLabel(fc.distance)} (${Math.round(fc.distance)}) · fundar custa <b>${fc.cost}</b> · capacidade ${recentFoundings(eco, d.country)}/${expansionCapacity(eco, d.country)} cidades a cada 2 anos</small>`; })() +
+      (() => { const fc = foundingCost(world, eco, d.country, d.hex, RESOURCES); return `<br><small>Aqui: claim de <b>${fc.claim}</b> · ${distanceLabel(fc.distance)} (${Math.round(fc.distance)}) · fundar custa <b>${fc.cost}</b></small>`; })() +
       `<br><button data-act="found">C Fundar cidade aqui</button> <button data-act="outpost" title="Acampamento: reivindica o hex, espalha influência, abastece tropas e serve de base para fundar mais longe">Posto avançado (${EXPAND.outpostCost})</button> <button data-act="disband">Voltar para casa</button>${message ? ` <span class="bad">${message}</span>` : ""}</div>`;
   }
   if (d.kind === "air") {
@@ -1669,6 +1670,11 @@ function hexHtml() {
   }
   if (world.owner[i] !== active || !active) {
     h += world.owner[i] ? `<br>Pertence a ${world.countries[world.owner[i] - 1].name}` : "<br>Sem dono";
+    if (active && !world.owner[i] && isLand(world.terrain[i])) { // compra: hex livre colado no território
+      let touches = false; forNeighbors(i % W, (i / W) | 0, W, world.H, (j) => { if (world.owner[j] === active) touches = true; });
+      const rival = eco.influence?.[i];
+      if (touches) h += ` <button data-buyhex="${i}" title="Preço sobe com o tamanho do país${rival && rival !== active ? `; ${world.countries[rival - 1].name} também se expande aqui: relação −${EXPAND.contested}` : ""}">Comprar hex (${hexPrice(world, eco, active)})</button>`;
+    }
     if (net && world.owner[i] && !mp?.players.some((p) => p.country === world.owner[i])) h += ` <button data-act="claim">Assumir este país</button>`;
     if (active && world.owner[i] && world.owner[i] !== active) {
       const rel = relation(eco, active, world.owner[i]);

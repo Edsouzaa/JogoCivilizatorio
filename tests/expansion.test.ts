@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { generateWorld, isLand, RESOURCES } from "../src/world.ts";
 import { createEconomy, foundCity, refresh, borderRadius, tick } from "../src/economy.ts";
-import { pathDistance, distanceMult, foundingCost, buildOutpost, updateExpansion, expansionCapacity } from "../src/expansion.ts";
-import { hexDistance } from "../src/hex.ts";
+import { pathDistance, distanceMult, foundingCost, buildOutpost, updateExpansion, buyHex, hexPrice, EXPAND } from "../src/expansion.ts";
+import { hexDistance, forNeighbors } from "../src/hex.ts";
+import { relation } from "../src/diplomacy.ts";
 
 const w = generateWorld(200, 100, 9, 2), e = createEconomy(w);
 const cap = e.cities[0].hex, c = e.countries[0];
@@ -22,10 +23,7 @@ assert.match(foundCity(w, e, sNear)!, /custa/);
 c.treasury = 1e4;
 assert.equal(foundCity(w, e, sNear), null);
 assert.equal(c.treasury, 1e4 - fn.cost);
-// capacidade: na era tribal, poucas cidades por vez
-assert.equal(expansionCapacity(e, 1), 1);
-const sFar = settler(far);
-assert.match(foundCity(w, e, sFar)!, /Capacidade/);
+const sFar = settler(far); // sem limite de cidades a cada 2 anos: os colonos seguem para virar posto avançado
 // posto avançado: reivindica o hex e vira âncora (fundar perto dele fica mais barato)
 const target = land.find((i) => d(i, far) === 4 && d(i, cap) > 12) ?? far;
 const before = foundingCost(w, e, 1, target, RESOURCES).cost;
@@ -36,5 +34,14 @@ assert.ok(foundingCost(w, e, 1, target, RESOURCES).cost <= before);
 refresh(w, e); updateExpansion(w, e, borderRadius);
 assert.equal(typeof e.cities.find((k) => k.hex === near)!.isolated, "boolean");
 assert.ok(e.influence!.some((v) => v === 1), "influência deveria cobrir hexes livres");
+// compra de hex: só livre e colado; preço sobe com o tamanho; vizinho que se expandia ali fica com relação pior
+const free = land.find((i) => { if (w.owner[i]) return false; let t = false; forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { if (w.owner[j] === 1) t = true; }); return t; })!;
+const p0 = hexPrice(w, e, 1);
+assert.match(buyHex(w, e, 1, cap)!, /dono/);
+e.influence![free] = 2; c.treasury = 1e4;
+assert.equal(buyHex(w, e, 1, free), null);
+assert.equal(w.owner[free], 1);
+assert.ok(hexPrice(w, e, 1) >= p0);
+assert.equal(relation(e, 1, 2), -EXPAND.contested);
 tick(w, e);
 console.log("expansion ok");

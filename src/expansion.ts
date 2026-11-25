@@ -3,15 +3,18 @@
 // Fundar longe não é proibido: só fica mais caro, conta na capacidade de expansão e a cidade nasce isolada.
 import { forNeighbors, hexesInRadius } from "./hex.ts";
 import { T, isLand, type World } from "./world.ts";
-import { riverOpen, type Economy } from "./economy.ts";
+import { riverOpen, refresh, type Economy } from "./economy.ts";
+import { addRelation } from "./diplomacy.ts";
 
 export const EXPAND = {
   foundBase: 60,       // dinheiro para fundar uma cidade (× multiplicador da distância)
   outpostCost: 30,     // posto avançado (acampamento)
   influence: 2,        // área de influência: hexes além da fronteira da cidade
   isolation: 0.6,      // cidade isolada: controle máximo × isto na região dela
-  capacityWeeks: 104,  // cidades fundadas nos últimos 2 anos contam na capacidade de expansão
   maxSearch: 40,       // custo de caminho máximo procurado (mais que isso = expansão remota)
+  hexBase: 15,         // compra de hex: preço base...
+  hexScale: 40,        // ...× (1 + hexes do país ÷ isto): país grande paga mais
+  contested: 5,        // relação perdida com o país que também tinha influência no hex comprado
 };
 /** Multiplicador pela distância (custo de caminho até a cidade ou posto mais perto). */
 export const distanceMult = (d: number) => (d <= 3 ? 1 : d <= 6 ? 1.25 : d <= 10 ? 1.75 : d <= 15 ? 2.5 : 3.5);
@@ -65,9 +68,6 @@ export function expansionClaim(w: World, e: Economy, country: number, hex: numbe
 /** Claim com justificativa (recursos, estratégico) barateia a fundação distante. */
 const CLAIM_DISCOUNT: Record<ExpansionClaim, number> = { "Proximidade": 1, "Continuidade": 0.8, "Recursos": 0.85, "Estratégico": 0.85, "Assentamento distante": 1 };
 
-/** Capacidade de expansão: quantas cidades o país aguenta fundar a cada 2 anos. */
-export const expansionCapacity = (e: Economy, country: number) => 1 + e.countries[country - 1].research.era + Math.floor(e.cities.filter((k) => k.country === country).length / 4);
-export const recentFoundings = (e: Economy, country: number) => e.cities.filter((k) => k.country === country && k.founded !== undefined && e.week - k.founded < EXPAND.capacityWeeks).length;
 
 /** Quanto custa fundar uma cidade no hex (e por quê). */
 export function foundingCost(w: World, e: Economy, country: number, hex: number, resourceNames: string[]) {
@@ -96,6 +96,28 @@ export function updateExpansion(w: World, e: Economy, radiusOf: (size: number) =
     for (let q = 0; q < queue.length; q++) forNeighbors(queue[q] % w.W, (queue[q] / w.W) | 0, w.W, w.H, (j) => { if (!reached[j] && w.owner[j] === country) { reached[j] = 1; queue.push(j); } });
   }
   for (const k of e.cities) k.isolated = !reached[k.hex] && !riverOpen(e, k) && !(k.harbor ?? 0); // água também liga
+}
+
+/** Preço de comprar um hex livre: cresce com o tamanho do país. */
+export function hexPrice(w: World, e: Economy, country: number) {
+  let n = 0; for (const i of e.owned) if (w.owner[i] === country) n++;
+  return Math.round(EXPAND.hexBase * (1 + n / EXPAND.hexScale));
+}
+/** Compra um hex livre colado no território (vai para a cidade mais perto). Quem também se expandia ali fica com relação pior. */
+export function buyHex(w: World, e: Economy, country: number, hex: number): string | null {
+  if (!isLand(w.terrain[hex])) return "Precisa ser em terra";
+  if (w.owner[hex]) return "Hex já tem dono";
+  let touches = false;
+  forNeighbors(hex % w.W, (hex / w.W) | 0, w.W, w.H, (j) => { if (w.owner[j] === country) touches = true; });
+  if (!touches) return "Só hexes colados no seu território";
+  const c = e.countries[country - 1], price = hexPrice(w, e, country);
+  if (c.treasury < price) return `Comprar custa ${price}`;
+  c.treasury -= price;
+  const rival = e.influence?.[hex];
+  if (rival && rival !== country) addRelation(e, country, rival, -EXPAND.contested);
+  w.owner[hex] = country;
+  refresh(w, e);
+  return null;
 }
 
 /** Posto avançado: colonos viram um acampamento que reivindica o hex e espalha influência (base para expandir). */

@@ -61,7 +61,7 @@ export function bestSite(w: World, e: Economy, country: number) {
     for (const i of hexesInRadius(a, RULES.settlerSupplyRange, w.W, w.H)) {
       const s = siteScore(w, i);
       if (s <= bestS) continue; // nota primeiro: as checagens abaixo percorrem todas as cidades
-      if (e.cities.some((k) => dist(w, k.hex, i) < RULES.minCityDistance)) continue;
+      if (e.cities.some((k) => dist(w, k.hex, i) < 4)) continue; // IA espaça mais que o mínimo da regra (cidade a 1 hex é escolha do jogador)
       if (e.divisions.some((d) => d.kind === "settler" && d.target === i)) continue; // outro grupo já vai pra lá
       bestS = s; best = i;
     }

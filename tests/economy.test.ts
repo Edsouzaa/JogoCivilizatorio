@@ -124,7 +124,7 @@ console.log("economy ok");
     assert.ok(touches, 'mar territorial longe da terra do país');
   }
   // fronteira cresce com a cidade
-  assert.equal(borderRadius(1), 1); assert.equal(borderRadius(2), 2); assert.equal(borderRadius(10), 3);
+  assert.equal(borderRadius(1), 1); assert.equal(borderRadius(2), 2); assert.equal(borderRadius(10), 5); assert.equal(borderRadius(40), 5);
 }
 console.log("territory ok");
 
