@@ -53,6 +53,8 @@ export type Law = {
   desc?: string;        // o que a lei faz, em uma frase
   tax?: number;         // Impostos: taxa sobre o PIB
   tradeShare?: number;  // Economia: fração da sobra que circula entre as cidades do país
+  policy?: "restrito" | "orientado" | "livre"; // Investimento: onde os investidores privados podem construir (ai.ts)
+  defaultOrg?: string;  // Economia: organização automática dos edifícios (methods.ts)
   fundShare?: number;   // Economia: fração dos dividendos privados que os donos põem no fundo de investimento (firms.ts)
   privateCp?: number;   // Economia: fração dos pontos de construção para a fila privada (construction.ts)
   invest?: number;      // fração do PIB por semana que os donos (capitalistas, aristocratas) põem no fundo de investimento
@@ -82,6 +84,17 @@ export const LAWS: Record<string, Law[]> = {
     { name: "Tradicionalismo", desc: "Comércio pelas rotas e costumes de sempre.", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores"], tradeShare: 0.5, invest: 0.01, privateCp: 0.2, fundShare: 0.15 },
     { name: "Mercantilismo", desc: "O Estado incentiva comércio e acumula riqueza.", era: era("Descobertas"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7, invest: 0.02, privateCp: 0.35, fundShare: 0.3 },
     { name: "Livre comércio", desc: "Mercadorias circulam livremente entre as cidades.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], tradeShare: 0.9, invest: 0.04, privateCp: 0.6, fundShare: 0.5 },
+    { name: "Agrarismo", desc: "A riqueza vem da terra: donos de terra investem, o Estado constrói o resto.", era: era("Medieval"), likes: ["Latifundiários", "Povo do Campo"], dislikes: ["Industriais"], tradeShare: 0.55, invest: 0.015, privateCp: 0.25, fundShare: 0.2 },
+    { name: "Intervencionismo", desc: "Mercado com o Estado dirigindo setores e dividindo a construção.", era: era("Revoluções"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Industriais"], tradeShare: 0.8, invest: 0.03, privateCp: 0.4, fundShare: 0.35 },
+    { name: "Economia cooperativa", desc: "Empresas dos trabalhadores: as organizações automáticas viram cooperativas.", era: era("Industrialização"), likes: ["Sindicatos", "Povo do Campo"], dislikes: ["Industriais", "Latifundiários"], tradeShare: 0.75, invest: 0.02, privateCp: 0.45, fundShare: 0.3, defaultOrg: "Cooperativa" },
+    { name: "Economia planejada", desc: "O Estado planeja e é dono: sem investidores, toda a construção é pública e as empresas são estatais.", era: era("Grandes Guerras"), likes: ["Sindicatos", "Forças Armadas"], dislikes: ["Industriais", "Mercadores", "Pequena Burguesia"], tradeShare: 0.7, invest: 0, privateCp: 0, fundShare: 0, defaultOrg: "Estatal" },
+    { name: "Economia mista", desc: "Estatais nos setores-chave e mercado no resto.", era: era("Multipolar"), likes: ["Intelectuais", "Pequena Burguesia", "Sindicatos"], dislikes: [], tradeShare: 0.85, invest: 0.03, privateCp: 0.5, fundShare: 0.4 },
+  ],
+  "Investimento": [
+    { name: "Costume", desc: "Quem tem recursos constrói o que a tradição manda.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
+    { name: "Investimento restrito", desc: "Investidores só podem abrir extração e lavoura; indústria é do Estado.", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores", "Industriais"], policy: "restrito" },
+    { name: "Investimento orientado", desc: "Investidores só entram onde falta mercadoria (preço acima do normal).", era: era("Descobertas"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Industriais"], policy: "orientado" },
+    { name: "Investimento livre", desc: "Investidores constroem onde quiserem.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Sindicatos"], policy: "livre" },
   ],
 };
 for (const laws of Object.values(LAWS)) for (const l of laws) for (const g of [...l.likes, ...l.dislikes]) if (G[g] === undefined) throw new Error(`lei ${l.name}: grupo ${g}`);
@@ -123,7 +136,7 @@ export const newPolitics = (): Politics => ({
   government: [], legitimacy: 0.5, rival: -1, support: 0,
 });
 
-export const lawOf = (p: Politics, category: string) => LAWS[category].find((l) => l.name === p.laws[category])!;
+export const lawOf = (p: Politics, category: string) => LAWS[category].find((l) => l.name === p.laws[category]) ?? LAWS[category][0]; // save antigo sem a categoria: a primeira lei
 
 /** Recalcula poder dos grupos, governo e legitimidade a partir da população por tipo. */
 export function updatePolitics(p: Politics, pops: Pops, countryEra: number) {

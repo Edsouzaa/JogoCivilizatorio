@@ -707,14 +707,14 @@ export function tick(w: World, e: Economy) {
   for (const i of e.producers) {
     const k = e.market[i];
     if (!k || e.occupier[i]) continue;
-    const m = e.cities[k - 1].market, c = e.countries[w.owner[i] - 1], known = c.research.known;
+    const m = e.cities[k - 1].market, c = e.countries[w.owner[i] - 1], known = c.research.known, org = lawOf(c.politics, "Economia").defaultOrg;
     let mult = 1, required = 0, mined = 0; // mined: produção do 1º recurso (gasta a jazida)
     const out = new Map<number, number>(); // produto → produção base
     const here: FirmRun[] = [];
     for (let b = 0; b < NB; b++) {
       const lv = e.levels[b][i];
       if (!lv) continue;
-      const def = BUILDINGS[b], key = methodKey(i, b), fx = combine(activeMethods(e, key, def.name, known));
+      const def = BUILDINGS[b], key = methodKey(i, b), fx = combine(activeMethods(e, key, def.name, known, org));
       const run: FirmRun = { key, hex: i, b, city: k - 1, country: w.owner[i], lv, workers: lv * def.workers * fx.workers, outs: [], ins: [], fx, q: 0 };
       here.push(run); runs.push(run);
       required += run.workers;

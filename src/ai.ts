@@ -1,14 +1,14 @@
 // IA dos países que não têm jogador. Decide uma vez por mês, com regras simples e baratas:
 // expandir com colonos, construir onde o mercado paga mais, propor leis com apoio, manter exército de defesa,
 // declarar guerra raramente a vizinhos mais fracos e fazer a paz quando a guerra se decidiu ou se arrastou.
-import { queueBuild, queueOf } from "./construction.ts";
+import { queueBuild, queueOf, privateShare } from "./construction.ts";
 import {
   build, buildCost, buildingsFor, outputOf, urbanize, urbanCost, buildRoad, foundCity, trainSettlers, techFor, settlersOf, proposePact, hasPact, INFAMY,
   BUILDINGS, RULES, type Economy, type Division,
   SECTOR,
 } from "./economy.ts";
 import { recruit, orderMove, declareWar, makePeace, atWar, warScore, settlerDistance, buildFleet, buildAir, coastOf, WAR, NAVY, AIR } from "./war.ts";
-import { LAWS, lawSupport, proposeLaw } from "./politics.ts";
+import { LAWS, lawSupport, proposeLaw, lawOf } from "./politics.ts";
 import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { relation, DIPLO } from "./diplomacy.ts";
 import { proposeSubject } from "./subjects.ts";
@@ -20,6 +20,7 @@ import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
 export const AI = {
   subjectChancePerMonth: 0.05, // chance de propor dependência a um vizinho
   reserve: 1.5,         // só gasta se o tesouro passar de reserve × custo
+  guidedPrice: 1.1,     // investimento orientado: só onde o preço local passa disto (falta)
   publicQueue: 2,       // obras públicas na fila ao mesmo tempo...
   queuePerTreasury: 2000, // ...mais 1 a cada tanto no tesouro...
   publicQueueMax: 8,    // ...até isto
@@ -96,8 +97,11 @@ function expand(w: World, e: Economy, country: number, era: number) {
 
 /** Constrói onde o produto está mais caro no mercado local (preço alto = falta). Uma obra por mês. */
 /** Melhor obra do país agora: onde o produto está mais caro por dinheiro gasto. [hex, construção] ou null. */
-function bestInvestment(w: World, e: Economy, country: number): [number, number] | null {
-  const c = e.countries[country - 1];
+function bestInvestment(w: World, e: Economy, country: number, priv = false): [number, number] | null {
+  const c = e.countries[country - 1], policy = priv ? lawOf(c.politics, "Investimento").policy : undefined;
+  // retorno real: lucro ÷ receita dos edifícios do mesmo tipo no país (firms.ts); sem dados, neutro
+  const prof = new Float64Array(BUILDINGS.length), rev = new Float64Array(BUILDINGS.length);
+  if (e.ledgers) for (const [key, l] of e.ledgers) { const [h, b] = key.split(":").map(Number); if (w.owner[h] === country) { prof[b] += l.profit; rev[b] += l.rev; } }
   let best: [number, number] | null = null, bestV = 0;
   for (const i of e.owned) {
     if (w.owner[i] !== country || e.occupier[i]) continue;
@@ -108,9 +112,12 @@ function bestInvestment(w: World, e: Economy, country: number): [number, number]
       if (tech && !c.research.known.has(tech)) continue;
       if (def.boosts !== undefined && !e.levels[def.boosts][i]) continue;
       if (def.industry && !def.industry.outputs.length) continue; // sem produto (administração, construção): decidido à parte
+      if (policy === "restrito" && def.industry) continue; // lei: indústria é do Estado
       const out = def.industry ? def.industry.outputs[0][0] : outputOf(w, b, i);
       const workersOk = w.pop[i] * RULES.hexLaborShare >= def.workers * (e.levels[b][i] + 1) * 0.5;
-      const v = (city.market.price[out] * (workersOk ? 1 : 0.2)) / buildCost(e, b, i);
+      if (policy === "orientado" && city.market.price[out] < AI.guidedPrice) continue; // lei: só onde falta mercadoria
+      const margin = rev[b] > 0 ? Math.max(-0.9, prof[b] / rev[b]) : 0;
+      const v = (city.market.price[out] * (workersOk ? 1 : 0.2) * (1 + margin)) / buildCost(e, b, i);
       if (v > bestV) { bestV = v; best = [i, b]; }
     }
   }
@@ -135,7 +142,8 @@ export function privateInvest(w: World, e: Economy) {
     for (let n = 0; n < 3; n++) { // até 3 obras novas por mês, se o fundo cobre o que já está na fila e a nova
       const queued = queueOf(e, ci + 1).filter((p) => p.priv);
       if (queued.length >= AI.privateQueue) return;
-      const best = bestInvestment(w, e, ci + 1);
+      if (privateShare(e, ci + 1) <= 0) return; // lei sem fila privada (economia planejada, subsistência)
+      const best = bestInvestment(w, e, ci + 1, true);
       if (!best) return;
       const owed = queued.reduce((s, p) => s + p.cost - p.paid, 0) + buildCost(e, best[1], best[0]);
       if ((c.investPool ?? 0) < owed) return;

@@ -116,17 +116,18 @@ export const methodsOf = (building: string): Method[][] => [...(BY[building] ?? 
 
 const unlocked = (m: Method, known: Set<string>) => !m.tech || known.has(m.tech);
 /** Organização automática: comunitária na era tribal, depois a mais avançada liberada (cooperativa e estatal são escolhas). */
-function autoPick(cat: number, list: Method[], known: Set<string>) {
+function autoPick(cat: number, list: Method[], known: Set<string>, defaultOrg?: string) {
+  if (cat === 3 && defaultOrg) { const d = list.findIndex((m) => m.name === defaultOrg && unlocked(m, known)); if (d >= 0) return d; } // lei de Economia
   let k = 0;
   list.forEach((m, i) => { if (unlocked(m, known) && !(cat === 3 && (m.name === "Cooperativa" || m.state))) k = i; });
   return k;
 }
 /** Métodos em uso no edifício (escolha do jogador se liberada; senão o automático). */
-export function activeMethods(e: Economy, key: string, building: string, known: Set<string>): Method[] {
+export function activeMethods(e: Economy, key: string, building: string, known: Set<string>, defaultOrg?: string): Method[] {
   const lists = methodsOf(building), pick = e.methods?.get(key);
   return lists.map((list, cat) => {
     const k = pick?.[cat] ?? -1;
-    return k >= 0 && list[k] && unlocked(list[k], known) ? list[k] : list[autoPick(cat, list, known)];
+    return k >= 0 && list[k] && unlocked(list[k], known) ? list[k] : list[autoPick(cat, list, known, defaultOrg)];
   });
 }
 export const methodKey = (hex: number, b: number) => `${hex}:${b}`;

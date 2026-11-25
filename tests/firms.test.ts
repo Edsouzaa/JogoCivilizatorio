@@ -72,3 +72,25 @@ assert.equal(l.priv, 1);
 assert.ok(c.politics.legitimacy < leg || leg === 0);
 assert.match(nationalize(w, e, 1, hex, farm, 5)!, /tantos/);
 console.log("firms ok");
+
+// leis: economia planejada torna estatal a organização automática e fecha a fila privada; investimento restrito barra indústria
+{
+  const { privateInvest } = await import("../src/ai.ts");
+  const { queueOf, privateShare } = await import("../src/construction.ts");
+  const { lawOf, LAWS } = await import("../src/politics.ts");
+  const w3 = generateWorld(200, 100, 6, 2), e3 = createEconomy(w3), c3 = e3.countries[0];
+  delete c3.politics.laws["Investimento"]; // save antigo sem a categoria
+  assert.equal(lawOf(c3.politics, "Investimento").name, LAWS["Investimento"][0].name);
+  c3.research.known.add("Escrita");
+  c3.politics.laws["Economia"] = "Economia planejada";
+  assert.equal(privateShare(e3, 1), 0);
+  const any = [...e3.owned].find((i) => w3.owner[i] === 1 && e3.levels.some((l) => l[i]))!, bb = e3.levels.findIndex((l) => l[any]);
+  assert.ok(activeMethods(e3, methodKey(any, bb), BUILDINGS[bb].name, c3.research.known, lawOf(c3.politics, "Economia").defaultOrg)[3].state, "planejada: estatal");
+  c3.investPool = 1e6; privateInvest(w3, e3);
+  assert.equal(queueOf(e3, 1).filter((p) => p.priv).length, 0, "planejada: sem investidores");
+  c3.politics.laws["Economia"] = "Livre comércio"; c3.politics.laws["Investimento"] = "Investimento restrito";
+  for (const k of ["Metalurgia do bronze", "Tecelagem"]) c3.research.known.add(k);
+  privateInvest(w3, e3);
+  assert.ok(queueOf(e3, 1).filter((p) => p.priv).every((p) => !BUILDINGS[p.b].industry), "restrito: sem indústria privada");
+}
+console.log("economic laws ok");

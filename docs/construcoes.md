@@ -168,3 +168,34 @@ Propriedade:
 - **Origem:** níveis feitos pela fila privada são privados; os da fila pública são estatais ou comunitários.
 - **Privatizar:** o fundo de investimento paga 60% do valor ao tesouro.
 - **Nacionalizar:** o tesouro indeniza 100% do valor e assume a dívida proporcional. A legitimidade cai 0,01 por nível.
+
+## Leis econômicas e investidores (politics.ts, ai.ts)
+
+**Economia:** a lei diz quanto da capacidade de construção vai para a fila privada, quanto dos dividendos os donos põem no fundo e, em alguns modelos, a organização automática.
+
+| Modelo | Era | Fila privada | Fundo | Organização automática |
+|---|---|---|---|---|
+| Subsistência | Tribal | 0% | 0% | — |
+| Tradicionalismo | Clássica | 20% | 15% | — |
+| Agrarismo | Medieval | 25% | 20% | — |
+| Mercantilismo | Descobertas | 35% | 30% | — |
+| Livre comércio | Revoluções | 60% | 50% | — |
+| Intervencionismo | Revoluções | 40% | 35% | — |
+| Economia cooperativa | Industrialização | 45% | 30% | Cooperativa |
+| Economia planejada | Grandes Guerras | 0% (sem investidores) | 0% | Estatal |
+| Economia mista | Multipolar | 50% | 40% | — |
+
+**Investimento:** diz onde os investidores privados podem construir.
+
+| Lei | Regra |
+|---|---|
+| Costume | Sem regra. |
+| Restrito | Só extração e lavoura; indústria é do Estado. |
+| Orientado | Só onde falta mercadoria (preço local acima de 110%). |
+| Livre | Onde quiserem. |
+
+**Como o investidor da IA escolhe:**
+- Prefere onde o produto está caro, onde há gente para trabalhar e onde os edifícios do mesmo tipo dão lucro no país (margem real, lucro ÷ receita).
+- Só põe obra na fila se o fundo cobre o que já deve mais a obra nova.
+
+**Gráficos novos** (aba Gráficos): capacidade de construção, construção usada, fundo de investimento, contribuições ao fundo, lucro dos edifícios e insolvências.

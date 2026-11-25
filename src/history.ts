@@ -3,6 +3,8 @@ import { GOODS, type Economy, type Country } from "./economy.ts";
 import { prestige } from "./diplomacy.ts";
 
 /** Nome da série → valor atual do país. */
+/** País dono do edifício "hex:b". */
+const ownerOfKey = (key: string, e: Economy) => e.cities[e.market[+key.split(":")[0]] - 1]?.country ?? 0; // dono = país da cidade que atende o hex
 export const SERIES: Record<string, (c: Country, k: number, e?: Economy) => number> = {
   "PIB": (c) => c.gdpWeek * 52,
   "População": (c) => c.pop,
@@ -16,6 +18,12 @@ export const SERIES: Record<string, (c: Country, k: number, e?: Economy) => numb
   "Recrutas": (c) => c.manpower,
   "Cidades": (_c, k, e) => (e ? e.cities.filter((x) => x.country === k).length : 0),
   "Prestígio": (_c, k, e) => (e ? prestige(e, k) : 0),
+  "Capacidade de construção": (c) => c.cpWeek ?? 0,
+  "Construção usada": (c) => c.cpUsed ?? 0,
+  "Fundo de investimento": (c) => c.investPool ?? 0,
+  "Contribuições ao fundo": (c) => (c.investWeek ?? 0) + (c.ownersTake ?? 0),
+  "Lucro dos edifícios": (_c, k, e) => { let s = 0; if (e?.ledgers) for (const [key, l] of e.ledgers) if (e.levels[+key.split(":")[1]]?.[+key.split(":")[0]] && ownerOfKey(key, e) === k) s += l.profit; return s; },
+  "Insolvências": (c) => c.insolvencies ?? 0,
 };
 const PRICE_KEEP = 24; // 2 anos de preço por mercadoria (tendência nos cartões de Economia)
 const KEEP = 600; // 50 anos de meses (o save leva tudo isto)
