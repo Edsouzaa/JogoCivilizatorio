@@ -9,6 +9,7 @@ import { WAR_ECONOMY, WAR_ECON, CONVERSIONS } from "./wareconomy.ts";
 import { MILITARY } from "./wareconomy.ts";
 import { BUDGET_IN, TAX_KINDS, classTaxOf, canTax } from "./budget.ts";
 import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./eramods.ts";
+import { artSVG } from "./art.ts";
 import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, combine, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
@@ -824,7 +825,7 @@ function goodDetailHtml(name: string) {
   const cons = cs.map((k) => [k.name, k.market.demand[g]] as [string, number]).filter(([, v]) => v > 0.05).sort((a, b) => b[1] - a[1]).slice(0, 10);
   const users = BUILDINGS.filter((b) => b.industry?.inputs.some(([x]) => x === g)).map((b) => b.name);
   const makers = BUILDINGS.filter((b) => b.industry ? b.industry.outputs.some(([x]) => x === g) : b.for.includes(g)).map((b) => b.name);
-  return `<button data-good="" title="Voltar">‹ Mercadorias</button><h3>${name} · ${(BASE_PRICE[g] * d.price).toFixed(1)} <small>(${Math.round((d.price - 1) * 100)}% do preço base)</small></h3>` +
+  return `<button data-good="" title="Voltar">‹ Mercadorias</button><h3>${artSVG("good", name, 22)} ${name} · ${(BASE_PRICE[g] * d.price).toFixed(1)} <small>(${Math.round((d.price - 1) * 100)}% do preço base)</small></h3>` +
     `<canvas id="ch-good" width="600" height="110" style="width:100%;height:110px;background:#111"></canvas><small>Preço médio no país, últimos 24 meses.</small>` +
     `<div class="cards"><div class="card"><div class="k">Produção/sem</div><div class="v">${fmt(d.prod)}</div></div><div class="card"><div class="k">Consumo/sem</div><div class="v">${fmt(d.cons)}</div></div>` +
     `<div class="card"><div class="k">Importa</div><div class="v">${fmt(d.imp)}</div></div><div class="card"><div class="k">Exporta</div><div class="v">${fmt(d.exp)}</div></div></div>` +
@@ -923,7 +924,7 @@ function goodsCardsHtml() {
       if (d.prod < 0.5 && d.cons < 0.5) return "";
       const ph = hist["$" + n] ?? [], old = ph.length > 6 ? ph[ph.length - 7] : d.price, trend = old ? d.price / old - 1 : 0;
       const bal = d.prod + d.imp - d.exp - d.cons;
-      return `<div class="card" data-good="${n}" style="cursor:pointer" title="Abrir ${n}"><div class="k">${n}</div><div class="v">${(BASE_PRICE[g] * d.price).toFixed(1)} <small class="${trend > 0.02 ? "up" : trend < -0.02 ? "down" : ""}">${trend >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(trend * 100))}%</small></div>` +
+      return `<div class="card" data-good="${n}" style="cursor:pointer" title="Abrir ${n}"><div class="k">${artSVG("good", n, 16)} ${n}</div><div class="v">${(BASE_PRICE[g] * d.price).toFixed(1)} <small class="${trend > 0.02 ? "up" : trend < -0.02 ? "down" : ""}">${trend >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(trend * 100))}%</small></div>` +
         `<small>Produção ${fmt(d.prod)} · Consumo ${fmt(d.cons)}<br>Importa ${fmt(d.imp)} · Exporta ${fmt(d.exp)}<br>Saldo <span class="${bal >= 0 ? "down" : "up"}">${signed(bal)}</span>/sem</small></div>`;
     }).join("");
     return cards ? `<h3>${cat}</h3><div class="cards">${cards}</div>` : "";
@@ -949,7 +950,7 @@ function techTreeHtml(all = false) {
     const st = r.known.has(t.name) ? "known" : avail.has(t.name) ? "avail" : "locked";
     const prog = r.progress.get(t.name) ?? 0;
     return `<div class="tcard ${st}${t.name === r.researching ? " cur" : ""}" data-tnode="${t.name}" ${st === "avail" ? `data-tech="${t.name}"` : ""} title="${t.requires.length ? "Requer: " + t.requires.join(", ") : "Sem pré-requisitos"}">` +
-      `<b>${t.name}</b><small>${st === "known" ? "conhecida" : fmt(t.cost) + " pts"}${prog && st !== "known" ? ` · ${pct(prog / t.cost)}` : ""}</small><small class="fx">${techEffect(t)}</small></div>`;
+      `<b>${artSVG("tech", t.name, 18)} ${t.name}</b><small>${st === "known" ? "conhecida" : fmt(t.cost) + " pts"}${prog && st !== "known" ? ` · ${pct(prog / t.cost)}` : ""}</small><small class="fx">${techEffect(t)}</small></div>`;
   }).join("");
   return (all ? "" : researchHtml(r, eco.countries[active - 1].researchWeek, true)) +
     `<div class="tree" style="grid-template-columns: 110px repeat(${cols.length}, 170px)"><svg class="tlines"></svg>` +
@@ -1136,7 +1137,7 @@ function edificiosHtml() {
   const known = eco.countries[active - 1].research.known;
   const th = (col: string, n: string) => `<td><b data-bsort="${col}" style="cursor:pointer">${n}${bSort.replace("-", "") === col ? (bSort.startsWith("-") ? " ▼" : " ▲") : ""}</b></td>`;
   const table = `<table><tr><td></td>${th("name", "Edifício")}${th("city", "Local")}${th("lv", "Nv")}${th("workers", "Empregos")}${th("productivity", "Ocupação")}${th("prod", "Produção")}${th("profit", "Lucro")}<td><b>Dono · organização</b></td>${th("status", "Estado")}</tr>` +
-    shown.map((r) => `<tr><td><input type="checkbox" data-bsel="${r.key}"${bSel.has(r.key) ? " checked" : ""}></td><td><button data-goto="${r.hex}" data-sheetkey="${r.key}" title="Ver no mapa e abrir a ficha">${BUILDINGS[r.b].name}</button></td><td><small>${r.city}</small></td><td>${r.lv}</td>` +
+    shown.map((r) => `<tr><td><input type="checkbox" data-bsel="${r.key}"${bSel.has(r.key) ? " checked" : ""}></td><td><button data-goto="${r.hex}" data-sheetkey="${r.key}" title="Ver no mapa e abrir a ficha">${artSVG("building", BUILDINGS[r.b].name, 16)} ${BUILDINGS[r.b].name}</button></td><td><small>${r.city}</small></td><td>${r.lv}</td>` +
       `<td>${fmt(r.workers)}/${fmt(r.vagas)}</td><td>${pct(r.productivity)}</td><td>${fmt(r.prod)}</td><td class="${r.profit < 0 ? "up" : "down"}">${signed(r.profit)}</td><td><small>${r.owner}</small></td><td><small>${r.status}</small></td></tr>`).join("") + `</table>` +
     (rows.length > shown.length ? `<small>Mostrando ${shown.length} de ${rows.length}: use os filtros e a ordenação.</small>` : "");
   // métodos em massa com prévia do impacto (trabalhadores e produção) antes de aplicar
@@ -1181,7 +1182,7 @@ function obrasHtml() {
     `<br><small>Cada obra recebe até ${fmt(CONSTRUCT.maxPerProject * (1 + c.research.era / 2))} PC por semana; o dinheiro sai junto com o progresso.</small></div>`;
   const qrows = q.map((p) => {
     const city = eco.cities[eco.market[p.hex] - 1], eta = etaWeeks(eco, p);
-    return `<tr><td>${BUILDINGS[p.b].name}<br><small>${city?.name ?? "—"} · ${p.priv ? "privada" : "pública"}</small></td>` +
+    return `<tr><td>${artSVG("building", BUILDINGS[p.b].name, 16)} ${BUILDINGS[p.b].name}<br><small>${city?.name ?? "—"} · ${p.priv ? "privada" : "pública"}</small></td>` +
       `<td><div style="width:70px;height:5px;background:var(--line,#333);border-radius:3px"><div style="height:5px;border-radius:3px;background:var(--accent,#c9a45c);width:${Math.round((p.done / p.cp) * 100)}%"></div></div><small>${fmt(p.cp - p.done)} PC</small></td>` +
       `<td>${fmt(p.cost - p.paid)}</td><td><small>${p.paused ? "pausada" : p.waiting ?? (Number.isFinite(eta) ? `~${eta} sem.` : "—")}</small></td>` +
       `<td><button data-pausebuild="${p.id}">${p.paused ? "Retomar" : "Pausar"}</button> <button data-cancelbuild="${p.id}">Cancelar</button></td></tr>`;
@@ -1639,7 +1640,7 @@ function hexHtml() {
       : def.industry?.construction ? ` <small>(materiais da era → pontos de construção)</small>`
       : def.industry ? ` <small>(${def.industry.inputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")} → ${def.industry.admin ? `${def.industry.admin} pontos adm.` : def.industry.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ")})</small>` : "";
     const tech = techFor(b), locked = tech && !eco.countries[active - 1].research.known.has(tech);
-    return `<tr><td>${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} <i class=i-worker></i></td>` +
+    return `<tr><td>${artSVG("building", def.name)} ${def.name}${tip}</td><td>nv ${lv}</td><td>${def.workers} <i class=i-worker></i></td>` +
       `<td>${locked ? `<small><i class=i-lock></i> ${tech}</small>` : `<button data-build="${b}" title="Põe 1 nível na fila pública: ${cpCost(b)} PC; o dinheiro sai aos poucos">${lv ? "Melhorar" : "Construir"} ${buildCost(eco, b, i)}</button>${queuedLevels(eco, i, b) ? ` <small>+${queuedLevels(eco, i, b)} na fila</small>` : ""}`}</td></tr>`;
   });
   h += rows.length ? `<table>${rows.join("")}</table>` : "<br>Sem construções possíveis";
