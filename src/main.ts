@@ -1,4 +1,5 @@
 import { holdsMouth } from "./navigation.ts";
+import { weatherAt } from "./world.ts";
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, generateRiverSystems, HEX_MODES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
@@ -11,7 +12,7 @@ import { BUDGET_IN, TAX_KINDS, classTaxOf, canTax } from "./budget.ts";
 import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./eramods.ts";
 import { artSVG } from "./art.ts";
 import { deploy, widthOf, BATTLE, type Battle } from "./battle.ts";
-import { levelName } from "./logistics.ts";
+import { levelName, depotHexes, PRIORITIES } from "./logistics.ts";
 import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, combine, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
@@ -19,7 +20,7 @@ import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, sectorMe
 import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
-import { pixelToHex, wrapCol, hexCenter, hexDistance, SQRT3 } from "./hex.ts";
+import { pixelToHex, wrapCol, hexCenter, hexDistance, forNeighbors, SQRT3 } from "./hex.ts";
 import { countryMix, cultureName, languageName, RELIGIONS, acceptedShare } from "./culture.ts";
 import { SERIES } from "./history.ts";
 import { relation, prestige, DIPLO } from "./diplomacy.ts";
@@ -164,6 +165,7 @@ document.addEventListener("change", (ev) => { // construção em massa: escolhas
   const t = ev.target as HTMLInputElement;
   queueMicrotask(() => t.blur()); // escolheu: o painel volta a se atualizar
   if (t.id === "mb-b") mbB = +t.value; else if (t.id === "mb-city") mbCity = +t.value;
+  else if (t.dataset?.prio) { cmd({ t: "priority", id: +t.dataset.prio, p: +t.value }); return; }
   else if (t.dataset?.ctaxmode) { const k = +t.dataset.ctaxmode; cmd({ t: "classTax", cls: k, mode: t.value as "pct" | "fixed", v: t.value === "pct" ? eco.countries[active - 1].tax : 1 }); return; }
   else if (t.dataset?.ctax) { const k = +t.dataset.ctax, mode = classTaxOf(eco.countries[active - 1], k).mode; cmd({ t: "classTax", cls: k, mode, v: mode === "pct" ? Math.max(0, +t.value) / 100 : Math.max(0, +t.value) }); return; }
   else if (t.dataset?.stax) { cmd({ t: "tax", id: t.dataset.stax, rate: Math.max(0, +t.value) / 100 }); return; }
@@ -263,6 +265,17 @@ function hexLayer(): ((i: number) => readonly number[] | null) | undefined {
       if (eco.levels[mbB][i] || queuedLevels(eco, i, mbB)) return [210, 180, 60];
       return [170, 70, 60];
     };
+  }
+  if (mode === 15 && active) { // suprimento: distância (por caminho no país e vizinhança) ao depósito mais perto, pelo alcance
+    const range = supplyRange(eco, active), dist = new Int16Array(world.W * world.H).fill(-1);
+    let queue = [...eco.cities.filter((k) => k.country === active || eco.occupier[k.hex] === active).map((k) => k.hex), ...depotHexes(world, eco, active), ...(eco.outposts ?? []).filter((o) => o.country === active).map((o) => o.hex)];
+    for (const q of queue) dist[q] = 0;
+    for (let step = 1; queue.length && step <= range + 3; step++) {
+      const next: number[] = [];
+      for (const i of queue) forNeighbors(i % world.W, (i / world.W) | 0, world.W, world.H, (j) => { if (dist[j] < 0 && isLand(world.terrain[j])) { dist[j] = step; next.push(j); } });
+      queue = next;
+    }
+    return (i) => { const d = dist[i]; if (d < 0) return null; const f = d / range; return f <= 0.34 ? [70, 170, 80] : f <= 0.67 ? [210, 190, 60] : f <= 1 ? [220, 130, 50] : [180, 60, 50]; };
   }
   if (mode === 13) return (i) => { // expansão: território, área de influência (claro) e cidades isoladas (vermelho)
     if (world.owner[i]) { const k = eco.market[i]; return k && eco.cities[k - 1].isolated ? [200, 70, 60] : world.countries[world.owner[i] - 1].color; }
@@ -712,6 +725,7 @@ const LAYERS: [string, [number, string][]][] = [
   ["Território", [[1, "Político"], [4, "Controle"], [13, "Expansão"]]],
   ["Sociedade", [[2, "População"], [7, "Satisfação"], [8, "Cultura"], [9, "Língua"], [10, "Religião"], [11, "Alfabetização"]]],
   ["Economia", [[12, "Infraestrutura"], [14, "Construção"]]],
+  ["Militar", [[15, "Suprimento"]]],
   ["Ciência", [[6, "Tecnologia"]]],
 ];
 const flagCache = new Map<string, string>();
@@ -1459,6 +1473,7 @@ function divisionHtml() {
     formationSVG(d) + (d.mix ? `<table>${Object.entries(d.mix).sort((a, b) => b[1] - a[1]).map(([n, f]) => `<tr><td>${n}</td><td>${fmt(d.strength * f)} soldados</td><td><small>${unitOf(n).cat} · atq ${unitOf(n).atk} · def ${unitOf(n).def}</small></td></tr>`).join("")}</table>` +
       (d.country === active ? `<button data-act="split" title="Volta a ser uma divisão por tipo de soldado">Separar o regimento</button><br>` : "") : "") +
     `<br>Soldados ${Math.round(d.strength)}/${WAR.divisionSize * (d.size ?? 1)} · org. ${pct(d.org)} · moral ${pct(d.morale ?? 1)} · armas ${pct(d.equip)} · cansaço ${pct(d.fatigue ?? 0)}${(d.entrench ?? 0) >= 0.5 ? ` · entrincheirado +${(d.entrench ?? 0).toFixed(1)}` : ""}` +
+    (d.country === active ? `<br>Prioridade de abastecimento <select data-prio="${d.id}"><option value="0"${!d.priority ? " selected" : ""}>Automática</option>${PRIORITIES.map((n, k) => `<option value="${k + 1}"${d.priority === k + 1 ? " selected" : ""}>${n}</option>`).join("")}</select> <small>tempo: ${weatherAt(world, d.hex, eco.week)}</small>` : "") +
     (d.supply ? `<br>Abastecimento <b class="${d.supply.level >= 0.75 ? "down" : d.supply.level >= 0.5 ? "" : "up"}">${pct(d.supply.level)} (${levelName(d.supply.level)})</b> · comida ${pct(d.supply.food)} · munição ${pct(d.supply.ammo)} · combustível ${pct(d.supply.fuel)} · estoque ${(d.stock?.food ?? 0).toFixed(1)} sem. · ` : " · ") +
     (d.supplied === false ? `<span class="bad">sem suprimento (depósito a ${depotDistance(world, eco, d)} hexes, alcance ${supplyRange(eco, d.country)})</span>` : `suprimento ok`) + ` <button data-act="disband">Desfazer</button>` +
     (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b>Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`

@@ -95,10 +95,60 @@ Atrito semanal por exército, somado:
 - Atrito em paz perto de 10% ao ano, reposto pelo recrutamento.
 - 1,8 ms por semana.
 
+## Eventos de combate (battle.ts `events`)
+
+Cada evento só acontece quando a situação permite. A chance sai do mesmo dado da batalha e o evento aparece como modificador no histórico.
+
+| Evento | Quando | Efeito |
+|---|---|---|
+| Emboscada | 1ª rodada, defensor em floresta, selva, colinas ou taiga, atacante sem montaria para reconhecer (35%) | atacante −2 |
+| Carga de montaria | fase de choque em campo aberto, lado com 30% ou mais de montaria (40%) | +2; contra posição entrincheirada, −1 |
+| Bombardeio preparatório | fogo na 1ª rodada, lado com 20% ou mais de artilharia ou cerco e com munição (50%) | +2 e tira 0,5 de entrincheiramento do inimigo |
+| Colapso da linha | organização abaixo de 30% e moral abaixo de 50% (50%) | −2 e menos moral |
+| Falta de munição | fase de fogo sem munição | aviso (o fogo já cai pela metade) |
+| Perda de comandante | lado que perdeu mais rodadas na semana (3%) | o general morre ou é capturado; −10% de organização e moral |
+
+## Estilos de comandante (characters.ts `styleOf`)
+
+O estilo vem do traço quando combina (Cauteloso; Guerreiro ou Cruel = Agressivo; Carismático = Inspirador; Erudito = Logístico). Sem traço que combine, é fixo pelo id do general.
+
+| Estilo | Efeito |
+|---|---|
+| Defensivo | +1 no dado defendendo |
+| Agressivo | +1 no dado atacando; perde 10% a mais de soldados |
+| Cauteloso | −20% de baixas próprias; −0,5 no dado atacando |
+| Flanqueador | o bônus de flanco vale o dobro |
+| Logístico | +15% de suprimento entregue ao exército |
+| Inspirador | a moral cai 30% mais devagar |
+
+## Tempo da semana (world.ts `weatherAt`)
+
+O tempo vale por blocos de 8×8 hexes e vem do clima da região, da estação e da semana. É determinístico.
+
+| Tempo | Efeito |
+|---|---|
+| Chuva | −1 no tiro; anda 30% mais devagar; um pouco de doença |
+| Lama (duas semanas de chuva) | −1 no choque para montaria e blindados; marcha muito mais lenta; entrega −25%; mais fadiga |
+| Calor (verão árido ou tropical) | −1 para quem ataca; desidratação; mais fadiga |
+| Neblina | −1 para quem ataca |
+| Neve | −1 para quem ataca; o atrito de antes; entrega −25% |
+
+A ficha do exército mostra o tempo onde ele está.
+
+## Depósito de suprimentos (construção)
+
+- **Onde:** qualquer hex de terra do país, com 10 trabalhadores por nível, sem produzir nada.
+- **Efeito:** vira fonte de suprimento, como uma cidade, e cada nível soma capacidade de transporte (150 soldados por semana, × 1 + era/3).
+- **IA:** em guerra, com um exército passando fome, ela constrói um depósito no hex do país mais perto dele.
+
+## Prioridade de abastecimento e mapa
+
+- **Prioridade:** cada exército pode ter uma (Emergência, Frente de batalha, Em preparação, Guarnição, Reserva, Treinamento). Sem escolha, quem está em combate é Frente e o resto é Guarnição. Com pouca capacidade, a prioridade maior recebe primeiro.
+- **Camada de mapa "Suprimento"** (grupo Militar): distância ao depósito mais perto pelo alcance. Verde é completo, amarelo é reduzido, laranja é crítico e vermelho está além do alcance.
+
 ## Ainda falta (docs/proximos-sistemas.md)
 
-- **Eventos de combate:** emboscada, carga de montaria, perda de comandante e colapso da linha.
-- **Estilos de comandante:** defensivo, agressivo, cauteloso, flanqueador e outros.
-- **Clima além da neve:** chuva, calor, lama.
-- **Logística:** depósitos como construção com estoque próprio, rotas com capacidade por estrada ou ferrovia, prioridades escolhidas pelo jogador e mapa de suprimentos.
-- **Naval e aéreo:** comboios, bloqueio de abastecimento e bases.
+- **Rotas:** com capacidade própria por estrada, ferrovia ou rio e interrupção por ocupação. Hoje a distância é em linha reta até o depósito, e a capacidade é do país.
+- **Exército:** reconhecimento como atributo e engenheiros.
+- **Naval e aéreo:** comboios, bloqueio de abastecimento ultramarino, bases e combustível de avião.
+- **Interface:** painel de atrito com filtros e caminho do suprimento até o exército selecionado.

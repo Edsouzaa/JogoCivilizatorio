@@ -107,7 +107,7 @@ function bestInvestment(w: World, e: Economy, country: number, priv = false): [n
       const def = BUILDINGS[b], tech = techFor(b);
       if (tech && !c.research.known.has(tech)) continue;
       if (def.boosts !== undefined && !e.levels[def.boosts][i]) continue;
-      if (def.industry && !def.industry.outputs.length) continue; // sem produto (administração, construção): decidido à parte
+      if ((def.industry && !def.industry.outputs.length) || def.depot) continue; // sem produto (administração, construção, depósito): decidido à parte
       if (policy === "restrito" && def.industry) continue; // lei: indústria é do Estado
       // indústria só onde os insumos existem no mercado da cidade (oferta da semana cobre metade do que o novo nível pede)
       if (def.industry && !def.industry.inputs.every(([gi, q]) => city.market.supply[gi] - city.market.used[gi] >= q * 0.5)) continue;
@@ -177,6 +177,15 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
   const armies = e.divisions.filter((d) => d.kind === "army" && d.country === country);
   // defesa: uma divisão por cidade
   if (armies.length < mine.length && c.manpower >= WAR.divisionSize && c.treasury > WAR.recruitCost * AI.reserve) recruit(w, e, country, mine[armies.length % mine.length].hex, bestUnit(c.research.known).name);
+
+  // logística: exército com fome em guerra → depósito no hex do país mais perto dele (uma obra por vez)
+  const hungry = e.divisions.find((d) => d.kind === "army" && d.country === country && (d.supply?.level ?? 1) < 0.5);
+  const depot = BUILDINGS.findIndex((b) => b.name === "Depósito de suprimentos");
+  if (hungry && foes.length && !queueOf(e, country).some((p) => p.b === depot)) {
+    let best = -1, bd = Infinity;
+    for (const i of e.owned) if (w.owner[i] === country && isLand(w.terrain[i])) { const dd = hexDistance(i % w.W, (i / w.W) | 0, hungry.hex % w.W, (hungry.hex / w.W) | 0, w.W); if (dd < bd) { bd = dd; best = i; } }
+    if (best >= 0) queueBuild(w, e, best, depot);
+  }
 
   // marinha: uma frota se tiver litoral e a tecnologia
   const port = mine.flatMap((k) => k.urban).find((j) => coastOf(w, j) >= 0);

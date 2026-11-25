@@ -3,17 +3,22 @@
 // verdade), passa pela capacidade de transporte do país (cidades e estradas) e chega conforme a distância ao depósito
 // mais perto (cidade própria ou ocupada, posto avançado). Falta de comida mata e derruba moral; sem munição o fogo enfraquece;
 // sem combustível os blindados param. Atrito (terreno, inverno, fome, doença) é separado das baixas de batalha.
-import { GOODS, type Division, type Economy } from "./economy.ts";
+import { GOODS, BUILDINGS, type Division, type Economy } from "./economy.ts";
 import { T, snowAt, type World } from "./world.ts";
 import { statsOf } from "./units.ts";
 import { techSum } from "./tech.ts";
+import { styleOf } from "./characters.ts";
+import { weatherAt } from "./world.ts";
 
 export const LOGI = {
   foodPerSoldier: 0.004,   // comida (unidades de mercado) por soldado por semana
   ammoPerSoldier: 0.002,   // pólvora por soldado por semana (só depois da Pólvora)
   fuelPerSoldier: 0.004,   // combustível por soldado de blindados/mecanizada por semana
   reserveWeeks: 4,         // estoque máximo do exército em semanas (+ 0,5 por era)
-  refill: 1.5,             // entrega máxima por semana em semanas de consumo (o que passa de 1 enche o estoque)
+  refill: 1.5,
+  logisticStyle: 0.15,     // general logístico: entrega +15%
+  badWeather: 0.25,        // lama ou neve: entrega −25%
+  depotCapacity: 150,      // soldados a mais que cada nível de depósito abastece por semana (× 1 + era/3)             // entrega máxima por semana em semanas de consumo (o que passa de 1 enche o estoque)
   capPerCitySize: 60,      // soldados que o país consegue abastecer por semana por tamanho de cidade (× 1 + era/3)
   rangeLoss: 0.6,          // no limite do alcance chega só 40%
   railBonus: 0.2,          // Ferrovias: entrega +20%
@@ -24,6 +29,8 @@ export const LOGI = {
 export const ATTRITION = {
   terrain: { [T.PLAINS]: 0.001, [T.GRASS]: 0.001, [T.STEPPE]: 0.002, [T.SAVANNA]: 0.003, [T.DESERT]: 0.006, [T.FOREST]: 0.003, [T.TAIGA]: 0.004, [T.JUNGLE]: 0.008, [T.HILLS]: 0.003, [T.MOUNTAIN]: 0.008, [T.TUNDRA]: 0.006 } as Record<number, number>,
   winter: 0.004,           // neve: soma isto (e dobra o do terreno)
+  heat: 0.003,             // calor forte: desidratação
+  rain: 0.001,             // chuva e lama: doença
   homeShare: 0.25,         // em território próprio e abastecido, o atrito de terreno e clima cai a isto
   hostile: 0.002,          // território inimigo
   hunger: 0.03,            // × falta de comida (0..1)
@@ -60,9 +67,14 @@ export function stepSupply(w: World, e: Economy, depotDist: (d: Division) => num
     for (const d of ds) for (const [gi, q] of demandOf(e, d)) armyNeed.set(gi, (armyNeed.get(gi) ?? 0) + q);
     const fill = (gi: number) => (cap0 ? Math.min(LOGI.refill, cap0.market.supply[gi] / Math.max(1e-9, armyNeed.get(gi) ?? 0)) : 0); // sobrando, chega até 50% a mais para encher o estoque
     const rail = c.research.known.has("Ferrovias") ? LOGI.railBonus : 0;
-    const order = ds.map((d) => ({ d, dist: depotDist(d) })).sort((a, b) => (fighting.has(b.d) ? 1 : 0) - (fighting.has(a.d) ? 1 : 0) || a.dist - b.dist);
+    // prioridade: a escolhida pelo jogador (1 = emergência … 6 = treino); sem escolha, em combate = frente (2), senão guarnição (4)
+    const prio = (d: Division) => d.priority ?? (fighting.has(d) ? 2 : 4);
+    const order = ds.map((d) => ({ d, dist: depotDist(d) })).sort((a, b) => prio(a.d) - prio(b.d) || a.dist - b.dist);
+    capacity += depotCapacity(e, country);
     for (const { d, dist } of order) {
-      const r = range(country), eff = dist <= r ? Math.min(1, (1 - LOGI.rangeLoss * dist / Math.max(1, r)) * (1 + rail)) : 0;
+      const gen = d.general ? e.characters?.find((x) => x.id === d.general) : undefined, logi = gen && styleOf(gen) === "Logístico" ? LOGI.logisticStyle : 0;
+      const wx = weatherAt(w, d.hex, e.week), mud = wx === "lama" || wx === "neve" ? LOGI.badWeather : 0; // lama e neve atrasam carroças e caminhões
+      const r = range(country), eff = dist <= r ? Math.min(1, (1 - LOGI.rangeLoss * dist / Math.max(1, r)) * (1 + rail + logi) * (1 - mud)) : 0;
       const share = Math.min(1, capacity / Math.max(1, d.strength)); // capacidade de transporte do país (não se usa duas vezes)
       capacity = Math.max(0, capacity - d.strength * eff);
       const reserve = LOGI.reserveWeeks + c.research.era / 2, s = (d.stock ??= { food: reserve / 2, ammo: reserve / 2, fuel: reserve / 2 });
@@ -87,9 +99,11 @@ export function attrition(w: World, e: Economy, d: Division, moved: boolean, hos
   const c = e.countries[d.country - 1], snow = snowAt(w, d.hex, e.week);
   const hunger = 1 - (d.supply?.food ?? 1);
   const home = !hostile && (d.supply?.level ?? 1) >= 0.75 ? ATTRITION.homeShare : 1; // em casa e abastecido: quartéis, não campanha
-  let rate = ((ATTRITION.terrain[w.terrain[d.hex]] ?? 0.002) * (snow ? 2 : 1) + (snow ? ATTRITION.winter : 0)) * home + (hostile ? ATTRITION.hostile : 0) + hunger * ATTRITION.hunger;
+  const wx = weatherAt(w, d.hex, e.week);
+  let rate = ((ATTRITION.terrain[w.terrain[d.hex]] ?? 0.002) * (snow ? 2 : 1) + (snow ? ATTRITION.winter : 0) + (wx === "calor" ? ATTRITION.heat : 0) + (wx === "chuva" || wx === "lama" ? ATTRITION.rain : 0)) * home
+    + (hostile ? ATTRITION.hostile : 0) + hunger * ATTRITION.hunger;
   rate *= 1 - Math.min(0.6, techSum(c.research, "plague")); // medicina corta doença
-  d.fatigue = Math.max(0, Math.min(1, (d.fatigue ?? 0) + (moved ? ATTRITION.fatigueMove : -ATTRITION.fatigueRest)));
+  d.fatigue = Math.max(0, Math.min(1, (d.fatigue ?? 0) + (moved ? ATTRITION.fatigueMove * (wx === "calor" || wx === "lama" ? 1.5 : 1) : -ATTRITION.fatigueRest)));
   d.morale = Math.max(0, Math.min(1, (d.morale ?? 1) - hunger * ATTRITION.hungerMorale + (hunger === 0 && !moved ? 0.02 : 0)));
   if ((d.supply?.fuel ?? 1) < 0.5 && needFuel(d)) d.target = null; // sem combustível, blindado não anda
   const dead = d.strength * rate;
@@ -97,3 +111,19 @@ export function attrition(w: World, e: Economy, d: Division, moved: boolean, hos
   c.attritionTotal = (c.attritionTotal ?? 0) + dead;
   return dead;
 }
+
+/** Depósitos de suprimentos (construção): hexes com nível e capacidade extra de transporte do país. */
+export const depotHexes = (w: World, e: Economy, country: number) => {
+  const b = BUILDINGS.findIndex((x) => x.name === DEPOT_NAME), out: number[] = [];
+  for (const i of e.producers) if (e.levels[b][i] && w.owner[i] === country) out.push(i);
+  return out;
+};
+export const DEPOT_NAME = "Depósito de suprimentos";
+export function depotCapacity(e: Economy, country: number) {
+  const b = BUILDINGS.findIndex((x) => x.name === DEPOT_NAME);
+  let lv = 0;
+  for (const i of e.producers) if (e.levels[b][i] && e.cities[e.market[i] - 1]?.country === country) lv += e.levels[b][i];
+  return lv * LOGI.depotCapacity * (1 + e.countries[country - 1].research.era / 3);
+}
+/** Prioridades de abastecimento (o jogador escolhe por exército). */
+export const PRIORITIES = ["Emergência", "Frente de batalha", "Em preparação", "Guarnição", "Reserva", "Treinamento"] as const;

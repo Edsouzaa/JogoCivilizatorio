@@ -60,7 +60,7 @@ const KIND: Record<string, Kind> = {
   "Tipografia": "industry", "Aciaria": "industry", "Oficina de máquinas simples": "industry", "Fábrica de máquinas": "industry", "Fábrica de cimento": "industry",
   "Usina termelétrica": "industry", "Usina nuclear": "industry", "Fábrica química": "industry", "Fábrica de fertilizantes": "industry",
   "Fábrica de medicamentos": "industry", "Refinaria": "industry", "Fundição de alumínio": "industry", "Fábrica de plásticos": "industry",
-  "Fábrica de eletrônicos": "industry", "Fábrica de baterias": "industry", "Fábrica de equipamentos de energia": "industry", "Fábrica de telecomunicações": "industry", "Doca": "industry", "Estaleiro": "industry", "Arsenal naval": "industry",
+  "Fábrica de eletrônicos": "industry", "Fábrica de baterias": "industry", "Fábrica de equipamentos de energia": "industry", "Fábrica de telecomunicações": "industry", "Doca": "industry", "Estaleiro": "industry", "Arsenal naval": "industry", "Depósito de suprimentos": "labor",
 };
 
 /** Dono das construções na era: chefes tribais → aristocratas → capitalistas (indústria). */

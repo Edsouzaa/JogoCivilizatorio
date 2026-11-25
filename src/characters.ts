@@ -18,6 +18,23 @@ export type Character = {
 };
 
 export const TRAITS = ["Ambicioso", "Cauteloso", "Corrupto", "Honesto", "Carismático", "Cruel", "Devoto", "Erudito", "Guerreiro", "Pacifista"];
+/** Estilo de comando do general (battle.ts, logistics.ts): vem do traço quando combina; senão, fixo pelo id. */
+export const STYLES = {
+  "Defensivo": "+1 no dado defendendo; entrincheira mais",
+  "Agressivo": "+1 no dado atacando; perde 10% a mais de soldados",
+  "Cauteloso": "−20% de baixas próprias; −0,5 no dado atacando",
+  "Flanqueador": "o bônus de flanco vale o dobro",
+  "Logístico": "+15% de suprimento entregue ao exército",
+  "Inspirador": "moral cai 30% mais devagar",
+} as const;
+export type Style = keyof typeof STYLES;
+export function styleOf(ch: Character): Style {
+  if (ch.traits.includes("Cauteloso")) return "Cauteloso";
+  if (ch.traits.includes("Guerreiro") || ch.traits.includes("Cruel")) return "Agressivo";
+  if (ch.traits.includes("Carismático")) return "Inspirador";
+  if (ch.traits.includes("Erudito")) return "Logístico";
+  return (["Defensivo", "Flanqueador", "Agressivo", "Defensivo", "Logístico", "Inspirador"] as Style[])[ch.id % 6];
+}
 export const CHAR = {
   admTax: 0.2,  // governante com adm 100 arrecada +10%; com 0, −10%
   milArmy: 0.2, // idem para a força do exército

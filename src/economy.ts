@@ -66,7 +66,8 @@ type Building = {
   name: string; workers: number;
   for: number[];                 // recursos do hex onde pode ser construída (vazio = qualquer, se industrial)
   boosts?: number; mult?: number; // melhoria: multiplica a extratora `boosts`
-  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number; construction?: boolean; naval?: number }; // só em hex urbano; admin = pontos administrativos por nível; construction = setor de construção (insumos e PC pelo método da era, construction.ts)
+  industry?: { inputs: [number, number][]; outputs: [number, number][]; admin?: number; construction?: boolean; naval?: number };
+  depot?: boolean;               // depósito militar: em qualquer hex de terra do país, não produz (logistics.ts) // só em hex urbano; admin = pontos administrativos por nível; construction = setor de construção (insumos e PC pelo método da era, construction.ts)
 };
 /**
  * Construções. Extratora: produz o recurso do hex. Melhoria: multiplica uma extratora.
@@ -135,6 +136,8 @@ const yard = (name: string, workers: number, inputs: [string, number][], naval: 
 yard("Doca", 30, [["Madeira", 2], ["Tecidos", 0.5]], 3);
 yard("Estaleiro", 50, [["Madeira", 2], ["Tecidos", 1], ["Ferro", 0.5], ["Ferramentas", 0.5]], 6);
 yard("Arsenal naval", 80, [["Aço", 2], ["Máquinas", 0.5], ["Combustível", 0.5]], 12);
+// Depósito de suprimentos (logistics.ts): vira fonte de suprimento do exército e soma capacidade de transporte
+add({ name: "Depósito de suprimentos", for: [], workers: 10, depot: true });
 setPopDemand((gi) => POP_DEMAND[gi]); // budget.ts: tributo sobre consumo
 const NB = BUILDINGS.length;
 /** Insumos de 1 nível da indústria b nesta cidade (o setor de construção usa o método da era do país). */
@@ -343,6 +346,7 @@ export type Division = {
   fatigue?: number;                        // 0..1: cansaço da marcha (logistics.ts)
   supply?: Supply;                         // abastecimento da semana (logistics.ts)
   stock?: { food: number; ammo: number; fuel: number }; // estoque do exército em semanas
+  priority?: number;                       // prioridade de abastecimento 1..6 (logistics.ts PRIORITIES); sem = automática
   general?: number;                        // id do personagem que comanda (characters.ts)
   supplied?: boolean;                      // exército: tinha suprimento na última semana (war.ts)
   path?: { target: number; steps: number[] }; // caminho calculado (vai no save: o lockstep precisa dele igual em todos)
@@ -397,7 +401,7 @@ const newMarket = (): Market => ({
 
 /** Construções possíveis num hex com este recurso; indústrias só se o hex for urbano. */
 export const buildingsFor = (resource: number, urban: boolean, resource2 = 0) =>
-  BUILDINGS.map((_, b) => b).filter((b) => (BUILDINGS[b].industry ? urban : BUILDINGS[b].for.includes(resource) || (!!resource2 && BUILDINGS[b].for.includes(resource2))));
+  BUILDINGS.map((_, b) => b).filter((b) => (BUILDINGS[b].depot ? true : BUILDINGS[b].industry ? urban : BUILDINGS[b].for.includes(resource) || (!!resource2 && BUILDINGS[b].for.includes(resource2))));
 /** Produto que a construção b tira do hex i (o primeiro recurso, ou o segundo se ela for dele). */
 export const outputOf = (w: World, b: number, i: number) => (BUILDINGS[b].for.includes(w.resource[i]) ? w.resource[i] : w.resource2[i]);
 const extractorFor = (resource: number) => BUILDINGS.findIndex((b) => !b.industry && b.boosts === undefined && b.for.includes(resource));
@@ -554,7 +558,7 @@ export function canBuild(w: World, e: Economy, i: number, b: number, queued = 0)
   const def = BUILDINGS[b];
   if (!w.owner[i]) return "Hex sem dono";
   if (!def) return "Construção inválida";
-  if (def.industry ? !e.urban[i] : !def.for.includes(w.resource[i]) && !(w.resource2[i] && def.for.includes(w.resource2[i]))) return def.industry ? "Indústria só em hex de cidade" : "Construção não serve para este recurso";
+  if (def.depot ? !isLand(w.terrain[i]) : def.industry ? !e.urban[i] : !def.for.includes(w.resource[i]) && !(w.resource2[i] && def.for.includes(w.resource2[i]))) return def.depot ? "Depósito só em terra" : def.industry ? "Indústria só em hex de cidade" : "Construção não serve para este recurso";
   if (def.boosts !== undefined && !e.levels[def.boosts][i] && !queued) return `Precisa de ${BUILDINGS[def.boosts].name} antes`;
   if (def.industry?.naval) { let sea = false; forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => { if (w.terrain[j] === T.OCEAN) sea = true; }); if (!sea) return "Estaleiro só em hex de cidade colado no mar"; }
   if (e.levels[b][i] + queued >= 255) return "Nível máximo";
@@ -866,7 +870,7 @@ export function tick(w: World, e: Economy) {
       const run: FirmRun = { key, hex: i, b, city: k - 1, country: w.owner[i], lv, workers: lv * def.workers * fx.workers, outs: [], ins: [], fx, q: 0 };
       here.push(run); runs.push(run);
       required += run.workers;
-      if (def.industry) continue;
+      if (def.industry || def.depot) continue; // depósito não produz
       if (def.boosts === undefined) {
         const q = lv * RULES.outputPerLevel * (1 + c.bonus[b]), g = outputOf(w, b, i);
         out.set(g, (out.get(g) ?? 0) + q); run.q = q; run.outs.push([g, q]);

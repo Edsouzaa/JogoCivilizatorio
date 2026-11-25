@@ -1,5 +1,5 @@
 import { resolveBattles, entrench, setRiverCheck } from "./battle.ts";
-import { stepSupply, attrition } from "./logistics.ts";
+import { stepSupply, attrition, depotHexes } from "./logistics.ts";
 import { lawFx } from "./politics.ts";
 import { econ, spend } from "./eramods.ts";
 // Guerra terrestre (estilo HOI4 simplificado, sem customizar divisões).
@@ -15,7 +15,7 @@ import { UNITS, unitOf, statsOf, SHIPS, PLANES, craftOf } from "./units.ts";
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
-import { T, TERRAINS, across, riverAt, snowAt, deepOcean, type World } from "./world.ts";
+import { T, TERRAINS, across, riverAt, snowAt, weatherAt, deepOcean, type World } from "./world.ts";
 
 export const WAR = {
   divisionSize: 25,    // soldados por divisão (saem do manpower); bando do tamanho das tribos do começo
@@ -349,7 +349,8 @@ export function stepWar(w: World, e: Economy) {
     }
     const ctrl = controller(w, e, next);
     if (!sea && (!canEnter(w, e, d.country, next) || (d.kind === "settler" && ctrl && ctrl !== d.country))) { d.target = null; continue; }
-    d.progress += sea ? 1 : (d.kind === "army" ? statsOf(d) : unitOf(undefined)).speed / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0));
+    const wx = sea ? "limpo" : weatherAt(w, next, e.week); // lama atrasa muito, chuva um pouco (neve já conta)
+    d.progress += sea ? 1 : (d.kind === "army" ? statsOf(d) : unitOf(undefined)).speed / (MOVE_WEEKS[w.terrain[next]] + (crossesRiver(w, d.hex, next) ? 1 : 0) + (snowAt(w, next, e.week) ? 1 : 0) + (wx === "lama" ? 1 : wx === "chuva" ? 0.3 : 0));
     if (d.progress < 1) continue;
     d.progress = 0; d.siege = 0; moved.add(d); // saiu do lugar: o cerco recomeça
     at.set(d.hex, (at.get(d.hex) ?? []).filter((x) => x !== d));
@@ -490,7 +491,7 @@ export const supplyRange = (e: Economy, country: number) => WAR.supplyBase + WAR
 /** Distância até o depósito mais perto: cidade do país ou cidade inimiga que ele ocupa (vira base de suprimento). */
 export function depotDistance(w: World, e: Economy, d: Division) {
   let best = Infinity;
-  const hexes = [...e.cities.filter((k) => k.country === d.country || e.occupier[k.hex] === d.country).map((k) => k.hex),
+  const hexes = [...e.cities.filter((k) => k.country === d.country || e.occupier[k.hex] === d.country).map((k) => k.hex), ...depotHexes(w, e, d.country),
     ...(e.outposts ?? []).filter((o) => o.country === d.country).map((o) => o.hex)]; // posto avançado também abastece
   for (const h of hexes) best = Math.min(best, hexDistance(d.hex % w.W, (d.hex / w.W) | 0, h % w.W, (h / w.W) | 0, w.W));
   return best;

@@ -91,7 +91,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
     l.div = l.reinvest = l.toState = 0;
     l.hist.push(l.profit); if (l.hist.length > FIRM.histWeeks) l.hist.shift();
     const def = BUILDINGS[r.b];
-    if ((def.industry && !def.industry.outputs.length) || def.boosts !== undefined) continue; // serviço do Estado (administração, construção, estaleiro) ou melhoria (o ganho dela já entra na receita da extratora): só custo
+    if ((def.industry && !def.industry.outputs.length) || def.boosts !== undefined || def.depot) continue; // serviço do Estado (administração, construção, estaleiro) ou melhoria (o ganho dela já entra na receita da extratora): só custo
     const ps = l.priv / r.lv, wl = c.warEconomy ?? 0;
     if (wl && MILITARY.has(def.name)) { // subsídio militar: o tesouro paga uma fração da receita
       const sub = l.rev * WAR_ECON.subsidy[wl];

@@ -95,4 +95,55 @@ for (const d of [a1, a2]) d.supply = walker.supply;
 assert.ok(attrition(w, e, a2, false, false) > attrition(w, e, a1, false, false));
 assert.ok(LOGI.reserveWeeks > 0);
 e.divisions = e.divisions.filter((d) => d !== near && d !== far);
+
+// clima: determinístico e coerente com o lugar
+{
+  const { weatherAt } = await import("../src/world.ts");
+  const seen = new Set<string>();
+  for (let wk = 0; wk < 104; wk++) for (const h of land.filter((_, k) => k % 40 === 0)) seen.add(weatherAt(w, h, wk)); // amostra do mapa todo
+  assert.ok(seen.has("chuva") && seen.has("limpo"), "tempo varia");
+  assert.equal(weatherAt(w, plain, 30), weatherAt(w, plain, 30));
+}
+// estilo do general: cauteloso perde menos soldados que agressivo na mesma luta
+{
+  const { styleOf } = await import("../src/characters.ts");
+  const mk = (trait: string) => { const ch = { id: 900 + nid++, name: "G", female: false, country: 1, born: 0, dies: 1e9, adm: 50, dip: 50, mil: 50, traits: [trait], looks: {} as never, life: [], role: "General" as const }; (e.characters ??= []).push(ch); return ch; };
+  const cau = mk("Cauteloso"), agr = mk("Guerreiro");
+  assert.equal(styleOf(cau), "Cauteloso"); assert.equal(styleOf(agr), "Agressivo");
+  const lose = (g: { id: number }) => { const att = attackers(plain, 4); for (const d of att) d.general = g.id; return fight(plain, att, [army(2, plain), army(2, plain), army(2, plain)]).att; };
+  assert.ok(lose(cau) < lose(agr), "cauteloso preserva tropas");
+}
+// evento: carga de montaria em campo aberto aparece no histórico
+{
+  let charged = false;
+  for (let k = 0; k < 12 && !charged; k++) {
+    const att = attackers(plain, 3); for (const d of att) d.unit = "Cavalaria";
+    e.week = 300 + k; e.battles = [];
+    resolveBattles(w, e, new Map([[plain, att]]), SIZE, () => [army(2, plain)], () => -1, (ds, n) => { for (const d of ds) d.strength -= n / ds.length; }, () => {}, () => 0);
+    charged = !!e.battles!.at(-1)?.log.some((r) => r.att.mods.some(([n]) => n === "Carga de montaria"));
+  }
+  assert.ok(charged, "carga de montaria em planície");
+}
+// depósito: vira fonte de suprimento (mais perto) e soma capacidade
+{
+  const { depotHexes, depotCapacity } = await import("../src/logistics.ts");
+  const { BUILDINGS } = await import("../src/economy.ts");
+  const dep = BUILDINGS.findIndex((b) => b.name === "Depósito de suprimentos"), h = [...e.owned].find((i) => w.owner[i] === 1 && !e.urban[i] && w.terrain[i] !== T.OCEAN)!;
+  assert.equal(depotHexes(w, e, 1).length, 0);
+  e.levels[dep][h] = 2; e.producers.add(h);
+  assert.deepEqual(depotHexes(w, e, 1), [h]);
+  assert.ok(depotCapacity(e, 1) > 0);
+}
+// prioridade: com pouca capacidade, a emergência recebe antes da guarnição
+{
+  const c1 = e.countries[0], cap = e.cities[0].hex;
+  const a = army(1, cap, 400), b = army(1, cap, 400); a.priority = 6; b.priority = 1; a.stock = b.stock = { food: 0, ammo: 0, fuel: 0 };
+  e.divisions = e.divisions.filter((d) => d.kind !== "army"); e.divisions.push(a, b);
+  for (const k of e.cities) if (k.country === 1) k.size = 1;
+  const keep = LOGI.capPerCitySize; LOGI.capPerCitySize = 0.3; // capacidade mínima
+  const { depotCapacity: dc } = await import("../src/logistics.ts"); const dkeep = LOGI.depotCapacity; LOGI.depotCapacity = 0;
+  stepSupply(w, e, () => 0, () => 6, new Set());
+  assert.ok(b.supply!.food >= a.supply!.food, "emergência primeiro");
+  LOGI.capPerCitySize = keep; LOGI.depotCapacity = dkeep; void dc; void c1;
+}
 console.log("battle ok");

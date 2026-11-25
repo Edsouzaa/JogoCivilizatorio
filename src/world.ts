@@ -296,7 +296,7 @@ export function claim(w: World, country: number, center: number, radius: number)
   return got;
 }
 
-export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Controle", "Clima", "Tecnologia", "Satisfação", "Cultura", "Língua", "Religião", "Alfabetização", "Infraestrutura", "Expansão", "Construção"] as const;
+export const MAP_MODES = ["Terreno", "Político", "População", "Recursos", "Controle", "Clima", "Tecnologia", "Satisfação", "Cultura", "Língua", "Religião", "Alfabetização", "Infraestrutura", "Expansão", "Construção", "Suprimento"] as const;
 /** Modos a partir daqui pintam com a cor que o chamador dá por hex (dados da economia: cultura, estradas...). */
 export const HEX_MODES = 8;
 const CLIMATE_COLORS = [[40, 150, 60], [220, 190, 90], [110, 190, 110], [120, 150, 190], [225, 235, 245]];
@@ -481,6 +481,28 @@ export function snowAt(w: World, i: number, week: number) {
   if (c === C.POLAR) return true;
   const wi = winterOf(w, i, week);
   return (c === C.CONTINENTAL && wi > 0.3) || (c === C.TEMPERATE && wi > 0.8);
+}
+
+/** Tempo da semana num hex (frentes de tempo valem para blocos de WEATHER.cell hexes): neve, chuva, lama, calor, neblina ou limpo. */
+export type Weather = "limpo" | "chuva" | "lama" | "calor" | "neblina" | "neve";
+export const WEATHER = {
+  cell: 8, // tamanho do bloco de tempo (hexes)
+  rain: [0.35, 0.05, 0.25, 0.2, 0.1] as number[],  // chance de chuva por clima (Tropical, Árido, Temperado, Continental, Polar)
+  heat: [0.15, 0.5, 0.05, 0.05, 0] as number[],    // calor forte no verão
+  fog: [0.03, 0.02, 0.1, 0.1, 0.05] as number[],   // neblina fora do verão
+};
+const chance = (i: number, week: number, salt: number) => {
+  let h = Math.imul(i ^ Math.imul(week, 2654435761), 2246822519) ^ salt; h = Math.imul(h ^ (h >>> 15), 3266489917); return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
+};
+export function weatherAt(w: World, i: number, week: number): Weather {
+  if (!isLand(w.terrain[i])) return "limpo";
+  if (snowAt(w, i, week)) return "neve";
+  const c = w.climate[i], cell = ((((i / w.W) | 0) / WEATHER.cell) | 0) * 100000 + (((i % w.W) / WEATHER.cell) | 0), wi = winterOf(w, i, week);
+  const rain = (wk: number) => chance(cell, wk, 11) < WEATHER.rain[c] * (wi > 0 ? 1.2 : 0.8);
+  if (rain(week)) return rain(week - 1) && c !== C.ARID ? "lama" : "chuva"; // duas semanas de chuva: lama
+  if (wi < -0.4 && chance(cell, week, 23) < WEATHER.heat[c]) return "calor";
+  if (wi > -0.2 && chance(cell, week, 37) < WEATHER.fog[c]) return "neblina";
+  return "limpo";
 }
 
 /**
