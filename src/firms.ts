@@ -106,7 +106,7 @@ export function stepFirms(w: World, e: Economy, runs: FirmRun[]) {
       if (r.fx.state) { c.treasury -= gap; l.toState = -gap; if (c.treasury < 0) { c.debt += -c.treasury; c.treasury = 0; } } // o Estado cobre
       else {
         l.debt += gap;
-        if (l.debt > FIRM.insolventWeeks * Math.max(1, l.rev)) { // insolvência: fecha um nível (privado primeiro)
+        if (e.week - l.built > FIRM.insolventWeeks && l.debt > FIRM.insolventWeeks * Math.max(l.rev, l.upkeep, 1)) { // insolvência (depois da carência): fecha um nível (privado primeiro)
           e.levels[r.b][r.hex]--; if (l.priv > 0) l.priv--; l.debt *= (r.lv - 1) / r.lv;
           note(l, e.week, "insolvência: um nível fechou");
           c.insolvencies = (c.insolvencies ?? 0) + 1;

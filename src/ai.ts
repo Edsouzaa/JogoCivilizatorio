@@ -113,6 +113,8 @@ function bestInvestment(w: World, e: Economy, country: number, priv = false): [n
       if (def.boosts !== undefined && !e.levels[def.boosts][i]) continue;
       if (def.industry && !def.industry.outputs.length) continue; // sem produto (administração, construção): decidido à parte
       if (policy === "restrito" && def.industry) continue; // lei: indústria é do Estado
+      // indústria só onde os insumos existem no mercado da cidade (oferta da semana cobre metade do que o novo nível pede)
+      if (def.industry && !def.industry.inputs.every(([gi, q]) => city.market.supply[gi] - city.market.used[gi] >= q * 0.5)) continue;
       const out = def.industry ? def.industry.outputs[0][0] : outputOf(w, b, i);
       const workersOk = w.pop[i] * RULES.hexLaborShare >= def.workers * (e.levels[b][i] + 1) * 0.5;
       if (policy === "orientado" && city.market.price[out] < AI.guidedPrice) continue; // lei: só onde falta mercadoria
