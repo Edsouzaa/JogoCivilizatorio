@@ -37,7 +37,7 @@ import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, socialComplexity, incentiveCost, canIncentive, progressOf, citiesOf, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
 import { foundingCost, distanceLabel, hexPrice, EXPAND } from "./expansion.ts";
-import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES } from "./characters.ts";
+import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES, PERSONALITIES, TRAIT_CAT, COMMAND_NAME, WEEKDAYS, generalCandidates } from "./characters.ts";
 import { unitOf, statsOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
@@ -233,9 +233,8 @@ const SPEEDS = [0, 0.5, 1, 3, 10, MAX_SPEED];
 const worldEra = () => Math.max(...eco.countries.map((c) => c.research.era));
 const PHASES = ["noite", "manhã", "tarde"];
 function timeLabel() {
-  if (worldEra() < DAY_PHASES_ERA) return dateLabel(eco.week);
-  const q = Math.floor(acc * 21); // 7 dias × 3 fases dentro da semana atual
-  return `${dateLabel(eco.week)} · dia ${Math.floor(q / 3) + 1} · ${PHASES[q % 3]}`;
+  const q = Math.min(20, Math.floor(acc * 21)); // 7 dias × 3 fases dentro da semana atual (a simulação continua semanal)
+  return `${dateLabel(eco.week)} · ${WEEKDAYS[Math.floor(q / 3)].split("-")[0]}${worldEra() < DAY_PHASES_ERA ? "" : ` · ${PHASES[q % 3]}`}`;
 }
 const SPEED_NAMES = ["", "Lenta", "Média", "Rápida", "Muito rápida", "Máxima"];
 let speed = 2, lastSpeed = 2, acc = 0; // 2 = média (1×)
@@ -696,7 +695,8 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "cancel-law" && active) return cmd({ t: "cancelLaw" });
   if (d.front) { const [k, mode, ids] = d.front.split("|"); return cmd({ t: "front", enemy: +k, mode: mode as "defend" | "attack", ids: ids.split(",").map(Number) }); }
   if (d.recruit) return cmd({ t: "recruit", hex: selected, unit: d.recruit });
-  if (d.act === "hire-general" && selectedDiv) return cmd({ t: "general", id: selectedDiv });
+  if (d.act === "hire-general" && selectedDiv) { hiring = hiring === selectedDiv ? 0 : selectedDiv; return updateUI(); }
+  if (d.hire !== undefined && selectedDiv) { hiring = 0; return cmd({ t: "general", id: selectedDiv, pick: Number(d.hire) }); }
   if (d.fleet) return cmd({ t: "fleet", hex: selected, unit: d.fleet });
   if (d.stateNew) {
     const k = Number(d.stateNew);
@@ -1663,11 +1663,11 @@ function divisionHtml() {
     const name = region >= STATES.regionBase ? eco.states.find((x) => x.id === region - STATES.regionBase)?.name ?? "—" : region >= 0 ? eco.cities[region].name : "—";
     return `<div class="unit"><b><i class=i-plane></i> ${craftOf(PLANES, d.unit).name} ${d.id}</b> · ${d.target === null ? "defendendo a base" : "missão"}: região de ${name}` +
       `<br>Pilotos ${Math.round(d.strength)}/${AIR.pilots} · org. ${pct(d.org)} · prontidão ${pct(d.ready ?? 1)} <small>(combustível × tempo)</small> · alcance ${AIR.range} hexes <small>(botão direito = região de missão)</small>` +
-      (d.country === active ? `<br>Missão <select data-mission="${d.id}">${AIR_MISSIONS.map((m) => `<option${airMissionOf(d) === m ? " selected" : ""}>${m}</option>`).join("")}</select>` : "") + ` <button data-act="disband">Desfazer</button></div>`;
+      (d.country === active ? `<br>Missão <select data-mission="${d.id}">${AIR_MISSIONS.map((m) => `<option${airMissionOf(d) === m ? " selected" : ""}>${m}</option>`).join("")}</select>` : "") + ` <button data-act="disband">Desfazer</button>` + commanderHtml(d) + `</div>`;
   }
   if (d.kind === "fleet") return `<div class="unit"><b><i class=i-ship></i> ${craftOf(SHIPS, d.unit).name} ${d.id}</b> · ${t} · zona marítima ${world.seaZone[d.hex]}` +
     `<br>Marinheiros ${Math.round(d.strength)}/${NAVY.sailors} · org. ${pct(d.org)} · mar ${seaWeather(world, d.hex, eco.week)} · <small>leva exércitos nessa zona</small>` +
-    (d.country === active ? `<br>Missão <select data-mission="${d.id}">${NAVAL_MISSIONS.map((m) => `<option${missionOfFleet(d) === m ? " selected" : ""}>${m}</option>`).join("")}</select>` : "") + ` <button data-act="disband">Desfazer</button></div>`;
+    (d.country === active ? `<br>Missão <select data-mission="${d.id}">${NAVAL_MISSIONS.map((m) => `<option${missionOfFleet(d) === m ? " selected" : ""}>${m}</option>`).join("")}</select>` : "") + ` <button data-act="disband">Desfazer</button>` + commanderHtml(d) + `</div>`;
   const sieged = d.siege ? eco.cities.find((k) => k.hex === d.hex) : undefined;
   const u = statsOf(d), gen = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined;
   return `<div class="unit"><b><i class=i-military></i> ${u.name} ${d.id}</b> <small>${u.cat} · ataque ${u.atk} · defesa ${u.def}</small> · ${t}` + (sieged ? ` · <i class=i-fort></i> cercando ${sieged.name}: ${d.siege}/${Math.ceil(siegeWeeks(sieged.size, 1))} sem.` : "") +
@@ -1678,7 +1678,7 @@ function divisionHtml() {
     (d.supply ? `<br>Abastecimento <b class="${d.supply.level >= 0.75 ? "down" : d.supply.level >= 0.5 ? "" : "up"}">${pct(d.supply.level)} (${levelName(d.supply.level)})</b> · comida ${pct(d.supply.food)} · munição ${pct(d.supply.ammo)} · combustível ${pct(d.supply.fuel)} · estoque ${(d.stock?.food ?? 0).toFixed(1)} sem. · ` : " · ") +
     (d.supplied === false ? `<span class="bad">sem suprimento (depósito a ${depotDistance(world, eco, d)} hexes, alcance ${supplyRange(eco, d.country)})</span>` : `suprimento ok`) + ` <button data-act="disband">Desfazer</button>` +
     (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b data-char="${gen.id}" style="cursor:pointer" title="Ver perfil">Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`
-      : d.country === active ? `<br><button data-act="hire-general">Contratar general (${CHAR.generalCost})</button>` : "") + frontHtml([d.id]) + `</div>`;
+      : commanderHtml(d)) + frontHtml([d.id]) + `</div>`;
 }
 
 function pactsHtml() {
@@ -1726,6 +1726,18 @@ function lawEffect(l: Law, cat: string, p: Politics) {
 }
 
 /** Livro da história: a vida do personagem num documento por cima do jogo; "Salvar como PDF" imprime só o livro. */
+/** Resumo da vida a partir do que foi registrado (nada inventado): origem, papel, personalidade, batalhas e fim. */
+function bioText(c: NonNullable<Economy["characters"]>[number]) {
+  const land = world.countries[c.country - 1].name, r = c.record ?? [], wins = r.filter((b) => b.won).length;
+  const parts = [`${c.name} nasceu em ${land}${c.personality ? ` e era conhecido como ${c.personality.toLowerCase()}` : ""}.`];
+  if (c.command) parts.push(`Serviu como comandante ${COMMAND_NAME[c.command]}, especializado em ${c.spec?.toLowerCase()}.`);
+  else parts.push(`Governou ${land}.`);
+  if (r.length) parts.push(`Comandou em ${r.length} batalha${r.length > 1 ? "s" : ""}, com ${wins} vitória${wins === 1 ? "" : "s"} e ${r.length - wins} derrota${r.length - wins === 1 ? "" : "s"}; somadas, suas forças sofreram ${r.reduce((s, b) => s + b.ownLost, 0)} baixas e infligiram ${r.reduce((s, b) => s + b.foeLost, 0)}.`);
+  const acquired = c.traits.filter((t) => ["Veterano", "Herói de guerra", "Sobrevivente de derrota", "Ferido em combate", "Caolho"].includes(t));
+  if (acquired.length) parts.push(`As campanhas o marcaram: ${acquired.join(", ").toLowerCase()}.`);
+  parts.push(c.dead ? `Morreu aos ${ageOf(c, Math.min(eco.week, c.dies))} anos.` : `Aos ${ageOf(c, eco.week)} anos, segue vivo.`);
+  return parts.join(" ");
+}
 function openBook(id: number) {
   const c = eco.characters?.find((x) => x.id === id);
   if (!c) return;
@@ -1744,9 +1756,13 @@ function openBook(id: number) {
     h1{font-size:30px;margin:0}small{color:#6b5d44}.head{display:flex;gap:18px;align-items:center;border-bottom:1px solid #b9a77f;padding-bottom:12px}
     ul{list-style:none;padding:0}li{padding:4px 0;border-bottom:1px dotted #c9b88f}@media print{button{display:none}}</style></head><body>
     <div class="head">${portraitSVG(c, era, 110)}<div><h1>${esc(c.name)}</h1><small>${esc(world.countries[c.country - 1].name)} · ${c.dead ? "falecido" : `${ageOf(c, eco.week)} anos`}</small>
-    <p><small>Administração ${c.adm} · Diplomacia ${c.dip} · Militar ${c.mil} · ${esc(c.traits.join(", "))}</small></p></div></div>
-    <h2>Vida</h2><ul>${c.life.map((l) => `<li>${esc(lifeText(world, l))}</li>`).join("")}</ul>
-    <button onclick="print()">Salvar como PDF / imprimir</button></body></html>`);
+    <p><small>Administração ${skill(c, "adm")} · Diplomacia ${skill(c, "dip")} · Militar ${skill(c, "mil")}${c.personality ? ` · ${esc(c.personality)}` : ""}</small></p></div></div>
+    <button onclick="print()">Exportar PDF</button>
+    <h2>Biografia</h2><p>${esc(bioText(c))}</p>
+    <h2>Personalidade e traços</h2><ul>${c.personality ? `<li><b>${esc(c.personality)}</b> — ${esc(PERSONALITIES[c.personality]?.desc ?? "")}</li>` : ""}${c.traits.map((t) => `<li><b>${esc(t)}</b> <small>${TRAIT_CAT[t] ?? ""} · ${Object.entries(TRAIT_FX[t] ?? {}).map(([k, v]) => `${v! > 0 ? "+" : ""}${v} ${k}`).join(", ") || "sem efeito nos atributos"}</small></li>`).join("")}</ul>
+    ${c.record?.length ? `<h2>Batalhas</h2><table style="width:100%;border-collapse:collapse;font-size:13px;page-break-inside:auto"><tr><th align="left">Data</th><th align="left">Batalha</th><th>Lado</th><th>Forças (suas × inimigo)</th><th>Baixas (suas / inimigo)</th><th>Resultado</th></tr>${c.record.map((b) => `<tr style="border-top:1px dotted #c9b88f;page-break-inside:avoid"><td>${WEEKDAYS[b.day]}, ${esc(dateLabel(b.week))}</td><td>${esc(b.place)} contra ${esc(world.countries[b.enemy - 1]?.name ?? "?")}</td><td>${b.side}</td><td align="center">${b.own} × ${b.foe}</td><td align="center">${b.ownLost} / ${b.foeLost}</td><td>${b.won ? "vitória" : "derrota"} (${b.weeks} sem.)</td></tr>`).join("")}</table><p><small>Baixas somam mortos, feridos e capturados: o combate do jogo não separa os três.</small></p>` : ""}
+    <h2>Linha do tempo</h2><ul>${c.life.map((l) => `<li>${esc(lifeText(world, l))}</li>`).join("")}</ul>
+    <p><small>Gerado em ${esc(dateLabel(eco.week))} · mundo ${world.seed}</small></p></body></html>`);
   win.document.close();
 }
 
@@ -1763,10 +1779,12 @@ function charProfileHtml(c: NonNullable<Economy["characters"]>[number]) {
   const names = { adm: "administração", dip: "diplomacia", mil: "militar" } as const;
   const traits = c.traits.map((t) => {
     const fx = Object.entries(TRAIT_FX[t] ?? {}).map(([k, v]) => `<span class="${v! > 0 ? "down" : "up"}">${v! > 0 ? "+" : ""}${v} ${names[k as keyof typeof names]}</span>`).join(", ");
-    return `<li><b>${t}</b> ${fx ? `<small>${fx}</small>` : "<small>sem efeito nos atributos</small>"}</li>`;
+    return `<li><b>${t}</b> <small style="color:var(--dim)">${TRAIT_CAT[t] ?? ""}</small> ${fx ? `<small>${fx}</small>` : "<small>sem efeito nos atributos</small>"}</li>`;
   }).join("");
   return `<div style="display:flex;gap:10px">${portraitSVG(c, era, 72)}<div><h3 style="margin:0">${c.name}</h3><small>${c.role ?? "Governante"} · ${world.countries[c.country - 1].name} · ${c.dead ? "falecido" : `${ageOf(c, eco.week)} anos`}</small></div></div>` +
     attr("adm", "Administração (impostos)") + attr("dip", "Diplomacia (relações)") + attr("mil", "Militar (exército e batalhas)") +
+    (c.personality ? `<p><small>Personalidade: <b>${c.personality}</b> — ${PERSONALITIES[c.personality]?.desc ?? ""}</small></p>` : "") +
+    (c.command ? `<p><small>Comando ${COMMAND_NAME[c.command]} · especialização <b>${c.spec}</b> · ${c.fights ?? 0} batalhas, ${c.wins ?? 0} vitórias</small></p>` : "") +
     `<h3>Traços</h3><ul style="margin:0;padding-left:16px">${traits}</ul>` +
     (c.role === "General" ? `<small>Estilo de comando: <b>${styleOf(c)}</b> — ${STYLES[styleOf(c)]}</small>` : "") +
     `<h3>Vida</h3><small>${c.life.map((l) => lifeText(world, l)).join("<br>")}</small><br><button data-book="${c.id}">Livro</button>`;
@@ -1793,6 +1811,19 @@ function regionalPoliciesHtml(k: number) {
     (act ? `<table>${act}</table>` : "<br><small>Nenhum incentivo nesta cidade.</small>") +
     `<div class="tabs">${cats.map((n) => `<button data-inccat="${n}" class="${n === incCat ? "on" : ""}">${n.split(/[ ,]/)[0]}</button>`).join(" ")}</div>` +
     Object.keys(INCENTIVES).filter((kd) => INCENTIVES[kd].cat === incCat).map(row).join("");
+}
+/** Comandante da unidade: o atual (frota e esquadrão) ou os 3 candidatos para escolher um. */
+let hiring = 0;
+function commanderHtml(d: Division) {
+  const g = d.general ? eco.characters?.find((x) => x.id === d.general) : undefined, era = eco.countries[d.country - 1].research.era;
+  if (g && d.kind !== "army") return `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(g, era, 44)}<div><b data-char="${g.id}" style="cursor:pointer">${d.kind === "fleet" ? "Alm." : "Cmdt."} ${g.name}</b><br><small>${g.spec ?? ""} · militar ${skill(g, "mil")}</small></div></div>`;
+  if (g || d.country !== active) return "";
+  if (hiring !== d.id) return `<br><button data-act="hire-general">Contratar comandante ${COMMAND_NAME[d.kind === "fleet" ? "fleet" : d.kind === "air" ? "air" : "army"]} (${CHAR.generalCost})</button>`;
+  const fx = (t: string) => Object.entries({ ...(TRAIT_FX[t] ?? {}) }).map(([k, v]) => `${v! > 0 ? "+" : ""}${v} ${k}`).join(" ");
+  return `<h3>Escolha um de três candidatos (comando ${COMMAND_NAME[d.kind === "fleet" ? "fleet" : d.kind === "air" ? "air" : "army"]})</h3><div class="bcards" style="grid-template-columns:repeat(3,1fr)">` + generalCandidates(world, eco, d.id).map((c, k) =>
+    `<div class="bcard" style="cursor:default">${portraitSVG(c, era, 56)}<b>${c.name}</b><small>${ageOf(c, eco.week)} anos · ${c.spec}</small><small>${c.personality} <i>(${PERSONALITIES[c.personality!]?.desc})</i></small>` +
+    `<small>militar <b>${skill(c, "mil")}</b> · adm ${skill(c, "adm")} · dipl ${skill(c, "dip")}</small><small>${c.traits.map((t) => `${t}${fx(t) ? ` <span style="color:var(--dim)">(${fx(t)})</span>` : ""}`).join("<br>")}</small>` +
+    `<button data-hire="${k}">Contratar</button></div>`).join("") + `</div><button data-act="hire-general">Cancelar</button>`;
 }
 function rulerHtml() {
   const r = active ? rulerOf(eco, active) : undefined;

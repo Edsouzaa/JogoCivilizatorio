@@ -120,6 +120,11 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Oceano profundo visível: azul bem escuro no mapa (a faixa rasa do litoral continua clara). Além de barrar navio sem Navegação, atrapalha o comércio além-mar: entre países de continentes diferentes, quem não tem Navegação só consegue exportar 20% do que exportaria.
 - Mercados e comércio (docs/mercados.md): estoque por cidade (encalhe guardado, comida estraga), acesso de cada cidade ao mercado nacional, nós comerciais com poder por país, vantagem comercial, política por mercadoria e tarifa, 7 estruturas comerciais e Complexidade da Economia (encarece construção sofisticada). Página Comércio em 6 abas.
 - Subsistência (docs/subsistencia.md): tipo por terreno, capacidade por hex, pressão sobre a terra com curva suave, autoconsumo fora do PIB e do imposto, excedente vendido, construções ocupando terra, camada de mapa. Árvore de tecnologia redesenhada sem linhas sobre os cartões.
+- Expansão por compra de hex (preço pelo tamanho do país, disputa piora a relação), cidades até raio 5 e a 1 hex de distância, sem limite de fundações. Área da cidade destacada e hex escolhido à mão para uma cidade.
+- HUD: construções impossíveis somem, tropa com painel próprio, perfil do personagem. Legendas em todas as camadas.
+- Barra de modos especiais: Construção, Estado, Diplomacia e Militar (docs/incentivos.md para os incentivos).
+- Incentivos regionais com Complexidade Social (docs/incentivos.md).
+- Personagens: personalidade separada de traços, traços adquiridos em batalha, 3 candidatos por comando (terrestre, naval, aéreo) com especialização, registro de batalhas com números, livro com biografia e exportação em PDF, dia da semana no calendário.
 
 ## Próximos (nesta ordem)
 
@@ -140,6 +145,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 8. **População**
     - Cultura/língua/religião por POP (hoje é por cidade), grupos culturais, famílias de línguas e religiões, surgimento e divisão de culturas.
 9. **Leis**
+10. **Personagens, etapa 2**: histórico de cargos, leis propostas/aprovadas por personagem, golpes e revoluções com agitadores, generais virando governantes, classificações históricas (conquistador, reformador...), retratos em estilo caricatural com mais formas, IA usando a personalidade nas decisões.
 10. **Construção estilo Vic3 (resto)**: setor de construção (capacidade, materiais), propriedade dos edifícios, privatização e nacionalização, investimento estrangeiro.
 11. **Diplomacia**
     - Confiança, influência e esferas.

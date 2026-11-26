@@ -40,3 +40,33 @@ console.log("characters ok");
   assert.equal(skill(c0, "mil"), 100);
   console.log("traits ok");
 }
+
+// três candidatos diferentes por comando; contrata só o escolhido; batalha entra no registro e dá traço
+{
+  const { generalCandidates, hireGeneral, recordBattle, SPECS, PERSONALITIES, dayOf, WEEKDAYS } = await import("../src/characters.ts");
+  const { generateWorld } = await import("../src/world.ts");
+  const { createEconomy } = await import("../src/economy.ts");
+  const w = generateWorld(120, 60, 3, 2), e = createEconomy(w);
+  for (const kind of ["army", "fleet"] as const) {
+    const d = { id: 900 + (kind === "army" ? 1 : 2), kind, country: 1, hex: e.cities[0].hex, strength: 20, org: 1, target: null, progress: 0, equip: 1 } as never as import("../src/economy.ts").Division;
+    e.divisions.push(d);
+    const cs = generalCandidates(w, e, d.id);
+    assert.equal(cs.length, 3);
+    assert.equal(new Set(cs.map((c) => c.spec)).size, 3, "especializações diferentes");
+    assert.equal(new Set(cs.map((c) => c.personality)).size, 3, "personalidades diferentes");
+    assert.ok(cs.every((c) => SPECS[kind].some(([n]) => n === c.spec) && PERSONALITIES[c.personality!]));
+    const n0 = (e.characters ?? []).length;
+    e.countries[0].treasury = 1000;
+    assert.equal(hireGeneral(w, e, d.id, 1), null);
+    assert.equal(e.characters!.length, n0 + 1, "só um contratado");
+    const g = e.characters!.at(-1)!;
+    assert.equal(g.name, cs[1].name); assert.equal(d.general, g.id);
+    if (kind === "army") {
+      for (let k = 0; k < 3; k++) { e.week += 1; recordBattle(e, { id: k + 1, hex: d.hex, start: e.week, attacker: 1, defender: 2, startAtt: 100, startDef: 80, deadAtt: 10, deadDef: 50 }, "att", [d], [], `teste ${k}`); }
+      assert.equal(g.record!.length, 3); assert.ok(g.traits.includes("Veterano") && g.traits.includes("Herói de guerra"));
+      assert.equal(g.record![0].ownLost, 10); assert.equal(g.record![0].foeLost, 50);
+    }
+  }
+  assert.ok(WEEKDAYS.length === 7 && dayOf(5, 3) === dayOf(5, 3) && dayOf(5, 3) < 7);
+  console.log("characters ok (candidatos, registro)");
+}

@@ -27,7 +27,8 @@ export function stepAir(w: World, e: Economy, regionOf: (hex: number) => number,
     const fuel = cap ? Math.min(1, cap.supply[FUEL] / Math.max(1e-9, need.get(d.country)!)) : 0;
     const wx = w.terrain[hex] === T.OCEAN ? seaWeather(w, hex, e.week) : weatherAt(w, hex, e.week);
     const bad = wx === "chuva" || wx === "neblina" || wx === "neve" || wx === "tempestade" || wx === "nevoeiro" || wx === "lama";
-    d.ready = fuel * (bad ? AIRW.badWeather : 1);
+    const cmdr = d.general ? e.characters?.find((c) => c.id === d.general) : undefined; // comandante aéreo: prontidão +10% (logística aérea +20%)
+    d.ready = Math.min(1, fuel * (bad ? AIRW.badWeather : 1) * (cmdr ? (cmdr.spec === "Logística aérea" ? 1.2 : 1.1) : 1));
     if (d.ready < 0.05) continue;
     const region = regionOf(hex), m = airMissionOf(d);
     if (m === "Bombardeio estratégico") for (const k of e.cities) if (atWar(k.country, d.country) && regionOf(k.hex) === region) k.bombed = e.week + AIRW.bombWeeks;

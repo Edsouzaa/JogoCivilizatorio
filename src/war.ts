@@ -13,7 +13,7 @@ import { DIPLO } from "./diplomacy.ts";
 import { warAllies } from "./subjects.ts";
 import { lostCity, hasClaimOn, CLAIM } from "./claims.ts";
 import { anchors } from "./expansion.ts";
-import { rulerOf, attrMod, CHAR, noteRuler, note } from "./characters.ts";
+import { rulerOf, attrMod, CHAR, noteRuler, note, recordBattle } from "./characters.ts";
 import { UNITS, unitOf, statsOf, SHIPS, PLANES, craftOf } from "./units.ts";
 import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
@@ -429,10 +429,9 @@ export function stepWar(w: World, e: Economy) {
   const landFights = resolveBattles(w, e, battles, WAR.divisionSize, enemiesIn,
     (d, from) => { let to = -1; forNeighbors(from % w.W, (from / w.W) | 0, w.W, w.H, (j) => { if (to < 0 && controller(w, e, j) === d.country && !enemiesIn(j, d.country).length && MOVE_WEEKS[w.terrain[j]] !== Infinity) to = j; }); return to; },
     (ds, n) => takeLosses(w, e, ds, n),
-    (b, winner, att, def) => { // batalha decidida: entra na vida dos generais
-      const na = Math.round(b.startAtt), nd = Math.round(b.startDef), [won, lost] = winner === "att" ? [att, def] : [def, att];
-      for (const d of won) { const g = d.general && e.characters?.find((c) => c.id === d.general); if (g) note(g, e.week, `venceu uma batalha contra §${lost[0].country}§: ${winner === "att" ? na : nd} × ${winner === "att" ? nd : na} soldados`); }
-      for (const d of lost) { const g = d.general && e.characters?.find((c) => c.id === d.general); if (g) note(g, e.week, `perdeu uma batalha para §${won[0].country}§`); }
+    (b, winner, att, def) => { // batalha decidida: registro de cada comandante (characters.ts)
+      const k = e.market[b.hex]; const city = k && e.cities[k - 1].hex === b.hex ? e.cities[k - 1].name : null;
+      recordBattle(e, b, winner, att, def, city ? `de ${city}` : `em (${b.hex % w.W}, ${(b.hex / w.W) | 0})`);
     },
     (hex, a, b) => Math.round((2 * airSuperiority(e, airRegion(e, hex), a, b) - 1) * 10) / 10);
   for (const d of landFights) fighting.add(d);

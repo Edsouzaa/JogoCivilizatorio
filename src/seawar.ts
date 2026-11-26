@@ -3,6 +3,7 @@
 import { T, mulberry32, type World } from "./world.ts";
 import type { Division, Economy } from "./economy.ts";
 import { techSum } from "./tech.ts";
+import { attrMod, skill } from "./characters.ts";
 import { craftOf, SHIPS } from "./units.ts";
 import type { Battle } from "./battle.ts";
 
@@ -63,6 +64,8 @@ export function resolveNaval(w: World, e: Economy, atWar: (a: number, b: number)
           if (r === 0 && shareOf(me, "Submarinos") >= SEA.sub.share && shareOf(them, "Submarinos") === 0) m.push(["Emboscada submarina", SEA.sub.mod]);
           if (shareOf(me, "Porta-aviões") > 0 && shareOf(them, "Porta-aviões") === 0) m.push(["Aviação embarcada", SEA.carrier.mod]);
           if (me.some((d) => missionOfFleet(d) === "Superioridade naval")) m.push(["Busca o combate", SEA.seek]);
+          const adm = me.map((d) => d.general && e.characters?.find((c) => c.id === d.general)).find(Boolean);
+          if (adm) m.push([`Almirante ${adm.name}`, Math.round((2 * (attrMod(skill(adm, "mil")) + 0.5) + (adm.spec === "Combate naval" ? 0.5 : 0)) * 10) / 10]);
           if (wx === "tempestade") m.push(["Tempestade", SEA.storm.mod]);
           if (wx === "nevoeiro") m.push(["Nevoeiro", -1]);
           return m;
