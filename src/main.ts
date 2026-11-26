@@ -1,5 +1,6 @@
 import { holdsMouth } from "./navigation.ts";
 import { weatherAt } from "./world.ts";
+import { CLIMATE_COLORS } from "./world.ts";
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, generateRiverSystems, HEX_MODES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
@@ -778,7 +779,31 @@ function topbarHtml() {
 }
 
 let mapsOpen = false;
-const maptoolsHtml = () => `<button data-act="maps" class="${mapsOpen ? "on" : ""}" title="Camadas do mapa">${icon("globe")} Mapa: ${MAP_MODES[mode]}</button>` +
+/** Legenda de cada camada: [cor ou gradiente CSS, texto]. As cores são as de colorize/hexLayer. */
+const rgb = (c: readonly number[]) => `rgb(${c.map(Math.round).join(",")})`;
+const grad = (a: readonly number[], b: readonly number[], c?: readonly number[]) => `linear-gradient(90deg,${rgb(a)},${c ? rgb(b) + "," + rgb(c) : rgb(b)})`;
+function legendItems(): [string, string][] {
+  switch (mode) {
+    case 0: return TERRAINS.slice(1).map((t) => [rgb(t.color), t.name]);
+    case 1: return [["#c86", "País (cor própria)"], ["#a99", "Influência (tom claro)"], ["repeating-linear-gradient(45deg,#c86 0 4px,#68c 4px 8px)", "Ocupado (listras)"], [rgb([90, 90, 90]), "Sem dono"]];
+    case 2: return [[grad([40, 40, 40], [255, 120, 40]), "Pouca gente → muita"]];
+    case 3: return RESOURCES.slice(1).map((n, k) => [rgb(RES_COLORS[k + 1]), n]);
+    case 4: return [[grad([220, 60, 60], [40, 220, 60]), "Pouco controle → muito"], [rgb([70, 70, 70]), "Sem dono"]];
+    case 5: return CLIMATES.map((n, k) => [rgb(CLIMATE_COLORS[k]), n]);
+    case 6: return [[grad([30, 50, 90], [70, 160, 255]), "Menos tecnologias → mais"]];
+    case 7: return [[grad([220, 60, 60], [220, 190, 70], [40, 200, 70]), "Insatisfeito → satisfeito"]];
+    case 8: case 9: case 10: return [["linear-gradient(90deg,#c55,#5a5,#55c,#cc5)", "Uma cor por " + ["cultura", "língua", "religião"][mode - 8] + " (a maior da cidade)"]];
+    case 11: return [[grad([40, 60, 90], [100, 160, 240]), "Pouca alfabetização → muita"]];
+    case 12: return [[grad([70, 70, 60], [220, 180, 90]), "Sem estrada/porto → muita infraestrutura"]];
+    case 13: return [["#c86", "País"], ["#b9a", "Área de influência"], [rgb([200, 70, 60]), "Cidade isolada"]];
+    case 14: return [[rgb([70, 170, 80]), "Pode construir"], [rgb([210, 180, 60]), "Limite atingido / já existe"], [rgb([170, 70, 60]), "Não serve"], [rgb([95, 95, 95]), "Fora da cidade escolhida"]];
+    case 15: return [[rgb([70, 170, 80]), "Perto do depósito"], [rgb([210, 190, 60]), "Médio"], [rgb([220, 130, 50]), "Longe"], [rgb([180, 60, 50]), "Fora do alcance"]];
+    case 16: return [[rgb([70, 170, 80]), "Pressão < 50%"], [rgb([170, 190, 70]), "50–80%"], [rgb([220, 170, 50]), "80–100%"], [rgb([220, 110, 50]), "100–120%"], [rgb([180, 50, 45]), "> 120%"], [grad([60, 70, 60], [100, 180, 90]), "Fora do país: potencial"]];
+  }
+  return [];
+}
+const legendHtml = () => { const it = legendItems(); return it.length ? `<div class="legend">${it.map(([c, n]) => `<span><i style="background:${c}"></i>${n}</span>`).join("")}</div>` : ""; };
+const maptoolsHtml = () => (mapsOpen ? "" : legendHtml()) + `<button data-act="maps" class="${mapsOpen ? "on" : ""}" title="Camadas do mapa">${icon("globe")} Mapa: ${MAP_MODES[mode]}</button>` +
   (mapsOpen ? `<div class="maps">${LAYERS.map(([g, ms]) => `<div class="grp"><span>${g}</span>${ms.map(([k, n]) => `<button data-mode="${k}" class="${k === mode ? "on" : ""}" title="${k < 9 ? `Tecla ${k + 1}` : n}">${n}</button>`).join("")}</div>`).join("")}</div>` : "");
 
 function leftmenuHtml() {
