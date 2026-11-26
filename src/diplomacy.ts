@@ -3,7 +3,7 @@
 // fronteira disputada e infâmia do outro. Relação ruim trava acordos; a IA só ataca quem ela não gosta.
 // Prestígio = peso no mundo (economia, tecnologia, gente) + glória de guerras, que se apaga devagar.
 import type { Economy } from "./economy.ts";
-import { rulerOf, CHAR } from "./characters.ts";
+import { rulerOf, CHAR, skill } from "./characters.ts";
 
 export const DIPLO = {
   pactMonth: 2, warMonth: -8, borderMonth: -0.5, infamyMonth: -0.05, // por mês (infâmia: × infâmia do outro)
@@ -53,6 +53,6 @@ export function stepDiplomacy(e: Economy) {
   for (let a = 1; a <= n; a++) for (const b of e.contacts?.[a - 1] ?? []) addRelation(e, a, b, DIPLO.infamyMonth * e.countries[b - 1].infamy);
   for (const c of e.countries) c.glory = (c.glory ?? 0) * (1 - DIPLO.gloryDecay);
   // governante diplomata melhora a relação com quem encosta nele (ou piora, se for ruim de conversa)
-  (e.contacts ?? []).forEach((list, i) => { const r = rulerOf(e, i + 1); if (r) for (const b of list) addRelation(e, i + 1, b, CHAR.dipRelation * (r.dip - 50)); });
+  (e.contacts ?? []).forEach((list, i) => { const r = rulerOf(e, i + 1); if (r) for (const b of list) addRelation(e, i + 1, b, CHAR.dipRelation * (skill(r, "dip") - 50)); });
   for (const k of Object.keys(r)) if (Math.abs(r[k]) < 0.5) delete r[k]; // não guarda o que voltou a zero
 }

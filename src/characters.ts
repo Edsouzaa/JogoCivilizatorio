@@ -18,6 +18,14 @@ export type Character = {
 };
 
 export const TRAITS = ["Ambicioso", "Cauteloso", "Corrupto", "Honesto", "Carismático", "Cruel", "Devoto", "Erudito", "Guerreiro", "Pacifista"];
+/** Efeito de cada traço nos atributos (que mexem em impostos, relações e combate) e, para generais, no estilo de comando. */
+export const TRAIT_FX: Record<string, { adm?: number; dip?: number; mil?: number }> = {
+  "Ambicioso": { mil: 5, dip: -5 }, "Cauteloso": { mil: -5 }, "Corrupto": { adm: -15 }, "Honesto": { adm: 10 },
+  "Carismático": { dip: 10 }, "Cruel": { mil: 5, dip: -10 }, "Devoto": { dip: 5, adm: -5 }, "Erudito": { adm: 10 },
+  "Guerreiro": { mil: 10 }, "Pacifista": { mil: -10, dip: 10 },
+};
+/** Atributo efetivo: o sorteado mais os traços (0–100). */
+export const skill = (c: Character, k: "adm" | "dip" | "mil") => Math.max(0, Math.min(100, c[k] + c.traits.reduce((s, t) => s + (TRAIT_FX[t]?.[k] ?? 0), 0)));
 /** Estilo de comando do general (battle.ts, logistics.ts): vem do traço quando combina; senão, fixo pelo id. */
 export const STYLES = {
   "Defensivo": "+1 no dado defendendo; entrincheira mais",

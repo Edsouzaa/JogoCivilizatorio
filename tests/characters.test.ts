@@ -31,3 +31,12 @@ assert.notEqual(rulerOf(e, 1)!.id, r1.id);
 assert.ok(e.characters!.some((c) => c.id === r1.id && c.dead), "guardado na história não some");
 assert.ok(r1.life.some((l) => l.includes("morreu")));
 console.log("characters ok");
+
+// traços mexem nos atributos efetivos (com teto 0–100)
+{
+  const { skill, TRAIT_FX } = await import("../src/characters.ts");
+  const c0 = { adm: 50, dip: 50, mil: 95, traits: ["Corrupto", "Guerreiro"] } as never;
+  assert.equal(skill(c0, "adm"), 50 + TRAIT_FX["Corrupto"].adm!);
+  assert.equal(skill(c0, "mil"), 100);
+  console.log("traits ok");
+}

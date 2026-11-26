@@ -28,7 +28,7 @@ import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
 import { stepClaims, type Claim } from "./claims.ts";
 import { foundingCost, updateExpansion } from "./expansion.ts";
 import { expireProposals, type Proposal, type Vote } from "./proposals.ts";
-import { rulerOf, attrMod, CHAR, noteRuler, type Character } from "./characters.ts";
+import { rulerOf, attrMod, CHAR, noteRuler, type Character, skill } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, adminCap, INCENTIVES, type Incentive } from "./admin.ts";
 
@@ -1041,7 +1041,7 @@ export function tick(w: World, e: Economy) {
     // governo legítimo arrecada mais; no Centralizado, estados melhoram a administração
     const ruler = rulerOf(e, ci + 1);
     // fração do imposto devido que o Estado consegue cobrar: era, legitimidade, administração, governante, controle e isenções (cobrança em budget.ts)
-    c.taxEff = Math.min(1, econ(c, "tax") * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1)) * (1 + (ruler ? CHAR.admTax * attrMod(ruler.adm) : 0)) * (nominal > 0 ? taxed / nominal : 1));
+    c.taxEff = Math.min(1, econ(c, "tax") * (RULES.taxBaseEfficiency + c.politics.legitimacy) * (1 + adminBonus(e, ci + 1)) * (1 + (ruler ? CHAR.admTax * attrMod(skill(ruler, "adm")) : 0)) * (nominal > 0 ? taxed / nominal : 1));
     c.income = c.taxNext ?? 0; // cobrado da renda das classes na semana passada (budget.ts collectTaxes)
     const specificIn = (c.specificTaxWeek ?? 0) + Object.values(c.sectorTaxWeek ?? {}).reduce((s, v) => s + v, 0);
     record(c, "Impostos por classe", c.income - specificIn); record(c, "Tributos específicos", specificIn); record(c, "Tarifas", c.tariffs);

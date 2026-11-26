@@ -36,7 +36,7 @@ import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
 import { foundingCost, distanceLabel, hexPrice, EXPAND } from "./expansion.ts";
-import { rulerOf, ageOf, lifeText, CHAR } from "./characters.ts";
+import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES } from "./characters.ts";
 import { unitOf, statsOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
@@ -223,6 +223,7 @@ let selected = -1; // índice do hex clicado
 let active = 0;    // país que o jogador está controlando (o último país clicado)
 let message = "";
 let selectedDiv: number | null = null; // divisão selecionada (id)
+let selectedChar: number | null = null; // personagem aberto no painel da direita
 
 // Multiplicador sobre o ritmo da era (ERA_WEEKS_PER_SECOND). "Média" = 1×.
 const SPEEDS = [0, 0.5, 1, 3, 10, MAX_SPEED];
@@ -348,7 +349,7 @@ canvas.addEventListener("pointerup", (e) => {
     message = ""; updateUI();
   } else if (drag?.box && drag.moved < 5) { // clique sem arrastar = selecionar hex
     const [c, r] = hexAt(e.clientX, e.clientY);
-    selected = inMap(c, r) ? r * W + c : -1;
+    selected = inMap(c, r) ? r * W + c : -1; selectedChar = null;
     if (!net && selected >= 0 && world.owner[selected]) { active = world.owner[selected]; eco.humans = [active]; }
     // clicar num hex com divisões seleciona a próxima delas (cliques repetidos alternam)
     const here = eco.divisions.filter((d) => d.hex === selected);
@@ -615,6 +616,7 @@ document.addEventListener("pointerdown", (e) => {
     return;
   }
   if (d.book) return openBook(Number(d.book));
+  if (d.char) { selectedChar = Number(d.char); selected = -1; selectedDiv = null; return updateUI(); }
   if (d.saveChar) return cmd({ t: "saveCharacter", id: Number(d.saveChar) });
   if (d.vote) { const [id, ok] = d.vote.split("|"); return cmd({ t: "vote", id: +id, yes: ok === "1" }); }
   if (d.respond) { const [id, ok] = d.respond.split("|"); return cmd({ t: "respond", id: +id, accept: ok === "1" }); }
@@ -690,7 +692,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.menu) { menuCat = menuCat === d.menu ? null : d.menu; if (menuCat) { selected = -1; selectedDiv = null; group = []; } return updateUI(); } // abrir um menu tira o painel do hex da frente
   if (d.notes) return showNotes(d.notes);
   if (d.selectDiv) { selectedDiv = Number(d.selectDiv); group = [selectedDiv]; const u = eco.divisions.find((x) => x.id === selectedDiv); if (u) selected = u.hex; return updateUI(); }
-  if (d.act === "close-panel") { selected = -1; selectedDiv = null; group = []; return updateUI(); }
+  if (d.act === "close-panel") { selected = -1; selectedDiv = null; selectedChar = null; group = []; return updateUI(); }
   if (d.act === "merge") { const ids = eco.divisions.filter((x) => group.includes(x.id) && x.kind === "army" && x.country === active).map((x) => x.id); cmd({ t: "merge", ids }); group = [ids[0]]; selectedDiv = ids[0]; return updateUI(); }
   if (d.act === "split" && selectedDiv) { cmd({ t: "split", id: selectedDiv }); return updateUI(); }
   if (d.act === "maps") { mapsOpen = !mapsOpen; return updateUI(); }
@@ -765,7 +767,7 @@ function topbarHtml() {
   if (!active) return `<div class="who"><div><div class="name">Jogo Civilizatório</div><div class="sub">Clique num país no mapa para governá-lo</div></div></div>${when}<div class="stats"></div>`;
   const c = eco.countries[active - 1], meta = world.countries[active - 1], p = c.politics, ruler = rulerOf(eco, active);
   const weekly = c.income + c.tariffs - c.upkeep - c.interest;
-  return `<div class="who">${ruler ? portraitSVG(ruler, c.research.era, 44) : ""}<img src="${flagURL(flagOf(active))}" alt=""><div><div class="name">${meta.name}</div><div class="sub">${ruler ? `${ruler.name} (${ageOf(ruler, eco.week)}) · ` : ""}${lawOf(p, "Governo").name} · ${p.government.map((g) => GROUPS[g].name).join(", ") || "sem governo"}</div></div></div>` + when +
+  return `<div class="who">${ruler ? portraitSVG(ruler, c.research.era, 44) : ""}<img src="${flagURL(flagOf(active))}" alt=""><div><div class="name">${meta.name}</div><div class="sub">${ruler ? `<a data-char="${ruler.id}" style="cursor:pointer;text-decoration:underline dotted">${ruler.name}</a> (${ageOf(ruler, eco.week)}) · ` : ""}${lawOf(p, "Governo").name} · ${p.government.map((g) => GROUPS[g].name).join(", ") || "sem governo"}</div></div></div>` + when +
     `<div class="stats">` +
     stat("treasury", "Tesouro nacional e saldo por semana", fmt(c.treasury), `<span class="${weekly < 0 ? "up" : "down"}">${signed(weekly)}</span>`) +
     stat("prestige", "Prestígio nacional (média do mundo = 100)", String(prestige(eco, active))) +
@@ -1312,8 +1314,9 @@ function updateUI() {
   else setHtml(cat, menuCat && title ? `<h2>${icon(menuCat, 20)} ${title} <button data-menu="${menuCat}" style="float:right" title="Fechar">${icon("close")}</button></h2>` + CAT_VIEWS[menuCat]() : "");
   group = group.filter((id) => eco.divisions.some((d) => d.id === id));
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = group[0] ?? null; // destruída
-  const show = selected >= 0 || selectedDiv;
-  setHtml(panel, show ? `<button data-act="close-panel" style="float:right" title="Fechar">${icon("close")}</button>` + divisionHtml() + hexHtml() : "");
+  const ch = selectedChar !== null ? eco.characters?.find((x) => x.id === selectedChar) : undefined;
+  const show = selected >= 0 || selectedDiv || ch;
+  setHtml(panel, show ? `<button data-act="close-panel" style="float:right" title="Fechar">${icon("close")}</button>` + (ch ? charProfileHtml(ch) : selectedDiv ? divisionHtml() : hexHtml()) : ""); // tropa e personagem têm painel próprio
   setHtml(document.getElementById("bottombar")!, bottombarHtml());
   hydrateIcons(document.body); // marcadores <i class=i-…> viram SVG
   if (performance.now() >= hudMsgUntil) document.getElementById("toast")!.style.display = "none";
@@ -1478,7 +1481,7 @@ function divisionHtml() {
     (d.country === active ? `<br>Prioridade de abastecimento <select data-prio="${d.id}"><option value="0"${!d.priority ? " selected" : ""}>Automática</option>${PRIORITIES.map((n, k) => `<option value="${k + 1}"${d.priority === k + 1 ? " selected" : ""}>${n}</option>`).join("")}</select> <small>tempo: ${weatherAt(world, d.hex, eco.week)}</small>` : "") +
     (d.supply ? `<br>Abastecimento <b class="${d.supply.level >= 0.75 ? "down" : d.supply.level >= 0.5 ? "" : "up"}">${pct(d.supply.level)} (${levelName(d.supply.level)})</b> · comida ${pct(d.supply.food)} · munição ${pct(d.supply.ammo)} · combustível ${pct(d.supply.fuel)} · estoque ${(d.stock?.food ?? 0).toFixed(1)} sem. · ` : " · ") +
     (d.supplied === false ? `<span class="bad">sem suprimento (depósito a ${depotDistance(world, eco, d)} hexes, alcance ${supplyRange(eco, d.country)})</span>` : `suprimento ok`) + ` <button data-act="disband">Desfazer</button>` +
-    (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b>Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`
+    (gen ? `<div style="display:flex;gap:8px;margin-top:6px">${portraitSVG(gen, eco.countries[d.country - 1].research.era, 44)}<div><b data-char="${gen.id}" style="cursor:pointer" title="Ver perfil">Gen. ${gen.name}</b><br><small>militar ${gen.mil} · ${ageOf(gen, eco.week)} anos</small><br>` + (gen.saved ? "" : `<button data-save-char="${gen.id}">Guardar na história</button>`) + ` <button data-book="${gen.id}">Livro</button></div></div>`
       : d.country === active ? `<br><button data-act="hire-general">Contratar general (${CHAR.generalCost})</button>` : "") + frontHtml([d.id]) + `</div>`;
 }
 
@@ -1557,12 +1560,27 @@ const bookList = () => {
   return saved.length ? `<h3>Livro da história</h3>${saved.map((c) => `<div>${c.name} <small>${c.dead ? "(falecido)" : ""}</small> <button data-book="${c.id}">Abrir livro</button></div>`).join("")}` : "";
 };
 /** Cartão do governante: retrato, idade, atributos, traços e a vida dele (aba Política). */
+/** Perfil do personagem no painel da direita: atributos (sorteado → efetivo) e cada traço com o que ele dá e tira. */
+function charProfileHtml(c: NonNullable<Economy["characters"]>[number]) {
+  const era = eco.countries[c.country - 1].research.era;
+  const attr = (k: "adm" | "dip" | "mil", label: string) => { const v = skill(c, k); return `<small style="display:block">${label} <b>${v}</b>${v !== c[k] ? ` <span style="color:var(--dim)">(${c[k]} sem traços)</span>` : ""}</small><div class="bar"><div style="background:${v >= 60 ? "var(--green)" : v < 40 ? "var(--red)" : "var(--gold)"};width:${v}%"></div></div>`; };
+  const names = { adm: "administração", dip: "diplomacia", mil: "militar" } as const;
+  const traits = c.traits.map((t) => {
+    const fx = Object.entries(TRAIT_FX[t] ?? {}).map(([k, v]) => `<span class="${v! > 0 ? "down" : "up"}">${v! > 0 ? "+" : ""}${v} ${names[k as keyof typeof names]}</span>`).join(", ");
+    return `<li><b>${t}</b> ${fx ? `<small>${fx}</small>` : "<small>sem efeito nos atributos</small>"}</li>`;
+  }).join("");
+  return `<div style="display:flex;gap:10px">${portraitSVG(c, era, 72)}<div><h3 style="margin:0">${c.name}</h3><small>${c.role ?? "Governante"} · ${world.countries[c.country - 1].name} · ${c.dead ? "falecido" : `${ageOf(c, eco.week)} anos`}</small></div></div>` +
+    attr("adm", "Administração (impostos)") + attr("dip", "Diplomacia (relações)") + attr("mil", "Militar (exército e batalhas)") +
+    `<h3>Traços</h3><ul style="margin:0;padding-left:16px">${traits}</ul>` +
+    (c.role === "General" ? `<small>Estilo de comando: <b>${styleOf(c)}</b> — ${STYLES[styleOf(c)]}</small>` : "") +
+    `<h3>Vida</h3><small>${c.life.map((l) => lifeText(world, l)).join("<br>")}</small><br><button data-book="${c.id}">Livro</button>`;
+}
 function rulerHtml() {
   const r = active ? rulerOf(eco, active) : undefined;
   if (!r) return "";
   const attr = (k: string, v: number) => `<small style="display:block">${k} ${v}</small><div class="bar"><div style="background:${v >= 60 ? "var(--green)" : v < 40 ? "var(--red)" : "var(--gold)"};width:${v}%"></div></div>`;
   return `<h3>Governante</h3><div class="card" style="display:flex;gap:10px">${portraitSVG(r, eco.countries[active - 1].research.era, 72)}` +
-    `<div style="flex:1"><div class="serif" style="font-size:17px;font-weight:600">${r.name}</div><small style="display:block">${ageOf(r, eco.week)} anos · ${r.traits.join(", ")}</small>` +
+    `<div style="flex:1"><div class="serif" style="font-size:17px;font-weight:600;cursor:pointer" data-char="${r.id}" title="Ver perfil">${r.name}</div><small style="display:block">${ageOf(r, eco.week)} anos · ${r.traits.join(", ")}</small>` +
     attr("Administração (impostos)", r.adm) + attr("Diplomacia (relações)", r.dip) + attr("Militar (exército)", r.mil) +
     (r.saved ? "<small>Guardado na história</small>" : `<button data-save-char="${r.id}" title="O livro dele continua depois que ele morrer">Guardar na história</button>`) + `</div></div>` +
     `<details><summary><small>Vida</small></summary><small>${r.life.map((l) => lifeText(world, l)).join("<br>")}</small></details>` + bookList();
@@ -1694,7 +1712,10 @@ function hexHtml() {
     if (eco.occupier[i]) h += `<br>Ocupado por ${world.countries[eco.occupier[i] - 1].name}`;
     return h + (message ? `<br><span class="bad">${message}</span>` : "");
   }
-  const rows = buildingsFor(res, !!eco.urban[i], world.resource2[i]).map((b) => {
+  const rows = buildingsFor(res, !!eco.urban[i], world.resource2[i]).filter((b) => { // o que não dá para construir aqui não aparece
+    const tech = techFor(b);
+    return eco.levels[b][i] > 0 || ((!tech || eco.countries[active - 1].research.known.has(tech)) && canBuild(world, eco, i, b, queuedLevels(eco, i, b)) === null);
+  }).map((b) => {
     const def = BUILDINGS[b], lv = eco.levels[b][i];
     const tip = def.boosts !== undefined ? ` <small>(+${Math.round(def.mult! * 100)}% ${BUILDINGS[def.boosts].name}/nível)</small>`
       : def.industry?.construction ? ` <small>(materiais da era → pontos de construção)</small>`

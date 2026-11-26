@@ -7,7 +7,7 @@ import type { Division, Economy } from "./economy.ts";
 import { statsOf, unitOf } from "./units.ts";
 import { techSum } from "./tech.ts";
 import { lawFx } from "./politics.ts";
-import { attrMod, styleOf, type Character, type Style } from "./characters.ts";
+import { attrMod, styleOf, type Character, type Style, skill } from "./characters.ts";
 import { weatherAt } from "./world.ts";
 
 export const BATTLE = {
@@ -100,7 +100,7 @@ const shareOf = (ds: Division[], cats: string[]) => {
 function modsOf(w: World, e: Economy, b: Battle, ds: Division[], side: "att" | "def", enemy: Division[], riverAtt: boolean, phase: "fogo" | "choque"): [string, number][] {
   const mods: [string, number][] = [];
   const gen = generalOf(e, ds), style = gen ? styleOf(gen) : undefined;
-  if (gen) mods.push([`General ${gen.name}`, Math.round(2 * (attrMod(gen.mil) + 0.5) * 10) / 10]); // 0 a +2
+  if (gen) mods.push([`General ${gen.name}`, Math.round(2 * (attrMod(skill(gen, "mil")) + 0.5) * 10) / 10]); // 0 a +2
   if (style === "Defensivo" && side === "def") mods.push(["Estilo defensivo", 1]);
   if (style === "Agressivo" && side === "att") mods.push(["Estilo agressivo", 1]);
   if (style === "Cauteloso" && side === "att") mods.push(["Estilo cauteloso", -0.5]);
