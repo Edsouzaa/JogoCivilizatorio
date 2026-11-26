@@ -4,7 +4,7 @@ import { CLIMATE_COLORS } from "./world.ts";
 import { generateWorld, colorize, MAP_MODES, TERRAINS, RESOURCES, RES_COLORS, BIOME_FILES, CLIMATES, T, isLand, deepOcean, generateContinents, generateRiverSystems, HEX_MODES, type World } from "./world.ts";
 import {
   createEconomy, tick, build, buildCost, buildingsFor, foundCity, trainSettlers, transferSize, dateLabel, settlersOf,
-  proposePact, cancelPact, hasPact, INFAMY, popCap, jobsAt, cityName, cityReach, maxRoad, maxHarbor,
+  proposePact, cancelPact, hasPact, INFAMY, popCap, jobsAt, outputOf, cityName, cityReach, maxRoad, maxHarbor,
   BASE_PRICE, BUILDINGS, GOODS, RULES, techFor, canBuild, SECTOR, type Economy, type Division,
 } from "./economy.ts";
 import { WAR_ECONOMY, WAR_ECON, CONVERSIONS } from "./wareconomy.ts";
@@ -273,8 +273,8 @@ function hexLayer(): ((i: number) => readonly number[] | null) | undefined {
       if (!active || world.owner[i] !== active || !isLand(world.terrain[i])) return null;
       if (mbCity >= 0 && eco.market[i] - 1 !== mbCity) return [95, 95, 95];
       if (ok.has(i)) return [70, 170, 80];
-      if (eco.levels[mbB][i] || queuedLevels(eco, i, mbB)) return [210, 180, 60];
-      return [170, 70, 60];
+      if (eco.levels[mbB][i] || queuedLevels(eco, i, mbB)) return [200, 70, 60]; // limite atingido
+      return [110, 110, 110]; // não serve aqui
     };
   }
   if (mode === 15 && active) { // suprimento: distância (por caminho no país e vizinhança) ao depósito mais perto, pelo alcance
@@ -298,6 +298,14 @@ function hexLayer(): ((i: number) => readonly number[] | null) | undefined {
       return p < 0.5 ? [70, 170, 80] : p < 0.8 ? [170, 190, 70] : p < 1 ? [220, 170, 50] : p < 1.2 ? [220, 110, 50] : [180, 50, 45];
     };
   }
+  if (mode === 17) return (i) => { // estados: cor de cada estado; cidade sem estado em cinza; fora do país, apagado
+    const k = eco.market[i]; if (!world.owner[i]) return null;
+    const city = k ? eco.cities[k - 1] : undefined;
+    if (!city) return world.countries[world.owner[i] - 1].color.map((v) => (v + 2 * 80) / 3);
+    return city.state !== undefined ? stateColor(city.state) : [120, 120, 120];
+  };
+  if (mode === 18) return (i) => (world.owner[i] && active ? diploClass(world.owner[i])[0] : null); // diplomacia
+  if (mode === 19) return (i) => (world.owner[i] ? world.countries[world.owner[i] - 1].color.map((v) => (v + 2 * 75) / 3) : null); // militar: países apagados, tropas em destaque
   if (mode === 13) return (i) => { // expansão: território, área de influência (claro) e cidades isoladas (vermelho)
     if (world.owner[i]) { const k = eco.market[i]; return k && eco.cities[k - 1].isolated ? [200, 70, 60] : world.countries[world.owner[i] - 1].color; }
     const f = eco.influence?.[i]; return f ? world.countries[f - 1].color.map((v) => (v + 70 * 2) / 3) : null;
@@ -348,6 +356,21 @@ canvas.addEventListener("pointerup", (e) => {
     selectedDiv = group[0] ?? null;
     if (who && !net) { active = who; eco.humans = [active]; }
     message = ""; updateUI();
+  } else if (drag?.box && drag.moved < 5 && special) { // modos especiais: um clique, uma ação (cada modo escolhe o que seleciona)
+    const [c, r] = hexAt(e.clientX, e.clientY), i = inMap(c, r) ? r * W + c : -1;
+    message = "";
+    if (i >= 0) {
+      if (special === "build") buildClick(i, e.shiftKey, e.ctrlKey);
+      else if (special === "state") selected = i;
+      else if (special === "diplo") pickedCountry = world.owner[i];
+      else { // militar: só tropas (as do jogador primeiro)
+        const here = eco.divisions.filter((d) => d.hex === i && (d.country === active || canSee(i))).sort((a, b) => +(b.country === active) - +(a.country === active));
+        const k = here.findIndex((d) => d.id === selectedDiv);
+        selectedDiv = here.length ? here[(k + 1) % here.length].id : selectedDiv;
+        group = selectedDiv ? [selectedDiv] : [];
+      }
+    }
+    updateUI();
   } else if (drag?.box && drag.moved < 5) { // clique sem arrastar = selecionar hex
     const [c, r] = hexAt(e.clientX, e.clientY);
     selected = inMap(c, r) ? r * W + c : -1; selectedChar = null;
@@ -685,6 +708,8 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "war") return cmd({ t: "war", target: world.owner[selected] });
   if (d.peace) return cmd({ t: "peace", target: Number(d.peace) });
   if (d.buyhex) return cmd({ t: "buyHex", hex: Number(d.buyhex) });
+  if (d.special !== undefined) return setSpecial((d.special || null) as Special | null);
+  if (d.mbpick !== undefined) { mbB = Number(d.mbpick); message = ""; recolor(); return updateUI(); }
   if (d.act === "disband" && selectedDiv) { cmd({ t: "disband", id: selectedDiv }); selectedDiv = null; return updateUI(); }
   if (d.tab) { tab = Number(d.tab); return updateUI(); }
   if (d.econ) { econTab = Number(d.econ); goodDetail = null; return updateUI(); }
@@ -779,6 +804,145 @@ function topbarHtml() {
 }
 
 let mapsOpen = false;
+// ---- modos especiais (barra inferior): o mesmo mapa e a mesma seleção, com camada, clique e painel da direita próprios
+type Special = "build" | "state" | "diplo" | "military";
+const SPECIALS: [Special, string, string, string, number][] = [
+  ["build", "build", "Construção", "Onde dá para construir: escolha um edifício à direita; clique constrói no hex, Shift+clique na cidade, Ctrl+clique no estado", 14],
+  ["state", "map", "Estado", "Divisão administrativa: estados e cidades, população, economia e incentivos", 17],
+  ["diplo", "diplomacy", "Diplomacia", "Relação de cada país com o seu: aliado, amigo, neutro, tenso, hostil, em guerra", 18],
+  ["military", "military", "Militar", "Só tropas: clique seleciona exércitos, frotas e esquadrões", 19],
+];
+let special: Special | null = null, modeBeforeSpecial = 0, pickedCountry = 0;
+function setSpecial(s: Special | null) {
+  if (s === special) s = null; // clicar no ativo volta ao normal
+  if (!special) modeBeforeSpecial = mode;
+  special = s; selected = -1; selectedDiv = null; selectedChar = null; group = []; pickedCountry = 0; menuCat = null;
+  if (s === "build") mbCity = -1;
+  setMode(s ? SPECIALS.find((x) => x[0] === s)![4] : modeBeforeSpecial);
+  updateUI();
+}
+const modebarHtml = () => SPECIALS.map(([k, ic, n, tip]) => `<button data-special="${k}" class="${special === k ? "on" : ""}" title="${n}: ${tip}">${icon(ic)} <span class="lbl">${n}</span></button>`).join("") +
+  `<button data-special="" title="Voltar ao mapa normal"${special ? "" : " disabled"}>${icon("close")} <span class="lbl">Normal</span></button>`;
+
+const stateColor = (id: number) => { const h = (Math.imul(id + 7, 2654435761) >>> 0) % 360; return hsl(h, 0.45, 0.5); };
+function hsl(h: number, s: number, l: number): number[] { const f = (n: number) => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l); return 255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))); }; return [f(0), f(8), f(4)]; }
+/** Classe diplomática do país k para o jogador: [cor, nome]. Aliança (suserano/súdito) > guerra > relação (com reivindicações pesando). */
+function diploClass(k: number): [number[], string] {
+  if (k === active) return [[200, 200, 200], "Você"];
+  if (atWar(eco, active, k)) return [[45, 8, 8], "Em guerra"];
+  const sa = subjectOf(eco, k), sb = subjectOf(eco, active);
+  if (sa?.overlord === active || sb?.overlord === k) return [[50, 100, 200], "Aliado (súdito ou suserano)"];
+  let r = relation(eco, active, k);
+  if ((eco.claims ?? []).some((c) => c.country === k && eco.cities[c.city]?.country === active)) r -= 25; // reivindica terra sua: ameaça
+  if (hasPact(eco, active, k)) r += 10;
+  return r > 50 ? [[30, 120, 50], "Muito amigável"] : r > 20 ? [[70, 165, 80], "Amigável"] : r > 5 ? [[140, 200, 130], "Levemente positiva"]
+    : r >= -5 ? [[215, 200, 90], "Neutra"] : r >= -20 ? [[230, 160, 80], "Tensa"] : r >= -50 ? [[215, 90, 50], "Hostil"] : [[150, 30, 30], "Muito hostil"];
+}
+
+/** Painel do modo Construção: edifícios conhecidos em cartões por categoria; o escolhido pinta o mapa. */
+function buildCatOf(b: number) {
+  const d = BUILDINGS[b];
+  return d.depot ? "Militares" : d.industry?.commerce ? "Comércio" : d.industry?.naval ? "Estaleiros" : d.industry?.admin ? "Administrativas" : d.industry?.construction ? "Infraestrutura" : d.industry ? "Indústrias" : d.boosts !== undefined ? "Melhorias" : "Extratoras";
+}
+function buildPanelHtml() {
+  if (!active) return "<small>Escolha um país.</small>";
+  const known = eco.countries[active - 1].research.known, cats = new Map<string, number[]>();
+  BUILDINGS.forEach((_, b) => { const t = techFor(b); if (!t || known.has(t)) { const k = buildCatOf(b); if (!cats.has(k)) cats.set(k, []); cats.get(k)!.push(b); } });
+  const card = (b: number) => {
+    const d = BUILDINGS[b], ind = d.industry;
+    const fx = d.boosts !== undefined ? `+${Math.round(d.mult! * 100)}% ${BUILDINGS[d.boosts].name}` : ind?.commerce ? `estoque +${ind.commerce.storage}, acesso +${Math.round(ind.commerce.access * 100)}%, poder +${ind.commerce.power}`
+      : ind?.admin ? `${ind.admin} pontos adm.` : ind ? ind.outputs.map(([g, q]) => `${q} ${GOODS[g]}`).join(" + ") || "pontos de construção" : d.depot ? "suprimento do exército" : `${RULES.outputPerLevel} do recurso`;
+    const where = d.depot ? "qualquer terra do país" : ind ? "hex de cidade" + (ind.naval ? " no litoral" : "") : d.for.map((g) => RESOURCES[g]).join(", ");
+    return `<div class="bcard ${mbB === b ? "on" : ""}" data-mbpick="${b}" title="Precisa de: ${where}"><b>${artSVG("building", d.name, 16)} ${d.name}</b><small>custo ${RULES.buildCost}+ · ${cpCost(b)} PC · manut. ${RULES.upkeepPerLevel}/sem</small>` +
+      `<small>${d.workers} trabalhadores · ${fx}</small><small>Onde: ${where}${techFor(b) ? ` · ${techFor(b)}` : ""}</small></div>`;
+  };
+  return `<h3>${icon("build")} Construção</h3><small>Escolha um edifício. No mapa: <b style="color:rgb(70,170,80)">verde</b> pode, <b style="color:rgb(200,70,60)">vermelho</b> limite atingido, cinza não serve. Clique = este hex · Shift = cidade inteira · Ctrl = estado inteiro (com confirmação).</small>` +
+    (buildHover() ? `<div class="card">${buildHover()}</div>` : "") + (message ? `<div class="bad">${message}</div>` : "") +
+    [...cats].map(([k, bs]) => `<h3>${k}</h3><div class="bcards">${bs.map(card).join("")}</div>`).join("");
+}
+/** Prévia do edifício escolhido no hex sob o mouse: produção, receita e insumos pelos preços da cidade (nada muda no jogo). */
+function buildHover() {
+  const [hc, hr] = hover; if (!inMap(hc, hr) || !active) return "";
+  const i = hr * W + hc, d = BUILDINGS[mbB], city = cityOf(i);
+  if (world.owner[i] !== active) return "";
+  const err = canBuild(world, eco, i, mbB, queuedLevels(eco, i, mbB));
+  if (err) return `<small>${d.name} aqui: ${err}</small>`;
+  if (!city) return `<small>${d.name}: hex sem cidade (sem mercado para estimar receita)</small>`;
+  const m = city.market, c = eco.countries[active - 1], price = (g: number) => BASE_PRICE[g] * m.price[g];
+  let rev = 0, cost = 0, out = "", lack: string[] = [];
+  if (d.industry) {
+    for (const [g, q] of d.industry.outputs) { rev += q * price(g); out += `${q} ${GOODS[g]} `; }
+    for (const [g, q] of d.industry.inputs) { cost += q * price(g); if (m.supply[g] - m.used[g] < q) lack.push(GOODS[g]); }
+  } else if (d.boosts === undefined && !d.depot) { const g = outputOf(world, mbB, i), q = RULES.outputPerLevel * (1 + c.bonus[mbB]); rev = q * price(g); out = `${q.toFixed(1)} ${GOODS[g]}`; }
+  const up = RULES.upkeepPerLevel, profit = rev - cost - up;
+  return `<b>${d.name}</b> em ${city.name}: produz ${out || "—"} · receita ${rev.toFixed(1)}/sem · insumos ${cost.toFixed(1)} · manutenção ${up} · <b class="${profit >= 0 ? "down" : "up"}">${profit >= 0 ? "lucro" : "prejuízo"} ${profit.toFixed(1)}</b> · ${d.workers} trabalhadores` +
+    (lack.length ? ` · <span class="bad">falta no mercado: ${lack.join(", ")}</span>` : "") + `<br><small>Estimativa antes dos salários (os salários saem do que sobra).</small>`;
+}
+/** Clique no modo Construção: um hex, a cidade (Shift) ou o estado (Ctrl), com confirmação do lote. */
+function buildClick(i: number, shift: boolean, ctrl: boolean) {
+  if (!active || world.owner[i] !== active) { message = "Só no seu território"; return; }
+  const d = BUILDINGS[mbB];
+  if (!shift && !ctrl) {
+    const err = canBuild(world, eco, i, mbB, queuedLevels(eco, i, mbB));
+    if (err) { message = err; return; }
+    if (confirm(`Construir ${d.name} aqui por ${buildCost(eco, mbB, i)} (${cpCost(mbB)} pontos de construção)?`)) cmd({ t: "build", i, b: mbB });
+    return;
+  }
+  const k = eco.market[i]; if (!k) { message = "Hex sem cidade"; return; }
+  const st = eco.cities[k - 1].state;
+  const area = [...eco.owned].filter((j) => world.owner[j] === active && eco.market[j] && (ctrl && st !== undefined ? eco.cities[eco.market[j] - 1].state === st : eco.market[j] === k));
+  const ok: number[] = [], why = new Map<string, number>();
+  for (const j of area) { const err = canBuild(world, eco, j, mbB, queuedLevels(eco, j, mbB)); if (err) why.set(err, (why.get(err) ?? 0) + 1); else ok.push(j); }
+  if (!ok.length) { message = `Nenhum hex válido (${[...why].map(([r, n]) => `${n}: ${r}`).join("; ")})`; return; }
+  const cost = ok.reduce((s, j) => s + buildCost(eco, mbB, j), 0), c = eco.countries[active - 1];
+  const txt = `${d.name} em ${ctrl && st !== undefined ? "todo o estado" : `toda a cidade de ${eco.cities[k - 1].name}`}
+
+Hexes válidos: ${ok.length}
+Ignorados: ${area.length - ok.length}${why.size ? ` (${[...why].map(([r, n]) => `${n} ${r}`).join("; ")})` : ""}` +
+    `
+Custo total: ${Math.round(cost)} (tesouro ${Math.round(c.treasury)})
+Manutenção a mais: ${(ok.length * RULES.upkeepPerLevel).toFixed(1)}/sem
+Trabalhadores: ${ok.length * d.workers}
+
+Confirmar?`;
+  if (confirm(txt)) cmd({ t: "buildMany", hexes: ok, b: mbB, levels: 1 });
+}
+/** Painel do modo Estado: estado (ou cidade sem estado) do hex clicado. */
+function statePanelHtml() {
+  if (selected < 0 || !eco.market[selected]) return `<h3>${icon("map")} Estados</h3><small>Clique numa região para ver o estado e as cidades dele. Cada cor é um estado; cinza = cidade sem estado.</small>`;
+  const city = eco.cities[eco.market[selected] - 1], st = city.state !== undefined ? eco.states.find((s) => s.id === city.state) : undefined;
+  const cs = st ? eco.cities.filter((k) => k.state === st.id) : [city], ks = new Set(cs.map((k) => eco.cities.indexOf(k) + 1));
+  let hexes = 0, ctrl = 0, pop = 0, blds = 0;
+  for (const j of eco.owned) if (ks.has(eco.market[j])) { hexes++; ctrl += eco.control[j]; pop += world.pop[j]; if (eco.producers.has(j)) for (let b = 0; b < BUILDINGS.length; b++) blds += eco.levels[b][j]; }
+  const gdp = cs.reduce((s, k) => s + k.market.supply.reduce((a, q, g) => a + (q - (k.market.self?.[g] ?? 0)) * BASE_PRICE[g] * k.market.price[g], 0), 0);
+  const inc = (eco.incentives ?? []).filter((x) => cs.some((k) => eco.cities.indexOf(k) === x.city));
+  return `<h3>${icon("map")} ${st ? st.name : `${city.name} (sem estado)`}</h3><small>${world.countries[city.country - 1].name} · capital ${cs[0].name}</small>` +
+    `<div class="cards"><div class="card"><div class="k">População</div><div class="v">${fmt(pop)}</div></div><div class="card"><div class="k">Cidades</div><div class="v">${cs.length}</div></div>` +
+    `<div class="card"><div class="k">Hexes</div><div class="v">${hexes}</div></div><div class="card"><div class="k">Controle</div><div class="v">${pct(hexes ? ctrl / hexes : 0)}</div></div>` +
+    `<div class="card"><div class="k">PIB / sem</div><div class="v">${fmt(gdp)}</div></div><div class="card"><div class="k">Níveis de construção</div><div class="v">${blds}</div></div></div>` +
+    `<h3>Cidades</h3><table>${cs.map((k) => `<tr><td><button data-goto="${k.hex}">${k.name}</button></td><td>${fmt(k.market.pop)} pessoas</td><td>${k.urban.length} hex urbano(s)</td></tr>`).join("")}</table>` +
+    `<h3>Incentivos ativos</h3>${inc.length ? inc.map((x) => `<small>${x.kind} em ${eco.cities[x.city].name}</small>`).join("<br>") : "<small>Nenhum.</small>"}` +
+    (city.country === active ? `<p><small>Para ativar incentivos, clique numa cidade no modo normal (painel do hex).</small></p>` : "");
+}
+/** Painel do modo Diplomacia: país escolhido no mapa. */
+function diploPanelHtml() {
+  const k = pickedCountry;
+  if (!k || !active) return `<h3>${icon("diplomacy")} Diplomacia</h3><small>Clique num país. Cores: azul aliado, verde amigável, amarelo neutro, laranja tenso, vermelho hostil, quase preto em guerra.</small>`;
+  const c = eco.countries[k - 1], [col, cls] = diploClass(k), r = rulerOf(eco, k);
+  const claims = (eco.claims ?? []).filter((x) => x.country === k && eco.cities[x.city]?.country === active).length;
+  return `<div style="display:flex;gap:8px;align-items:center"><img src="${flagURL(flagOf(k))}" width="42" height="28"><div><h3 style="margin:0">${world.countries[k - 1].name}</h3><small>${lawOf(c.politics, "Governo").name}${r ? ` · <a data-char="${r.id}" style="cursor:pointer">${r.name}</a>` : ""}</small></div></div>` +
+    `<p><span style="display:inline-block;width:12px;height:12px;background:${rgb(col)};vertical-align:-2px"></span> <b>${cls}</b> · relação ${Math.round(relation(eco, active, k))} · prestígio ${prestige(eco, k)}</p>` +
+    `<div class="cards"><div class="card"><div class="k">População</div><div class="v">${fmt(c.pop)}</div></div><div class="card"><div class="k">PIB anual</div><div class="v">${fmt(c.gdpWeek * 52)}</div></div>` +
+    `<div class="card"><div class="k">Exército</div><div class="v">${fmt(eco.divisions.filter((d) => d.country === k && d.kind === "army").reduce((s, d) => s + d.strength, 0))}</div></div><div class="card"><div class="k">Era</div><div class="v">${ERAS[c.research.era]}</div></div></div>` +
+    `<small>${personality(world, eco, k)}${claims ? ` · <span class="bad">reivindica ${claims} cidade(s) sua(s)</span>` : ""}${hasPact(eco, active, k) ? " · acordo comercial" : ""}</small><br><small>Quer: ${desires(world, eco, k).slice(0, 3).map((x) => lifeText(world, x)).join("; ") || "—"}</small>` +
+    (k !== active ? `<p><button data-improve="${k}">Melhorar relações (${DIPLO.improveCost} adm.)</button> ${atWar(eco, active, k) ? `<button data-peace="${k}">Propor paz</button>` : hasPact(eco, active, k) ? `<button data-unpact="${k}">Cancelar acordo</button>` : `<button data-pact="${k}">Propor acordo comercial</button>`} <button data-menu="diplomacy">Abrir diplomacia</button></p>` : "");
+}
+function specialPanelHtml() {
+  if (special === "build") return buildPanelHtml();
+  if (special === "state") return statePanelHtml();
+  if (special === "diplo") return diploPanelHtml();
+  return selectedDiv ? divisionHtml() : `<h3>${icon("military")} Militar</h3><small>Clique numa tropa no mapa (cliques repetidos alternam entre as do hex). Arraste para selecionar várias.</small>` + militaryHtml();
+}
 /** Legenda de cada camada: [cor ou gradiente CSS, texto]. As cores são as de colorize/hexLayer. */
 const rgb = (c: readonly number[]) => `rgb(${c.map(Math.round).join(",")})`;
 const grad = (a: readonly number[], b: readonly number[], c?: readonly number[]) => `linear-gradient(90deg,${rgb(a)},${c ? rgb(b) + "," + rgb(c) : rgb(b)})`;
@@ -796,7 +960,10 @@ function legendItems(): [string, string][] {
     case 11: return [[grad([40, 60, 90], [100, 160, 240]), "Pouca alfabetização → muita"]];
     case 12: return [[grad([70, 70, 60], [220, 180, 90]), "Sem estrada/porto → muita infraestrutura"]];
     case 13: return [["#c86", "País"], ["#b9a", "Área de influência"], [rgb([200, 70, 60]), "Cidade isolada"]];
-    case 14: return [[rgb([70, 170, 80]), "Pode construir"], [rgb([210, 180, 60]), "Limite atingido / já existe"], [rgb([170, 70, 60]), "Não serve"], [rgb([95, 95, 95]), "Fora da cidade escolhida"]];
+    case 14: return [[rgb([70, 170, 80]), "Pode construir"], [rgb([200, 70, 60]), "Limite atingido"], [rgb([110, 110, 110]), "Não serve aqui"], [rgb([95, 95, 95]), "Fora da cidade escolhida"]];
+    case 17: return [["linear-gradient(90deg,#c77,#7c7,#77c)", "Uma cor por estado"], [rgb([120, 120, 120]), "Cidade sem estado"], ["#988", "Terra sem cidade"]];
+    case 18: return ([[[50, 100, 200], "Aliado"], [[30, 120, 50], "Muito amigável"], [[70, 165, 80], "Amigável"], [[140, 200, 130], "Levemente positiva"], [[215, 200, 90], "Neutra"], [[230, 160, 80], "Tensa"], [[215, 90, 50], "Hostil"], [[150, 30, 30], "Muito hostil"], [[45, 8, 8], "Em guerra"]] as [number[], string][]).map(([c, n]) => [rgb(c), n]);
+    case 19: return [["#887", "Países (apagados)"], ["#fff", "Tropas em destaque"]];
     case 15: return [[rgb([70, 170, 80]), "Perto do depósito"], [rgb([210, 190, 60]), "Médio"], [rgb([220, 130, 50]), "Longe"], [rgb([180, 60, 50]), "Fora do alcance"]];
     case 16: return [[rgb([70, 170, 80]), "Pressão < 50%"], [rgb([170, 190, 70]), "50–80%"], [rgb([220, 170, 50]), "80–100%"], [rgb([220, 110, 50]), "100–120%"], [rgb([180, 50, 45]), "> 120%"], [grad([60, 70, 60], [100, 180, 90]), "Fora do país: potencial"]];
   }
@@ -1332,6 +1499,7 @@ function setHtml(el: Element, html: string) {
 function updateUI() {
   setHtml(document.getElementById("topbar")!, topbarHtml());
   setHtml(document.getElementById("maptools")!, maptoolsHtml());
+  setHtml(document.getElementById("modebar")!, modebarHtml());
   setHtml(document.getElementById("leftmenu")!, leftmenuHtml());
   const cat = document.getElementById("catpanel")!, title = MENU.find(([k]) => k === menuCat)?.[1];
   cat.className = menuCat === "tech" ? "full" : menuCat === "economy" || menuCat === "charts" ? "wide" : "";
@@ -1340,8 +1508,9 @@ function updateUI() {
   group = group.filter((id) => eco.divisions.some((d) => d.id === id));
   if (selectedDiv && !eco.divisions.some((d) => d.id === selectedDiv)) selectedDiv = group[0] ?? null; // destruída
   const ch = selectedChar !== null ? eco.characters?.find((x) => x.id === selectedChar) : undefined;
-  const show = selected >= 0 || selectedDiv || ch;
-  setHtml(panel, show ? `<button data-act="close-panel" style="float:right" title="Fechar">${icon("close")}</button>` + (ch ? charProfileHtml(ch) : selectedDiv ? divisionHtml() : hexHtml()) : ""); // tropa e personagem têm painel próprio
+  const show = selected >= 0 || selectedDiv || ch || special;
+  if (special && !ch) setHtml(panel, specialPanelHtml());
+  else setHtml(panel, show ? `<button data-act="close-panel" style="float:right" title="Fechar">${icon("close")}</button>` + (ch ? charProfileHtml(ch) : selectedDiv ? divisionHtml() : hexHtml()) : ""); // tropa e personagem têm painel próprio
   setHtml(document.getElementById("bottombar")!, bottombarHtml());
   hydrateIcons(document.body); // marcadores <i class=i-…> viram SVG
   if (performance.now() >= hudMsgUntil) document.getElementById("toast")!.style.display = "none";
