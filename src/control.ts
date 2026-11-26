@@ -6,7 +6,7 @@ import { techSum } from "./tech.ts";
 import { hexDistance } from "./hex.ts";
 import type { World } from "./world.ts";
 import { RULES, type Economy } from "./economy.ts"; // RULES só é lido dentro das funções (import circular)
-import { hasIncentive } from "./admin.ts";
+import { incFx } from "./admin.ts";
 import { EXPAND } from "./expansion.ts";
 const INTEGRATION = 0.25; // incentivo "Integração": + controle máximo
 
@@ -42,7 +42,7 @@ export function updateControl(w: World, e: Economy, start = false) {
     const c = w.owner[i];
     if (!cache.has(c)) cache.set(c, seats(w, e, c));
     const k = e.market[i] - 1;
-    const integ = k >= 0 ? (hasIncentive(e, k, "Integração") ? INTEGRATION : 0) + RULES.roadControl * (e.cities[k].road ?? 0) : 0;
+    const integ = k >= 0 ? INTEGRATION * incFx(e, k, "control") + RULES.roadControl * (e.cities[k].road ?? 0) : 0;
     const iso = k >= 0 && e.cities[k].isolated ? EXPAND.isolation : 1; // cidade sem ligação com a capital: difícil de administrar
     const max = e.occupier[i] ? 0 : Math.min(1, (maxControl(w, e, i, cache.get(c)!) + integ + techSum(e.countries[c - 1].research, "control") + lawFx(e.countries[c - 1].politics, "control", e.countries[c - 1].control)) * iso); // + tecnologias de governo
     e.control[i] = start ? max : e.control[i] > max ? max : Math.min(max, e.control[i] + CONTROL.risePerMonth);

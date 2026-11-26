@@ -30,7 +30,8 @@ import { foundingCost, updateExpansion } from "./expansion.ts";
 import { expireProposals, type Proposal, type Vote } from "./proposals.ts";
 import { rulerOf, attrMod, CHAR, noteRuler, type Character, skill } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
-import { ADMIN, hasIncentive, stepAdmin, adminCap, INCENTIVES, type Incentive } from "./admin.ts";
+import { ADMIN, hasIncentive, stepAdmin, adminCap, INCENTIVES, incFx, incCountryFx, type Incentive } from "./admin.ts";
+import { BUILDING_KIND } from "./pops.ts";
 
 /** Bens do jogo: matérias-primas do mapa (mesmos índices de RESOURCES) + produtos industriais. */
 export const GOODS = [...RESOURCES, "Bronze", "Tecidos", "Ferramentas", "Armas", "Papel",
@@ -178,7 +179,7 @@ export function growPopulation(w: World, e: Economy) {
     for (const f of FOOD) { have += m.supply[f]; need += m.pop * POP_DEMAND[f]; }
     const ratio = need > 0 ? have / need : 0, c = e.countries[k.country - 1];
     const food = Math.max(0, Math.min(1, (ratio - GROWTH.foodMin) / (GROWTH.foodFull - GROWTH.foodMin)));
-    return (food * GROWTH.yearly * (1 + techSum(c.research, "growth") + lawFx(c.politics, "growth", c.control)) * (e.plague?.[ci] ? 0 : 1)) / 13; // 13 meses de 4 semanas
+    return (food * GROWTH.yearly * (1 + techSum(c.research, "growth") + lawFx(c.politics, "growth", c.control) + incFx(e, ci, "growth")) * (e.plague?.[ci] ? 0 : 1)) / 13; // 13 meses de 4 semanas
   });
   for (const i of e.owned) {
     const k = e.market[i];
@@ -308,6 +309,7 @@ export type Country = {
   radicals: number;     // fração da população com lealdade baixa
   migration: number;    // saldo migratório do último mês (+ chegou, − saiu)
   subsistence: number;  // valor da comida de subsistência comida em casa na semana (renda em espécie de quem vive da terra)
+  incLiteracy?: number; incSkill?: number; incCulture?: number; // marcas permanentes dos incentivos (admin.ts)
   subSold?: number;     // valor do excedente de subsistência vendido na semana
   sub?: { capacity: number; dependants: number; gross: number; self: number; surplus: number; deficit: number }; // totais da subsistência (subsistence.ts)
   bonus: Float64Array;  // +fração de produção por construção, vinda das tecnologias
@@ -573,7 +575,7 @@ export function growCities(w: World, e: Economy) {
   for (const city of e.cities) {
     if (!city.market.pop) continue;
     city.popMark ??= city.market.pop; // fundação (ou save antigo): marca a população de partida
-    if (city.market.pop >= city.popMark * (1 + RULES.cityGrowthPct)) grow(city);
+    if (city.market.pop >= city.popMark * (1 + RULES.cityGrowthPct * (1 - incFx(e, e.cities.indexOf(city), "urban")))) grow(city);
   }
   e.countries.forEach((c, ci) => { // excesso administrativo: a maior cidade que ainda cresce ganha um hex
     if ((c.admin ?? 0) < adminCap(e, ci + 1) * RULES.cityAdminShare) return;
@@ -927,7 +929,7 @@ export function tick(w: World, e: Economy) {
     }
     const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
     const penalty = ((e.cities[k - 1].bombed ?? -1) >= e.week ? 1 - AIRW.bombing : 1) * (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals) * (0.5 + 0.5 * (c.upkeepPaid ?? 1)); // sem manutenção paga, produz menos
-    const natural = (hasIncentive(e, k - 1, "Isenção fiscal") ? 1.15 : 1) * (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // pouco controle: parte some no caminho
+    const natural = (1 + incFx(e, k - 1, here.some((r) => BUILDING_KIND[BUILDINGS[r.b].name] === "farm") ? "farm" : "extract")) * (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // incentivos de agricultura/extração/isenção; pouco controle: parte some no caminho
     const f = mult * staffing * penalty * natural;
     for (const [gi, q] of out) m.supply[gi] += q * f;
     for (const r of here) {
@@ -989,7 +991,7 @@ export function tick(w: World, e: Economy) {
       let eff = 1;
       for (const [gi, q] of inputs) { m.demand[gi] += q; if (q > 0) eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / q); }
       for (const [gi, q] of inputs) m.used[gi] += q * eff;
-      const om = outMul[k][b]; // produção com o bônus dos métodos
+      const om = outMul[k][b] * (1 + incFx(e, k, "industry") + (e.countries[city.country - 1].incSkill ?? 0)); // produção com o bônus dos métodos, incentivo e qualificação
       for (const [go, q] of outputs) m.supply[go] += q * om * eff;
       industryEff[k][b] = eff;
       const adm = BUILDINGS[b].industry!.admin;
@@ -1032,7 +1034,7 @@ export function tick(w: World, e: Economy) {
       let g = 0;
       for (let gi = 1; gi < NG; gi++) g += (m.supply[gi] - (m.released?.[gi] ?? 0) - (m.self?.[gi] ?? 0)) * BASE_PRICE[gi] * m.price[gi]; // estoque que volta não é produção nova; o que a família come em casa não é mercado
       const exempt = hasIncentive(e, k, "Isenção fiscal") ? 0 : 1;
-      gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
+      gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (1 + incFx(e, k, "tax")) * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
     });
     c.gdpWeek = gdp;
     c.investWeek = gdp * (lawOf(c.politics, "Economia").invest ?? 0) * econ(c, "privateInvest") * econ(c, "monetization"); // o dinheiro é dos donos, não do tesouro
@@ -1064,19 +1066,20 @@ export function tick(w: World, e: Economy) {
     if (e.week % 4 === 0) { c.gdpHistory.push(gdp * 52); if (c.gdpHistory.length > 600) c.gdpHistory.shift(); }
     updatePops(e, c, ci + 1);
     c.control = c.pop ? ctrlCountry[ci] / c.pop : 1;
-    const cap = c.pop * c.control * Math.max(0.05, RULES.manpowerShare + techSum(c.research, "manpower") + lawFx(c.politics, "manpower", c.control)) - c.pops.count[P["Soldados"]];
+    const cap = c.pop * c.control * Math.max(0.05, RULES.manpowerShare + techSum(c.research, "manpower") + lawFx(c.politics, "manpower", c.control) + incCountryFx(e, ci + 1, "manpower")) - c.pops.count[P["Soldados"]];
     c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen);
     updatePolitics(c.politics, c.pops, c.research.era);
-    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest") + lawFx(c.politics, "unrest", c.control) + (c.culturePenalty ?? 0)); // + leis + minorias não aceitas
+    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest") + lawFx(c.politics, "unrest", c.control) + (c.culturePenalty ?? 0) * (1 - (c.incCulture ?? 0)) + incCountryFx(e, ci + 1, "unrest"));
+    c.politics.legitimacy = Math.min(1, c.politics.legitimacy + incCountryFx(e, ci + 1, "legitimacy")); // templos, combate à corrupção // + leis + minorias não aceitas
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     const ideas = Math.min(0.3, 0.1 * (e.incentives ?? []).filter((x) => x.kind === "Impor ideias" && e.cities[x.city]?.country === ci + 1).length);
     const law = advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci), ideas);
     if (law) noteRuler(e, ci + 1, `aprovou a lei ${law}`);
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
-    const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01);
+    const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01) + (c.incLiteracy ?? 0); // + campanhas de alfabetização (ficam)
     c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);
-    c.researchWeek = (1 + RULES.literacyResearch * c.literacy + lawFx(c.politics, "research", c.control)) * (RULES.researchBase + Math.sqrt(c.pop / RULES.researchPerPop) + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
+    c.researchWeek = (1 + RULES.literacyResearch * c.literacy + lawFx(c.politics, "research", c.control) + incCountryFx(e, ci + 1, "research")) * (RULES.researchBase + Math.sqrt(c.pop / RULES.researchPerPop) + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
     if (c.research.era === 0) { // comércio puxa a tribo para fora do isolamento, mas não garante
       let partners = 0;
       for (const key of e.pacts) if (key.split("-").includes(String(ci + 1))) partners++;

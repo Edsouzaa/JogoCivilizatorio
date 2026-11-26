@@ -49,7 +49,7 @@ export const POP_RULES = {
 };
 
 type Kind = "farm" | "hunt" | "labor" | "industry" | "admin";
-const KIND: Record<string, Kind> = {
+export const BUILDING_KIND: Record<string, Kind> = {
   "Fazenda": "farm", "Irrigação": "farm", "Pasto": "farm", "Estábulo": "farm",
   "Acampamento de caça": "hunt",
   "Serraria": "labor", "Trilhas de transporte": "labor", "Mina": "labor", "Galerias escoradas": "labor", "Barreiro": "labor", "Poço": "labor",
@@ -69,7 +69,7 @@ const ownerFor = (kind: Kind, e: number) =>
 
 /** Empregos de 1 trabalhador da construção: [tipo de POP, fração]. Somam 1. */
 export function jobsFor(building: string, e: number): [number, number][] {
-  const kind = KIND[building];
+  const kind = BUILDING_KIND[building];
   if (!kind) throw new Error(`construção sem empregos definidos: ${building}`);
   const owner: [number, number] = [ownerFor(kind, e), 0.05];
   const tribal = e < CLASSICAL;

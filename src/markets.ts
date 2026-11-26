@@ -5,6 +5,7 @@ import { GOODS, BUILDINGS, type City, type Country, type Economy } from "./econo
 import { T, type World } from "./world.ts";
 import { TECHS } from "./tech.ts";
 import { forNeighbors } from "./hex.ts";
+import { incFx } from "./admin.ts";
 
 export const MARKET = {
   release: 0.5,          // fração do estoque que volta à venda por semana
@@ -60,7 +61,7 @@ export function updateAccess(w: World, e: Economy) {
     const c = e.countries[k.country - 1], cap = e.cities.find((x) => x.country === k.country)!;
     const dx = Math.min(Math.abs((k.hex % w.W) - (cap.hex % w.W)), w.W - Math.abs((k.hex % w.W) - (cap.hex % w.W))), dy = Math.abs(((k.hex / w.W) | 0) - ((cap.hex / w.W) | 0));
     const water = k.port || (k.harbor ?? 0) > 0 ? MARKET.accessWater : 0;
-    let a = MARKET.accessBase[c.research.era] + MARKET.accessRoad * (k.road ?? 0) + water + cityCommerce(e, k).access - Math.max(dx, dy) / MARKET.accessDistance;
+    let a = incFx(e, e.cities.indexOf(k), "access") + MARKET.accessBase[c.research.era] + MARKET.accessRoad * (k.road ?? 0) + water + cityCommerce(e, k).access - Math.max(dx, dy) / MARKET.accessDistance;
     if (k.isolated) a *= 0.5; // sem ligação por terra com a capital
     if (k === cap) a = 1;
     k.access = Math.max(0.05, Math.min(1, a));

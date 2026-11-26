@@ -34,7 +34,7 @@ import { subjectOf, SUBJECT_KINDS, SUBJ, type SubjectKind } from "./subjects.ts"
 import { personality, desires, claimsOf, hasClaimOn } from "./claims.ts";
 import { proposalsTo, PROPOSAL_WEEKS } from "./proposals.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
-import { INCENTIVES, hasIncentive, adminCap, type IncentiveKind } from "./admin.ts";
+import { INCENTIVES, hasIncentive, adminCap, socialComplexity, incentiveCost, canIncentive, progressOf, citiesOf, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
 import { foundingCost, distanceLabel, hexPrice, EXPAND } from "./expansion.ts";
 import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES } from "./characters.ts";
@@ -653,9 +653,10 @@ document.addEventListener("pointerdown", (e) => {
   if (d.choose) return cmd({ t: "choose", option: Number(d.choose) });
   if (d.accept) { const [id, mode] = d.accept.split("|"); return cmd({ t: "acceptCulture", culture: +id, off: mode === "off" }); }
   if (d.incentive) {
-    const [kind, ks, mode] = d.incentive.split("|");
-    return cmd({ t: "incentive", kind: kind as IncentiveKind, cities: ks.split(",").map(Number), off: mode === "off" });
+    const [kind, where, mode] = d.incentive.split("|"), st = where.startsWith("s:");
+    return cmd({ t: "incentive", kind: kind as IncentiveKind, ...(st ? { state: +where.slice(2) } : { city: +where.replace("c:", "") }), off: mode === "off" });
   }
+  if (d.inccat !== undefined) { incCat = d.inccat; return updateUI(); }
   if (d.harbor) return cmd({ t: "harbor", city: Number(d.harbor) });
   if (d.road) return cmd({ t: "road", city: Number(d.road) });
   if (d.groupKind) { group = eco.divisions.filter((x) => group.includes(x.id) && x.kind === d.groupKind).map((x) => x.id); selectedDiv = group[0] ?? null; return updateUI(); }
@@ -915,14 +916,15 @@ function statePanelHtml() {
   let hexes = 0, ctrl = 0, pop = 0, blds = 0;
   for (const j of eco.owned) if (ks.has(eco.market[j])) { hexes++; ctrl += eco.control[j]; pop += world.pop[j]; if (eco.producers.has(j)) for (let b = 0; b < BUILDINGS.length; b++) blds += eco.levels[b][j]; }
   const gdp = cs.reduce((s, k) => s + k.market.supply.reduce((a, q, g) => a + (q - (k.market.self?.[g] ?? 0)) * BASE_PRICE[g] * k.market.price[g], 0), 0);
-  const inc = (eco.incentives ?? []).filter((x) => cs.some((k) => eco.cities.indexOf(k) === x.city));
+  const inc = (eco.incentives ?? []).filter((x) => (st && x.state === st.id) || (x.state === undefined && cs.some((k) => eco.cities.indexOf(k) === x.city)));
   return `<h3>${icon("map")} ${st ? st.name : `${city.name} (sem estado)`}</h3><small>${world.countries[city.country - 1].name} · capital ${cs[0].name}</small>` +
     `<div class="cards"><div class="card"><div class="k">População</div><div class="v">${fmt(pop)}</div></div><div class="card"><div class="k">Cidades</div><div class="v">${cs.length}</div></div>` +
     `<div class="card"><div class="k">Hexes</div><div class="v">${hexes}</div></div><div class="card"><div class="k">Controle</div><div class="v">${pct(hexes ? ctrl / hexes : 0)}</div></div>` +
     `<div class="card"><div class="k">PIB / sem</div><div class="v">${fmt(gdp)}</div></div><div class="card"><div class="k">Níveis de construção</div><div class="v">${blds}</div></div></div>` +
     `<h3>Cidades</h3><table>${cs.map((k) => `<tr><td><button data-goto="${k.hex}">${k.name}</button></td><td>${fmt(k.market.pop)} pessoas</td><td>${k.urban.length} hex urbano(s)</td></tr>`).join("")}</table>` +
-    `<h3>Incentivos ativos</h3>${inc.length ? inc.map((x) => `<small>${x.kind} em ${eco.cities[x.city].name}</small>`).join("<br>") : "<small>Nenhum.</small>"}` +
-    (city.country === active ? `<p><small>Para ativar incentivos, clique numa cidade no modo normal (painel do hex).</small></p>` : "");
+    `<h3>Incentivos ativos</h3>${inc.length ? inc.map((x) => `<small>${x.kind} — ${x.state !== undefined ? "<b>estadual</b>" : `cidade de ${eco.cities[x.city].name}`} · ${pct(progressOf(eco, x))}</small>`).join("<br>") : "<small>Nenhum.</small>"}` +
+    `<br><small>Complexidade Social do ${st ? "estado" : "lugar"}: <b>${socialComplexity(eco, cs.map((k) => eco.cities.indexOf(k)))}</b></small>` +
+    (city.country === active ? regionalPoliciesHtml(eco.cities.indexOf(city)) : "");
 }
 /** Painel do modo Diplomacia: país escolhido no mapa. */
 function diploPanelHtml() {
@@ -1484,7 +1486,7 @@ function adminHtml() {
   const inc = (eco.incentives ?? []).filter((x) => eco.cities[x.city]?.country === active);
   return `<div class="cards"><div class="card"><div class="k">Pontos administrativos</div><div class="v">${Math.floor(c.admin ?? 0)} / ${adminCap(eco, active)}</div></div>` +
     `<div class="card"><div class="k">Por semana</div><div class="v">${signed(c.adminWeek ?? 0)}</div></div><div class="card"><div class="k">Controle médio</div><div class="v">${pct(c.control ?? 1)}</div></div></div>` +
-    `<h3>Incentivos ativos</h3>` + (inc.length ? `<table>${inc.map((x) => `<tr><td>${x.kind}</td><td>${eco.cities[x.city].name}</td><td><button data-incentive="${x.kind}|${x.city}|off">Encerrar</button></td></tr>`).join("")}</table>` : "<small>Nenhum. Clique numa cidade sua para criar.</small>") +
+    `<h3>Incentivos ativos</h3>` + (inc.length ? `<table>${inc.map((x) => `<tr><td>${x.kind}</td><td>${x.state !== undefined ? eco.states.find((s) => s.id === x.state)?.name ?? "estado" : eco.cities[x.city].name}</td><td><small>${pct(progressOf(eco, x))}</small></td><td><button data-incentive="${x.kind}|${x.state !== undefined ? `s:${x.state}` : `c:${x.city}`}|off">Encerrar</button></td></tr>`).join("")}</table>` : "<small>Nenhum. Clique numa cidade sua para criar.</small>") +
     `<h3>Estados</h3>` + (statesOf(eco, active).map((s) => `<div>${s.name} · ${s.interest} ${s.happy ? "" : '<span class="bad">insatisfeito</span>'}</div>`).join("") || "<small>Nenhum estado.</small>");
 }
 
@@ -1769,6 +1771,29 @@ function charProfileHtml(c: NonNullable<Economy["characters"]>[number]) {
     (c.role === "General" ? `<small>Estilo de comando: <b>${styleOf(c)}</b> — ${STYLES[styleOf(c)]}</small>` : "") +
     `<h3>Vida</h3><small>${c.life.map((l) => lifeText(world, l)).join("<br>")}</small><br><button data-book="${c.id}">Livro</button>`;
 }
+/** Políticas Regionais: incentivos da cidade k e do estado dela, por categoria, com custo final pela Complexidade Social. */
+let incCat = "Administração e estabilidade";
+function regionalPoliciesHtml(k: number) {
+  const city = eco.cities[k], c = eco.countries[city.country - 1], st = city.state;
+  const stCities = st !== undefined ? eco.cities.map((x, j) => (x.state === st ? j : -1)).filter((j) => j >= 0) : [];
+  const active_ = (eco.incentives ?? []).filter((x) => x.kind && citiesOf(eco, x).includes(k));
+  const cats = [...new Set(Object.values(INCENTIVES).map((d) => d.cat))];
+  const row = (kind: string) => {
+    const d = INCENTIVES[kind], fc = incentiveCost(eco, kind, [k], false), fs = st !== undefined ? incentiveCost(eco, kind, stCities, true) : null;
+    const errC = canIncentive(eco, active, kind, { city: k }), errS = st !== undefined ? canIncentive(eco, active, kind, { state: st }) : "sem estado";
+    return `<div class="card" style="margin:4px 0"><div style="display:flex;gap:6px;align-items:center">${icon(d.glyph)} <b>${kind}</b> <small>· ${d.ramp} sem. até o efeito cheio · dura até ${d.max} sem.${d.perm ? " · permanente" : ""}${d.group ? ` · ${d.group}` : ""}</small></div>` +
+      `<small>${d.desc}</small><br><small>Base ${d.cost} + ${d.upkeep}/sem → cidade <b>${fc.cost.toFixed(0)} + ${fc.upkeep.toFixed(1)}/sem</b>${fs ? ` · estado <b>${fs.cost.toFixed(0)} + ${fs.upkeep.toFixed(1)}/sem</b>` : ""}</small><br>` +
+      `<button data-incentive="${kind}|c:${k}|on" ${errC ? `disabled title="${errC}"` : ""}>Na cidade</button> ` +
+      (st !== undefined ? `<button data-incentive="${kind}|s:${st}|on" ${errS ? `disabled title="${errS}"` : ""}>No estado</button>` : "") +
+      (errC ? ` <small class="bad">${errC}</small>` : "") + `</div>`;
+  };
+  const act = active_.map((x) => `<tr><td>${icon(INCENTIVES[x.kind].glyph)} ${x.kind}<br><small>${x.state !== undefined ? "estado" : "cidade"} · ${x.suspended ? `<span class="bad">suspenso: ${x.suspended}</span>` : `efeito ${pct(progressOf(eco, x))}`} · faltam ${Math.max(0, (x.until ?? eco.week) - eco.week)} sem.</small></td>` +
+    `<td><button data-incentive="${x.kind}|${x.state !== undefined ? `s:${x.state}` : `c:${x.city}`}|off" title="Para a manutenção; a ativação não volta; o que é permanente fica">Cancelar</button></td></tr>`).join("");
+  return `<h3>${icon("admin")} Políticas Regionais</h3><small>Pontos administrativos ${Math.floor(c.admin ?? 0)} / ${adminCap(eco, city.country)} · Complexidade Social: cidade <b>${socialComplexity(eco, [k])}</b>${st !== undefined ? ` · estado <b>${socialComplexity(eco, stCities)}</b>` : ""} (custo × 1 + complexidade/100; estado +25%)</small>` +
+    (act ? `<table>${act}</table>` : "<br><small>Nenhum incentivo nesta cidade.</small>") +
+    `<div class="tabs">${cats.map((n) => `<button data-inccat="${n}" class="${n === incCat ? "on" : ""}">${n.split(/[ ,]/)[0]}</button>`).join(" ")}</div>` +
+    Object.keys(INCENTIVES).filter((kd) => INCENTIVES[kd].cat === incCat).map(row).join("");
+}
 function rulerHtml() {
   const r = active ? rulerOf(eco, active) : undefined;
   if (!r) return "";
@@ -1943,12 +1968,7 @@ function hexHtml() {
   }
   if (city) { const k = eco.cities.indexOf(city); if (eco.famine?.[k]) h += `<br><span class="bad"><i class=i-bread></i> Fome em ${city.name}</span>`; if ((eco.plague?.[k] ?? 0) > 0) h += `<br><span class="bad"><i class=i-skull></i> Peste em ${city.name} (${eco.plague![k]} semanas)</span>`; }
   if (city && city.country === active) {
-    const k = eco.cities.indexOf(city), stateCities = city.state !== undefined ? eco.cities.map((x, j) => (x.state === city.state ? j : -1)).filter((j) => j >= 0) : [];
-    h += "<br><b><i class=i-admin></i> Incentivos</b> " + (Object.keys(INCENTIVES) as IncentiveKind[]).map((kind) => {
-      const on = hasIncentive(eco, k, kind), def = INCENTIVES[kind];
-      return `<br><button data-incentive="${kind}|${k}|${on ? "off" : "on"}" title="${def.desc}" class="${on ? "on" : ""}">${on ? "✓ " : ""}${kind}</button> <small>${def.cost} + ${def.upkeep}/sem</small>` +
-        (!on && stateCities.length > 1 ? ` <button data-incentive="${kind}|${stateCities.join(",")}|on" title="Em todas as cidades do estado">no estado (${def.cost * stateCities.length})</button>` : "");
-    }).join("");
+    h += regionalPoliciesHtml(eco.cities.indexOf(city));
   }
   if (city?.isolated) h += `<br><span class="warn">${city.name} está isolada: sem ligação por terra com a capital (nem porto). Controle máximo × ${EXPAND.isolation}. Ocupe o caminho entre elas ou faça um porto.</span>`;
   if ((eco.outposts ?? []).some((o) => o.hex === i)) h += `<br><i class=i-tent></i> Posto avançado`;

@@ -1,6 +1,7 @@
 import { resolveNaval, convoyFactor, bombardMods } from "./seawar.ts";
 import { stepAir, airSupport, airRecon, AIRW } from "./airwar.ts";
 import { resolveBattles, entrench, setRiverCheck, BATTLE_HOOKS } from "./battle.ts";
+import { incFx } from "./admin.ts";
 import { stepSupply, attrition, depotHexes } from "./logistics.ts";
 import { lawFx } from "./politics.ts";
 import { econ, spend } from "./eramods.ts";
@@ -245,6 +246,13 @@ BATTLE_HOOKS.extra.push((w, e, b, country) => bombardMods(w, e, b, country));
 BATTLE_HOOKS.extra.push((_w, e, b, country) => {
   const r = airRegion(e, b.hex), enemy = country === b.attacker ? b.defender : b.attacker;
   return airSupport(e, r, country, (h) => airRegion(e, h)) && airSuperiority(e, r, country, enemy) >= 0.5 ? [["Apoio aéreo", AIRW.support]] : [];
+});
+BATTLE_HOOKS.extra.push((_w, e, b, country) => { // incentivos da região onde se luta: fortificação e segurança (defendendo), preparação (tropas da região)
+  const k = e.market[b.hex] - 1; if (k < 0 || e.cities[k].country !== country) return [];
+  const out: [string, number][] = [], def = country === b.defender ? incFx(e, k, "defense") : 0, ready = incFx(e, k, "readiness");
+  if (def) out.push(["Fortificação regional", Math.round(def * 10) / 10]);
+  if (ready) out.push(["Preparação militar", Math.round(ready * 10) / 10]);
+  return out;
 });
 BATTLE_HOOKS.recon = (e, hex, country) => airRecon(e, airRegion(e, hex), country, (h) => airRegion(e, h));
 export function crossesRiver(w: World, a: number, b: number) {

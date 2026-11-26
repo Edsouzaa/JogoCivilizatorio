@@ -9,6 +9,7 @@ import { GOODS } from "./economy.ts";
 import { lawOf } from "./politics.ts";
 import { addPrivateLevel } from "./firms.ts";
 import { WAR_ECON } from "./wareconomy.ts";
+import { incCountryFx } from "./admin.ts";
 import { complexityCost } from "./markets.ts";
 import { econ, debtCap, spend } from "./eramods.ts";
 import type { World } from "./world.ts";
@@ -106,7 +107,7 @@ export function stepConstruction(w: World, e: Economy) {
   const done: Project[] = [];
   e.countries.forEach((c, ci) => {
     const country = ci + 1, list = queueOf(e, country).filter((p) => !p.paused);
-    c.cpWeek = ((c.cpWeek ?? 0) + baseCp(e, country)) * econ(c, "construction"); // eficiência de construção da era
+    c.cpWeek = ((c.cpWeek ?? 0) + baseCp(e, country)) * econ(c, "construction") * (1 + incCountryFx(e, country, "construction")); // eficiência da era; incentivo de obras públicas
     c.cpUsed = 0;
     if (!list.length) return;
     const share = privateShare(e, country), hasPriv = list.some((p) => p.priv), hasPub = list.some((p) => !p.priv);

@@ -4,7 +4,7 @@ import { techSum } from "./tech.ts";
 // A medicina (tecnologias com unrest < 0, como Medicina moderna) reduz chance e mortes.
 import { mulberry32, type World } from "./world.ts";
 import { GOODS, type Economy } from "./economy.ts";
-import { hasIncentive } from "./admin.ts";
+import { incFx } from "./admin.ts";
 
 export const EVENTS = {
   famineFood: 0.25,     // comida ofertada / necessária (somando os tipos) abaixo disto = fome...
@@ -37,7 +37,7 @@ export function stepEvents(w: World, e: Economy) {
     const hungry = m.pop >= EVENTS.famineMinPop && need > 0 && have / need < EVENTS.famineFood * (e.famine![k] ? EVENTS.famineEnd : 1);
     if (hungry && !e.famine![k]) started.push({ kind: "fome", city: k });
     e.famine![k] = hungry;
-    if (hungry && !hasIncentive(e, k, "Alívio emergencial")) death[k] += EVENTS.famineDeath;
+    if (hungry && !incFx(e, k, "famine")) death[k] += EVENTS.famineDeath;
     const med = medicineMult(e, city.country);
     if (e.plague![k] > 0) { e.plague![k]--; death[k] += EVENTS.plagueDeath * med; }
     else if (e.week % 4 === 0 && rand() < EVENTS.plagueChance * city.size * med) { e.plague![k] = EVENTS.plagueWeeks; started.push({ kind: "peste", city: k }); }

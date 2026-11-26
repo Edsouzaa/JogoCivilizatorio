@@ -81,7 +81,7 @@ export type Cmd =
   | { t: "identity"; name: string; color: [number, number, number]; flag: Flag } // nome, cor e bandeira do país
   | { t: "rename"; kind: "city" | "state"; id: number; name: string; flag?: Flag }
   | { t: "continent"; id: number; name: string } // renomear continente
-  | { t: "incentive"; cities: number[]; kind: IncentiveKind; off?: boolean } // liga/desliga incentivo
+  | { t: "incentive"; kind: IncentiveKind; city?: number; state?: number; off?: boolean; cities?: number[] } // liga/desliga incentivo na cidade ou no estado (cities: formato antigo)
   | { t: "claim" }   // jogador assume o país (sai da IA)
   | { t: "release" }; // jogador sai: o país volta para a IA
 
@@ -243,9 +243,11 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       return null;
     }
     case "incentive": {
-      if (!Array.isArray(c.cities) || !c.cities.every((k) => ownCity(k)) || !(c.kind in INCENTIVES)) return "Incentivo inválido";
-      if (c.off) { for (const k of c.cities) removeIncentive(e, country, k, c.kind); return null; }
-      return addIncentive(e, country, c.cities, c.kind);
+      const city = c.city ?? c.cities?.[0];
+      if (typeof c.kind !== "string" || !(c.kind in INCENTIVES)) return "Incentivo inválido";
+      if (c.state !== undefined ? !isInt(c.state) : !isInt(city) || !ownCity(city!)) return "Incentivo inválido";
+      if (c.off) { removeIncentive(e, country, city ?? -1, c.kind, c.state); return null; }
+      return addIncentive(e, country, c.state !== undefined ? { state: c.state } : { city }, c.kind);
     }
     case "continent": {
       const name = cleanName(c.name), k = w.continents?.[c.id - 1];
