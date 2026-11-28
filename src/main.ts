@@ -37,7 +37,7 @@ import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, socialComplexity, incentiveCost, canIncentive, progressOf, citiesOf, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
 import { foundingCost, distanceLabel, hexPrice, EXPAND } from "./expansion.ts";
-import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES, PERSONALITIES, TRAIT_CAT, COMMAND_NAME, WEEKDAYS, generalCandidates } from "./characters.ts";
+import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES, PERSONALITIES, TRAIT_CAT, COMMAND_NAME, WEEKDAYS, generalCandidates, titlesOf, epithet } from "./characters.ts";
 import { unitOf, statsOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
@@ -1733,6 +1733,13 @@ function bioText(c: NonNullable<Economy["characters"]>[number]) {
   if (c.command) parts.push(`Serviu como comandante ${COMMAND_NAME[c.command]}, especializado em ${c.spec?.toLowerCase()}.`);
   else parts.push(`Governou ${land}.`);
   if (r.length) parts.push(`Comandou em ${r.length} batalha${r.length > 1 ? "s" : ""}, com ${wins} vitória${wins === 1 ? "" : "s"} e ${r.length - wins} derrota${r.length - wins === 1 ? "" : "s"}; somadas, suas forças sofreram ${r.reduce((s, b) => s + b.ownLost, 0)} baixas e infligiram ${r.reduce((s, b) => s + b.foeLost, 0)}.`);
+  const govs = (c.offices ?? []).filter((o) => o.title === "Governante");
+  if (govs.length && c.command) parts.push(`Depois ${govs[0].why}${c.coup ? ", à força" : ""}.`);
+  const passed = (c.laws ?? []).filter((l) => l.result === "aprovada").map((l) => l.name), dropped = (c.laws ?? []).filter((l) => l.result === "retirada").map((l) => l.name);
+  if (passed.length) parts.push(`No seu governo foram aprovadas: ${passed.join(", ")}.`);
+  if (dropped.length) parts.push(`Retirou propostas sem apoio: ${dropped.join(", ")}.`);
+  if (c.taken?.length) parts.push(`Tomou ${c.taken.length} cidade${c.taken.length > 1 ? "s" : ""} em cerco (${c.taken.join(", ")}).`);
+  if (c.founded?.length) parts.push(`Fundou ${c.founded.join(", ")}.`);
   const acquired = c.traits.filter((t) => ["Veterano", "Herói de guerra", "Sobrevivente de derrota", "Ferido em combate", "Caolho"].includes(t));
   if (acquired.length) parts.push(`As campanhas o marcaram: ${acquired.join(", ").toLowerCase()}.`);
   parts.push(c.dead ? `Morreu aos ${ageOf(c, Math.min(eco.week, c.dies))} anos.` : `Aos ${ageOf(c, eco.week)} anos, segue vivo.`);
@@ -1755,10 +1762,14 @@ function openBook(id: number) {
     <style>body{font:16px/1.6 Georgia,serif;color:#2b2418;background:#f4ecd8;max-width:640px;margin:40px auto;padding:0 24px}
     h1{font-size:30px;margin:0}small{color:#6b5d44}.head{display:flex;gap:18px;align-items:center;border-bottom:1px solid #b9a77f;padding-bottom:12px}
     ul{list-style:none;padding:0}li{padding:4px 0;border-bottom:1px dotted #c9b88f}@media print{button{display:none}}</style></head><body>
-    <div class="head">${portraitSVG(c, era, 110)}<div><h1>${esc(c.name)}</h1><small>${esc(world.countries[c.country - 1].name)} · ${c.dead ? "falecido" : `${ageOf(c, eco.week)} anos`}</small>
+    <div class="head">${portraitSVG(c, era, 110)}<div><h1>${esc(c.name)}</h1><div style="font-style:italic;font-size:19px">${esc(epithet(c, eco.week))}</div><small>${esc(world.countries[c.country - 1].name)} · ${c.dead ? "falecido" : `${ageOf(c, eco.week)} anos`}</small>
     <p><small>Administração ${skill(c, "adm")} · Diplomacia ${skill(c, "dip")} · Militar ${skill(c, "mil")}${c.personality ? ` · ${esc(c.personality)}` : ""}</small></p></div></div>
     <button onclick="print()">Exportar PDF</button>
     <h2>Biografia</h2><p>${esc(bioText(c))}</p>
+    ${titlesOf(c, eco.week).length ? `<p><b>Classificação histórica:</b> ${esc(titlesOf(c, eco.week).join(", "))}</p>` : ""}
+    ${c.offices?.length ? `<h2>Cargos</h2><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th align="left">Cargo</th><th align="left">País</th><th align="left">Início</th><th align="left">Fim</th><th align="left">Como</th></tr>${c.offices.map((o) => `<tr style="border-top:1px dotted #c9b88f"><td>${esc(o.title)}</td><td>${esc(world.countries[o.country - 1]?.name ?? "?")}</td><td>${esc(dateLabel(o.from))}</td><td>${o.to !== undefined ? `${esc(dateLabel(o.to))} (${esc(o.end ?? "")})` : "no cargo"}</td><td>${esc(o.why)}</td></tr>`).join("")}</table>` : ""}
+    ${c.laws?.length ? `<h2>Atuação política</h2><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th align="left">Data</th><th align="left">Lei</th><th align="left">Participação</th></tr>${c.laws.map((l) => `<tr style="border-top:1px dotted #c9b88f"><td>${esc(dateLabel(l.week))}</td><td>${esc(l.name)}</td><td>${l.result === "proposta" ? "propôs" : l.result === "aprovada" ? "aprovada no seu governo" : "retirou a proposta"}</td></tr>`).join("")}</table>` : ""}
+    ${c.founded?.length || c.taken?.length ? `<h2>Cidades</h2><p>${c.founded?.length ? `Fundadas no seu governo: ${esc(c.founded.join(", "))}. ` : ""}${c.taken?.length ? `Tomadas em cerco: ${esc(c.taken.join(", "))}.` : ""}</p>` : ""}
     <h2>Personalidade e traços</h2><ul>${c.personality ? `<li><b>${esc(c.personality)}</b> — ${esc(PERSONALITIES[c.personality]?.desc ?? "")}</li>` : ""}${c.traits.map((t) => `<li><b>${esc(t)}</b> <small>${TRAIT_CAT[t] ?? ""} · ${Object.entries(TRAIT_FX[t] ?? {}).map(([k, v]) => `${v! > 0 ? "+" : ""}${v} ${k}`).join(", ") || "sem efeito nos atributos"}</small></li>`).join("")}</ul>
     ${c.record?.length ? `<h2>Batalhas</h2><table style="width:100%;border-collapse:collapse;font-size:13px;page-break-inside:auto"><tr><th align="left">Data</th><th align="left">Batalha</th><th>Lado</th><th>Forças (suas × inimigo)</th><th>Baixas (suas / inimigo)</th><th>Resultado</th></tr>${c.record.map((b) => `<tr style="border-top:1px dotted #c9b88f;page-break-inside:avoid"><td>${WEEKDAYS[b.day]}, ${esc(dateLabel(b.week))}</td><td>${esc(b.place)} contra ${esc(world.countries[b.enemy - 1]?.name ?? "?")}</td><td>${b.side}</td><td align="center">${b.own} × ${b.foe}</td><td align="center">${b.ownLost} / ${b.foeLost}</td><td>${b.won ? "vitória" : "derrota"} (${b.weeks} sem.)</td></tr>`).join("")}</table><p><small>Baixas somam mortos, feridos e capturados: o combate do jogo não separa os três.</small></p>` : ""}
     <h2>Linha do tempo</h2><ul>${c.life.map((l) => `<li>${esc(lifeText(world, l))}</li>`).join("")}</ul>
@@ -1781,10 +1792,11 @@ function charProfileHtml(c: NonNullable<Economy["characters"]>[number]) {
     const fx = Object.entries(TRAIT_FX[t] ?? {}).map(([k, v]) => `<span class="${v! > 0 ? "down" : "up"}">${v! > 0 ? "+" : ""}${v} ${names[k as keyof typeof names]}</span>`).join(", ");
     return `<li><b>${t}</b> <small style="color:var(--dim)">${TRAIT_CAT[t] ?? ""}</small> ${fx ? `<small>${fx}</small>` : "<small>sem efeito nos atributos</small>"}</li>`;
   }).join("");
-  return `<div style="display:flex;gap:10px">${portraitSVG(c, era, 72)}<div><h3 style="margin:0">${c.name}</h3><small>${c.role ?? "Governante"} · ${world.countries[c.country - 1].name} · ${c.dead ? "falecido" : `${ageOf(c, eco.week)} anos`}</small></div></div>` +
+  return `<div style="display:flex;gap:10px">${portraitSVG(c, era, 72)}<div><h3 style="margin:0">${c.name}</h3><small>${(c.offices ?? []).filter((o) => o.to === undefined).map((o) => o.title).join(" e ") || (c.role ?? "Governante")} · ${world.countries[c.country - 1].name} · ${c.dead ? "falecido" : `${ageOf(c, eco.week)} anos`}</small></div></div>` +
     attr("adm", "Administração (impostos)") + attr("dip", "Diplomacia (relações)") + attr("mil", "Militar (exército e batalhas)") +
     (c.personality ? `<p><small>Personalidade: <b>${c.personality}</b> — ${PERSONALITIES[c.personality]?.desc ?? ""}</small></p>` : "") +
     (c.command ? `<p><small>Comando ${COMMAND_NAME[c.command]} · especialização <b>${c.spec}</b> · ${c.fights ?? 0} batalhas, ${c.wins ?? 0} vitórias</small></p>` : "") +
+    (titlesOf(c, eco.week).length ? `<p><small>Lembrado como: <b>${titlesOf(c, eco.week).join(", ")}</b></small></p>` : "") +
     `<h3>Traços</h3><ul style="margin:0;padding-left:16px">${traits}</ul>` +
     (c.role === "General" ? `<small>Estilo de comando: <b>${styleOf(c)}</b> — ${STYLES[styleOf(c)]}</small>` : "") +
     `<h3>Vida</h3><small>${c.life.map((l) => lifeText(world, l)).join("<br>")}</small><br><button data-book="${c.id}">Livro</button>`;

@@ -70,3 +70,43 @@ console.log("characters ok");
   assert.ok(WEEKDAYS.length === 7 && dayOf(5, 3) === dayOf(5, 3) && dayOf(5, 3) < 7);
   console.log("characters ok (candidatos, registro)");
 }
+
+// etapa 2: cargos, leis, general herói assume o governo, golpe, títulos pelo que foi registrado
+{
+  const ch = await import("../src/characters.ts");
+  const { generateWorld } = await import("../src/world.ts");
+  const { createEconomy } = await import("../src/economy.ts");
+  const { applyCommand } = await import("../src/commands.ts");
+  const w = generateWorld(120, 60, 4, 2), e = createEconomy(w);
+  ch.stepCharacters(w, e);
+  const r0 = ch.rulerOf(e, 1)!;
+  assert.equal(r0.offices![0].title, "Governante");
+  assert.equal(r0.offices![0].to, undefined);
+  // lei: proposta e retirada entram na vida de quem governa
+  const { LAWS } = await import("../src/politics.ts");
+  const { lawOf } = await import("../src/politics.ts");
+  const [cat, law] = Object.entries(LAWS).flatMap(([c, l]) => l.filter((x) => x.era === 0 && x.name !== lawOf(e.countries[0].politics, c).name).map((x) => [c, x] as const))[0];
+  if (law.tech) e.countries[0].research.known.add(law.tech);
+  assert.equal(applyCommand(w, e, 1, { t: "law", cat, name: law.name }), null);
+  {
+    assert.equal(r0.laws!.at(-1)!.result, "proposta");
+    applyCommand(w, e, 1, { t: "cancelLaw" });
+    assert.equal(r0.laws!.at(-1)!.result, "retirada");
+  }
+  // general com 3 vitórias e herói: na morte do governante, assume (e segue general: acumula cargos)
+  const d = { id: 950, kind: "army", country: 1, hex: e.cities[0].hex, strength: 20, org: 1, target: null, progress: 0, equip: 1 } as never as import("../src/economy.ts").Division;
+  e.divisions.push(d); e.countries[0].treasury = 1000;
+  assert.equal(ch.hireGeneral(w, e, d.id, 0), null);
+  const g = e.characters!.at(-1)!;
+  for (let k = 0; k < 3; k++) { e.week++; ch.recordBattle(e, { id: k + 1, hex: d.hex, start: e.week, attacker: 1, defender: 2, startAtt: 100, startDef: 90, deadAtt: 5, deadDef: 40 }, "att", [d], [], `t${k}`); }
+  assert.ok(ch.titlesOf(g, e.week).includes("General invicto") && ch.titlesOf(g, e.week).includes("Herói nacional"));
+  assert.match(ch.epithet(g, e.week), /^O /);
+  r0.dies = e.week; e.countries[0].politics.laws["Governo"] = "Chefia tribal";
+  ch.stepCharacters(w, e);
+  assert.equal(ch.rulerOf(e, 1)!.id, g.id, "o herói assume");
+  assert.equal(r0.offices!.at(-1)!.end, "morte");
+  assert.deepEqual(g.offices!.filter((o) => o.to === undefined).map((o) => o.title).sort(), ["Comandante terrestre", "Governante"]);
+  // ninguém ganha título sem feito registrado
+  assert.deepEqual(ch.titlesOf(ch.newCharacter(w, e, 2, 77), e.week), []);
+  console.log("characters ok (cargos, leis, sucessão, títulos)");
+}

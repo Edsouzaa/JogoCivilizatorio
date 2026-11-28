@@ -403,7 +403,7 @@ export function stepWar(w: World, e: Economy) {
     const siegePower = Math.max(...mine.map((d) => statsOf(d).siege)); // máquinas de cerco e artilharia abrem as muralhas
     if (Math.max(...mine.map((d) => d.siege!)) < siegeWeeks(city.size, mine.length) / siegePower) return;
     for (const i of e.owned) if (e.market[i] === k + 1 && w.owner[i] === city.country) e.occupier[i] = who;
-    for (const d of mine) d.siege = 0;
+    for (const d of mine) { d.siege = 0; const g = d.general ? e.characters?.find((x) => x.id === d.general) : undefined; if (g && !g.taken?.includes(city.name)) { (g.taken ??= []).push(city.name); note(g, e.week, `tomou a cidade de ${city.name} (§${city.country}§) depois de um cerco`); } }
     changed = true;
   });
 

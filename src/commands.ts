@@ -22,7 +22,7 @@ import { EVENT_LIST, resolve } from "./choices.ts";
 import { improveRelations } from "./diplomacy.ts";
 import { proposeSubject, releaseSubject, SUBJECT_KINDS, type SubjectKind } from "./subjects.ts";
 import { addProposal, respond, startVote, castVote } from "./proposals.ts";
-import { hireGeneral } from "./characters.ts";
+import { hireGeneral, lawNote } from "./characters.ts";
 import { buildOutpost, buyHex } from "./expansion.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
@@ -179,8 +179,8 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
       co.research.researching = c.name;
       return null;
     }
-    case "law": return proposeLaw(co.politics, c.cat, c.name, co.research.era, co.research.known);
-    case "cancelLaw": cancelLaw(co.politics); return null;
+    case "law": { const err = proposeLaw(co.politics, c.cat, c.name, co.research.era, co.research.known); if (!err) lawNote(e, country, c.name, "proposta"); return err; }
+    case "cancelLaw": { const was = co.politics.enacting?.law; cancelLaw(co.politics); if (was) lawNote(e, country, was, "retirada"); return null; }
     case "recruit": return recruit(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
     case "front": return Array.isArray(c.ids) && c.ids.length <= 500 && c.ids.every((x) => isInt(x)) && isInt(c.enemy, 1) && (c.mode === "defend" || c.mode === "attack") ? frontOrder(w, e, country, c.ids, c.enemy, c.mode) : "Ordem inválida";
     case "general": return own(c.id) ? hireGeneral(w, e, c.id, isInt(c.pick) ? c.pick : 0) : "Unidade não é sua";

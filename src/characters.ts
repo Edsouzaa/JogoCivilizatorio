@@ -19,7 +19,12 @@ export type Character = {
   command?: Command; spec?: string; // comando (terrestre, naval, aéreo) e especialização do comandante
   fights?: number; wins?: number;   // batalhas comandadas e vitórias (traços de experiência vêm daqui)
   record?: BattleRec[];             // batalhas que comandou (cópia: a batalha some da lista depois de 26 semanas)
+  offices?: Office[];               // cargos ocupados (um personagem pode acumular: governante e general)
+  laws?: { name: string; week: number; result: "proposta" | "aprovada" | "retirada" }[]; // participação real em leis
+  founded?: string[]; taken?: string[]; // cidades fundadas no governo; cidades tomadas em cerco
+  coup?: boolean;                   // chegou ao poder por golpe
 };
+export type Office = { title: string; country: number; from: number; to?: number; why: string; end?: string };
 export type Command = "army" | "fleet" | "air";
 /** Uma batalha na vida do comandante. Baixas: o jogo não separa mortos, feridos e capturados (não inventamos). */
 export type BattleRec = { week: number; day: number; place: string; enemy: number; side: "atacante" | "defensor"; won: boolean; own: number; foe: number; ownLost: number; foeLost: number; weeks: number };
@@ -124,6 +129,12 @@ const year = (week: number) => { const y = START_YEAR + Math.floor(week / 52); r
 /** Anota um acontecimento na vida do personagem. "§k§" no texto = nome do país k (resolvido ao mostrar). */
 export const note = (c: Character, week: number, text: string) => c.life.push(`${year(week)}: ${text}`);
 
+/** Lei na vida do governante: o que ele de fato fez (propôs, retirou, aprovou no seu governo). */
+export function lawNote(e: Economy, country: number, name: string, result: "proposta" | "aprovada" | "retirada") {
+  const r = rulerOf(e, country); if (!r) return;
+  (r.laws ??= []).push({ name, week: e.week, result });
+  note(r, e.week, `${WEEKDAYS[dayOf(e.week, name.length)]}: ${result === "proposta" ? "propôs" : result === "aprovada" ? "viu aprovada" : "retirou"} a lei ${name}`);
+}
 /** Anota na vida do governante do país, se houver. */
 export const noteRuler = (e: Economy, country: number, text: string) => { const r = rulerOf(e, country); if (r) note(r, e.week, text); };
 /** Troca §k§ pelo nome do país. */
@@ -131,14 +142,47 @@ export const lifeText = (w: World, line: string) => line.replace(/§(\d+)§/g, (
 
 export const rulerOf = (e: Economy, country: number) => e.characters?.find((c) => c.id === e.countries[country - 1].ruler);
 
+/** Abre e fecha cargos no histórico do personagem. */
+export function openOffice(c: Character, title: string, country: number, week: number, why: string) { (c.offices ??= []).push({ title, country, from: week, why }); }
+export function closeOffice(c: Character, title: string, week: number, end: string) { const o = [...(c.offices ?? [])].reverse().find((x) => x.title === title && x.to === undefined); if (o) { o.to = week; o.end = end; } }
+/** Põe o personagem no governo do país (herdeiro, eleito, general que assume ou golpe). */
+function enthrone(w: World, e: Economy, country: number, c: Character, how: string) {
+  note(c, e.week, `${WEEKDAYS[dayOf(e.week, c.id)]}: ${how} de ${w.countries[country - 1].name}`);
+  openOffice(c, "Governante", country, e.week, how);
+  e.countries[country - 1].ruler = c.id;
+}
 /** Coroa (ou elege) um governante novo para o país. */
 function crown(w: World, e: Economy, country: number, how: string) {
   const c = newCharacter(w, e, country, e.week + country);
   note(c, c.born, `nasceu em ${w.countries[country - 1].name}`);
-  note(c, e.week, `${how} de ${w.countries[country - 1].name}`);
   (e.characters ??= []).push(c);
-  e.countries[country - 1].ruler = c.id;
+  enthrone(w, e, country, c, how);
   return c;
+}
+/** General famoso do país que pode assumir o governo (mais vitórias primeiro). */
+const AMBITIOUS = ["Expansionista", "Autoritário", "Audacioso", "Centralizador", "Arrogante"];
+function strongman(e: Economy, country: number) {
+  return (e.characters ?? []).filter((g) => g.role === "General" && !g.dead && g.country === country && (g.wins ?? 0) >= 3).sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0))[0];
+}
+const ambitious = (g: Character) => g.traits.includes("Ambicioso") || g.traits.includes("Conspirador") || AMBITIOUS.includes(g.personality ?? "");
+/** Classificações históricas tiradas só do que foi registrado (podem ser várias). */
+export function titlesOf(c: Character, week: number): string[] {
+  const t: string[] = [], r = c.record ?? [], wins = r.filter((b) => b.won).length;
+  const ruled = (c.offices ?? []).filter((o) => o.title === "Governante").reduce((s, o) => s + ((o.to ?? week) - o.from), 0) / 52;
+  if ((c.taken?.length ?? 0) >= 3) t.push("Grande conquistador");
+  if (r.length >= 3 && wins === r.length) t.push("General invicto"); else if (wins >= 5) t.push("Estrategista");
+  if (c.traits.includes("Herói de guerra")) t.push("Herói nacional");
+  if ((c.laws?.filter((l) => l.result === "aprovada").length ?? 0) >= 2) t.push("Reformador");
+  if ((c.founded?.length ?? 0) >= 3) t.push("Fundador");
+  if (c.coup) t.push(PERSONALITIES[c.personality ?? ""] && ["Implacável", "Autoritário"].includes(c.personality!) ? "Tirano" : "Usurpador");
+  if (ruled >= 20) t.push("Estadista");
+  if (r.length >= 3 && wins === 0) t.push("Comandante derrotado");
+  return t;
+}
+/** Título da capa do livro: o feito mais marcante. */
+export function epithet(c: Character, week: number) {
+  const t = titlesOf(c, week)[0];
+  return t ? `O ${t.replace("Grande conquistador", "Conquistador").replace("Comandante derrotado", "General Vencido")}` : c.role === "General" ? "Um comandante" : "Um governante";
 }
 
 const commandOf = (kind: string): Command | null => (kind === "army" ? "army" : kind === "fleet" ? "fleet" : kind === "air" ? "air" : null);
@@ -172,6 +216,7 @@ export function hireGeneral(w: World, e: Economy, id: number, pick = 0): string 
   g.division = id;
   note(g, g.born, `nasceu em §${d.country}§`);
   note(g, e.week, `${WEEKDAYS[dayOf(e.week, id)]}: nomeado comandante ${COMMAND_NAME[g.command!]} (${g.spec}) da unidade ${id}`);
+  openOffice(g, `Comandante ${COMMAND_NAME[g.command!]}`, d.country, e.week, `contratado entre três candidatos (${g.spec})`);
   (e.characters ??= []).push(g);
   d.general = g.id;
   return null;
@@ -205,17 +250,28 @@ export function stepCharacters(w: World, e: Economy) {
   for (const g of e.characters ?? []) { // general morre de velhice ou perde a divisão (destruída)
     if (g.role !== "General" || g.dead) continue;
     const d = e.divisions.find((x) => x.id === g.division);
-    if (e.week >= g.dies || !d) { g.dead = true; note(g, e.week, d ? `morreu aos ${ageOf(g, e.week)} anos` : "caiu com a sua divisão"); if (d) d.general = undefined; }
+    if (e.week >= g.dies || !d) { g.dead = true; note(g, e.week, d ? `morreu aos ${ageOf(g, e.week)} anos` : "caiu com a sua divisão"); closeOffice(g, `Comandante ${COMMAND_NAME[g.command ?? "army"]}`, e.week, d ? "morte" : "unidade destruída"); if (g.id === e.countries[g.country - 1].ruler) closeOffice(g, "Governante", e.week, "morte"); if (d) d.general = undefined; }
   }
   e.countries.forEach((ctry, i) => {
     const k = i + 1;
     let ruler = rulerOf(e, k);
-    if (!ruler) ruler = crown(w, e, k, "assumiu o governo");
+    if (!ruler || ruler.dead) ruler = crown(w, e, k, "assumiu o governo");
+    const gen = strongman(e, k);
+    // golpe: general vitorioso e ambicioso, governo fraco (sorteio fixo pela semana: no máximo 1 em 13 meses)
+    if (gen && gen.id !== ruler.id && ambitious(gen) && ctry.politics.legitimacy < 0.25 && dayOf(e.week, gen.id + k) === 0 && (e.week >> 2) % 13 === gen.id % 13) {
+      note(ruler, e.week, `foi deposto por um golpe do general ${gen.name}`); closeOffice(ruler, "Governante", e.week, `deposto por golpe de ${gen.name}`);
+      gen.coup = true; enthrone(w, e, k, gen, "tomou o poder num golpe"); ctry.politics.legitimacy = Math.max(0, ctry.politics.legitimacy - 0.1);
+      return;
+    }
     if (e.week < ruler.dies) return;
     ruler.dead = true;
-    note(ruler, e.week, `morreu aos ${ageOf(ruler, e.week)} anos`);
+    note(ruler, e.week, `morreu aos ${ageOf(ruler, e.week)} anos`); closeOffice(ruler, "Governante", e.week, "morte");
     deaths.push(ruler);
     const gov = lawOf(ctry.politics, "Governo").name;
+    if (gen && (gov === "República" ? skill(gen, "dip") >= 50 : ambitious(gen) || gen.traits.includes("Herói de guerra"))) { // o herói das batalhas assume (e segue general)
+      enthrone(w, e, k, gen, gov === "República" ? "eleito para governar, depois das vitórias" : "assumiu o governo com o apoio das tropas");
+      return;
+    }
     crown(w, e, k, gov === "República" ? "eleito para governar" : gov === "Teocracia" ? "escolhido pelo clero para governar" : gov === "Partido único" ? "escolhido pelo partido para comandar" : "herdou o governo");
   });
   // morto só continua guardado se o jogador guardou na história (o livro dele)

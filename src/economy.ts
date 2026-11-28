@@ -28,7 +28,7 @@ import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
 import { stepClaims, type Claim } from "./claims.ts";
 import { foundingCost, updateExpansion } from "./expansion.ts";
 import { expireProposals, type Proposal, type Vote } from "./proposals.ts";
-import { rulerOf, attrMod, CHAR, noteRuler, type Character, skill } from "./characters.ts";
+import { rulerOf, attrMod, CHAR, noteRuler, lawNote, type Character, skill } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, adminCap, INCENTIVES, incFx, incCountryFx, type Incentive } from "./admin.ts";
 import { BUILDING_KIND } from "./pops.ts";
@@ -648,6 +648,7 @@ export function foundCity(w: World, e: Economy, unit: number, later = false): st
   if (!w.owner[i]) w.owner[i] = country;
   claim(w, country, i, RULES.settleClaimRadius);
   e.cities.push({ name: cityName(w, e, country), country, hex: i, size: 1, urban: [], market: newMarket(), port: false, identity: homeIdentity(w, e, country), founded: e.week });
+  { const r = rulerOf(e, country); if (r) { (r.founded ??= []).push(e.cities.at(-1)!.name); noteRuler(e, country, `fundou a cidade de ${e.cities.at(-1)!.name}`); } }
   if (!later) refresh(w, e);
   return null;
 }
@@ -1075,7 +1076,7 @@ export function tick(w: World, e: Economy) {
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
     const ideas = Math.min(0.3, 0.1 * (e.incentives ?? []).filter((x) => x.kind === "Impor ideias" && e.cities[x.city]?.country === ci + 1).length);
     const law = advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci), ideas);
-    if (law) noteRuler(e, ci + 1, `aprovou a lei ${law}`);
+    if (law) lawNote(e, ci + 1, law, "aprovada");
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
     const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01) + (c.incLiteracy ?? 0); // + campanhas de alfabetização (ficam)
     c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);

@@ -125,6 +125,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Barra de modos especiais: Construção, Estado, Diplomacia e Militar (docs/incentivos.md para os incentivos).
 - Incentivos regionais com Complexidade Social (docs/incentivos.md).
 - Personagens: personalidade separada de traços, traços adquiridos em batalha, 3 candidatos por comando (terrestre, naval, aéreo) com especialização, registro de batalhas com números, livro com biografia e exportação em PDF, dia da semana no calendário.
+- Personagens, etapa 2: histórico de cargos (acumula governante e comandante), leis propostas, retiradas e aprovadas no governo, cidades fundadas e tomadas, general herói assume na sucessão, golpe de general ambicioso com governo fraco, classificações históricas e título da capa do livro pelos feitos registrados.
 
 ## Próximos (nesta ordem)
 
@@ -145,7 +146,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 8. **População**
     - Cultura/língua/religião por POP (hoje é por cidade), grupos culturais, famílias de línguas e religiões, surgimento e divisão de culturas.
 9. **Leis**
-10. **Personagens, etapa 2**: histórico de cargos, leis propostas/aprovadas por personagem, golpes e revoluções com agitadores, generais virando governantes, classificações históricas (conquistador, reformador...), retratos em estilo caricatural com mais formas, IA usando a personalidade nas decisões.
+10. **Personagens, etapa 3**: revoluções lideradas por agitadores, mudança de país e exílio, idiomas aprendidos, retratos em estilo caricatural com mais formas, IA usando a personalidade nas decisões.
 10. **Construção estilo Vic3 (resto)**: setor de construção (capacidade, materiais), propriedade dos edifícios, privatização e nacionalização, investimento estrangeiro.
 11. **Diplomacia**
     - Confiança, influência e esferas.
