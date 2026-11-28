@@ -140,3 +140,34 @@ console.log("characters ok");
   r.personality = "Conciliador"; r.traits = ["Pacifista"]; assert.ok(rulerWar(e, 1) < 0.5);
   console.log("characters ok (agitadores, revolução, exílio)");
 }
+
+// etapa 4: religião, casamento, filhos e herdeiro na monarquia; retrato varia e mostra os traços
+{
+  const ch = await import("../src/characters.ts");
+  const { portraitSVG } = await import("../src/portrait.ts");
+  const { generateWorld } = await import("../src/world.ts");
+  const { createEconomy } = await import("../src/economy.ts");
+  const w = generateWorld(120, 60, 5, 2), e = createEconomy(w);
+  ch.stepCharacters(w, e);
+  const r = ch.rulerOf(e, 1)!; r.dies = e.week + 52 * 100; r.born = e.week - 25 * 52;
+  assert.equal(r.religion, e.countries[0].stateReligion ?? 0);
+  for (let k = 0; k < 52 * 12 && (r.heirs?.length ?? 0) < 2; k++) { e.week++; if (e.week % 4 === 0) ch.stepCharacters(w, e); }
+  assert.ok(r.spouse !== undefined, "casou");
+  assert.ok((r.heirs?.length ?? 0) >= 1, "teve filhos");
+  const kid = e.characters!.find((x) => x.id === r.heirs![0])!;
+  assert.equal(kid.parent, r.id); assert.equal(ch.ageOf(kid, kid.born), 0);
+  assert.equal(kid.name.split(" ").slice(1).join(" "), r.name.split(" ").slice(1).join(" "), "sobrenome da família");
+  e.countries[0].politics.laws["Governo"] = "Chefia tribal";
+  r.dies = e.week; e.week += 4 - (e.week % 4); ch.stepCharacters(w, e);
+  assert.equal(ch.rulerOf(e, 1)!.id, kid.id, "o filho herda");
+  // governante de outra fé perde legitimidade
+  const heir = ch.rulerOf(e, 1)!, leg = (e.countries[0].politics.legitimacy = 0.5);
+  heir.religion = ((e.countries[0].stateReligion ?? 0) + 1) % 5; e.week += 4; ch.stepCharacters(w, e);
+  assert.ok(e.countries[0].politics.legitimacy < leg);
+  // retrato: caolho com tapa-olho, chapéu pelo cargo, personagens diferentes dão retratos diferentes
+  const svgs = new Set(e.characters!.map((c) => portraitSVG(c, 3)));
+  assert.ok(svgs.size >= Math.min(3, e.characters!.length));
+  heir.traits.push("Caolho"); assert.match(portraitSVG(heir, 3), /M18 22 L45 31/);
+  assert.match(portraitSVG(heir, 3), /#e3b93c/, "governante medieval de coroa");
+  console.log("characters ok (religião, família, herdeiros, retratos)");
+}

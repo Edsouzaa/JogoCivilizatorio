@@ -1743,6 +1743,8 @@ function bioText(c: NonNullable<Economy["characters"]>[number]) {
   const acquired = c.traits.filter((t) => ["Veterano", "Herói de guerra", "Sobrevivente de derrota", "Ferido em combate", "Caolho"].includes(t));
   if (acquired.length) parts.push(`As campanhas o marcaram: ${acquired.join(", ").toLowerCase()}.`);
   if (c.revolution) parts.push("Chegou ao poder à frente de uma revolução.");
+  if (c.spouse !== undefined) { const s = eco.characters?.find((x) => x.id === c.spouse); if (s) parts.push(`Casou-se com ${s.name}${c.heirs?.length ? ` e teve ${c.heirs.length} filho${c.heirs.length > 1 ? "s" : ""}` : ""}.`); }
+  parts.push(`Seguia a fé ${RELIGIONS[c.religion ?? 0]}.`);
   if (c.exiledTo) parts.push(`Terminou exilado em ${world.countries[c.exiledTo - 1].name}.`);
   if ((c.langs?.length ?? 0) > 1) parts.push(`Falava ${c.langs!.map(languageName).join(", ")}.`);
   parts.push(c.dead ? `Morreu aos ${ageOf(c, Math.min(eco.week, c.dies))} anos.` : `Aos ${ageOf(c, eco.week)} anos, segue vivo.`);
@@ -1799,6 +1801,9 @@ function charProfileHtml(c: NonNullable<Economy["characters"]>[number]) {
     attr("adm", "Administração (impostos)") + attr("dip", "Diplomacia (relações)") + attr("mil", "Militar (exército e batalhas)") +
     (c.personality ? `<p><small>Personalidade: <b>${c.personality}</b> — ${PERSONALITIES[c.personality]?.desc ?? ""}</small></p>` : "") +
     (c.command ? `<p><small>Comando ${COMMAND_NAME[c.command]} · especialização <b>${c.spec}</b> · ${c.fights ?? 0} batalhas, ${c.wins ?? 0} vitórias</small></p>` : "") +
+    (() => { const who = (id?: number) => { const x = id !== undefined ? eco.characters?.find((y) => y.id === id) : undefined; return x ? `<a data-char="${x.id}" style="cursor:pointer;text-decoration:underline dotted">${x.name}</a>${x.dead ? " (falecido)" : ` (${ageOf(x, eco.week)})`}` : ""; };
+      const sp = who(c.spouse), kids = (c.heirs ?? []).map(who).filter(Boolean), par = who(c.parent);
+      return `<p><small>Religião: ${RELIGIONS[c.religion ?? 0]}${sp ? ` · cônjuge ${sp}` : ""}${par ? ` · filho de ${par}` : ""}${kids.length ? `<br>Filhos (herdeiros): ${kids.join(", ")}` : ""}</small></p>`; })() +
     `<p><small>Fala ${(c.langs ?? [world.countries[c.country - 1].lang ?? 0]).map(languageName).join(", ")}${c.exiledTo ? ` · <b>exilado em ${world.countries[c.exiledTo - 1].name}</b>` : c.gone ? " · fora da vida pública" : ""}</small></p>` +
     (titlesOf(c, eco.week).length ? `<p><small>Lembrado como: <b>${titlesOf(c, eco.week).join(", ")}</b></small></p>` : "") +
     `<h3>Traços</h3><ul style="margin:0;padding-left:16px">${traits}</ul>` +
