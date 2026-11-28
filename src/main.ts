@@ -25,7 +25,7 @@ import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, combine, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
 import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, sectorMethod, CONSTRUCTION_METHODS, CONSTRUCT } from "./construction.ts";
-import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available, areaOf, subOf } from "./tech.ts";
+import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available, areaOf, subOf, canSide, researchSlots, PARALLEL } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, hexDistance, forNeighbors, SQRT3 } from "./hex.ts";
@@ -690,6 +690,7 @@ document.addEventListener("pointerdown", (e) => {
   if (d.pausebuild) return cmd({ t: "pauseBuild", id: +d.pausebuild });
   if (d.ttab !== undefined && !d.tsel) { techTab = d.ttab as Area; return updateUI(); }
   if (d.tsel !== undefined) { if (d.ttab) techTab = d.ttab as Area; techSel = d.tsel; return updateUI(); }
+  if (d.tside) { const [name, on] = d.tside.split("|"); return cmd({ t: "techSide", name, on: on === "1" }); }
   if (d.tech && active) return cmd({ t: "tech", name: d.tech });
   if (d.law && active) {
     const [cat, name] = d.law.split("|"), c = eco.countries[active - 1];
@@ -1205,7 +1206,9 @@ function techTreeHtml(all = false) {
 }
 /** Cabeçalho da árvore: abas, legenda e detalhes da tecnologia escolhida. */
 function techTopHtml(r: Economy["countries"][number]["research"]) {
-  const tabs = `<div class="tabs">${AREAS.map((a) => `<button data-ttab="${a}" class="${a === techTab ? "on" : ""}">${a} <small>(${TECHS.filter((t) => areaOf(t) === a && r.known.has(t.name)).length}/${TECHS.filter((t) => areaOf(t) === a).length})</small></button>`).join(" ")}</div>`;
+  const side = (r.side ?? []).map((n) => { const t = TECHS.find((x) => x.name === n)!; return `<span class="card" style="display:inline-block;padding:2px 6px;margin:2px">${areaOf(t)}: <b>${n}</b> ${pct((r.progress.get(n) ?? 0) / t.cost)} <button data-tside="${n}|0" title="Parar">${icon("close")}</button></span>`; }).join("");
+  const par = `<div><small>Pesquisas ao mesmo tempo: ${1 + (r.side?.length ?? 0)}/${researchSlots(r)} (uma por área; os pontos se dividem com ${Math.round(PARALLEL.focusLoss * 100)}% de perda por pesquisa a mais)</small> ${side}</div>`;
+  const tabs = par + `<div class="tabs">${AREAS.map((a) => `<button data-ttab="${a}" class="${a === techTab ? "on" : ""}">${a} <small>(${TECHS.filter((t) => areaOf(t) === a && r.known.has(t.name)).length}/${TECHS.filter((t) => areaOf(t) === a).length})</small></button>`).join(" ")}</div>`;
   const legend = `<div class="tlegend"><span><i class="k"></i>concluída</span><span><i class="a"></i>requisito pronto</span><span><i class="r"></i>em pesquisa</span><span><i class="p"></i>pendente</span><span><b class="text">Nome (Era)</b> requisito de outra aba (clique para ir)</span></div>`;
   const t = TECHS.find((x) => x.name === techSel);
   if (!t) return tabs + legend;
@@ -1214,11 +1217,15 @@ function techTopHtml(r: Economy["countries"][number]["research"]) {
   const next = TECHS.filter((x) => x.requires.includes(t.name)).map((x) => `<a data-ttab="${areaOf(x)}" data-tsel="${x.name}" style="cursor:pointer">${x.name}</a>`).join(", ") || "—";
   const vars = Object.entries(t.fx ?? {}).map(([k, v]) => `<li><b>${k}</b> ${v! > 0 ? "+" : ""}${v} — ${TECH_VARS[k as keyof typeof TECH_VARS]?.[1] ?? ""}</li>`).join("");
   const units = UNITS.filter((u) => u.tech === t.name).map((u) => u.name), laws = Object.values(LAWS).flat().filter((l) => l.tech === t.name).map((l) => l.name);
+  // métodos de produção liberados: por construção, com os insumos que exigem (a tecnologia não dispensa o insumo)
+  const meths = new Map<string, string[]>();
+  for (const b of BUILDINGS) for (const m of methodsOf(b.name).flat()) if (m.tech === t.name) { const k = `${m.name}${m.inputs?.length ? ` (insumos: ${m.inputs.map(([g, q]) => `${q} ${g}`).join(", ")})` : ""}`; if (!meths.has(k)) meths.set(k, []); if (!meths.get(k)!.includes(b.name)) meths.get(k)!.push(b.name); }
+  const methTxt = [...meths].map(([m, bs]) => `${m} — ${bs.length > 3 ? `${bs.slice(0, 3).join(", ")} e mais ${bs.length - 3}` : bs.join(", ")}`).join("; ");
   return tabs + legend + `<div class="card tdetail"><b>${artSVG("tech", t.name, 20)} ${t.name}</b> <small>${areaOf(t)} · ${subOf(t)} · era ${ERAS[t.era]} · ${fmt(t.cost)} pts${prog && !r.known.has(t.name) ? ` · ${pct(prog / t.cost)} feito` : ""}${r.known.has(t.name) ? " · conhecida" : ""}</small>` +
     (t.desc ? `<p><small>${t.desc}</small></p>` : "") + `<small>Requisitos: ${reqs}<br>Abre caminho para: ${next}<br>Efeitos antigos: ${techEffect(t) || "—"}</small>` +
     (vars ? `<ul style="margin:4px 0;padding-left:18px;font-size:12px">${vars}</ul>` : "") +
-    `<small>${t.unlocks?.length ? `Construções: ${t.unlocks.join(", ")}. ` : ""}${units.length ? `Unidades: ${units.join(", ")}. ` : ""}${laws.length ? `Leis: ${laws.join(", ")}.` : ""}</small>` +
-    (avail && !r.known.has(t.name) ? ` <button data-tech="${t.name}">Pesquisar</button>` : "") + ` <button data-tsel="">Fechar</button></div>`;
+    `<small>${t.unlocks?.length ? `Construções: ${t.unlocks.join(", ")}. ` : ""}${units.length ? `Unidades: ${units.join(", ")}. ` : ""}${laws.length ? `Leis: ${laws.join(", ")}.` : ""}${methTxt ? `<br>Métodos de produção: ${methTxt}.` : ""}</small>` +
+    (avail && !r.known.has(t.name) ? ` <button data-tech="${t.name}">Pesquisar</button>` + (r.side?.includes(t.name) ? ` <button data-tside="${t.name}|0">Parar a paralela</button>` : (() => { const err = canSide(r, t.name); return ` <button data-tside="${t.name}|1"${err ? ` disabled title="${err}"` : ""}>Pesquisar em paralelo</button>`; })()) : "") + ` <button data-tsel="">Fechar</button></div>`;
 }
 
 let techCam = { x: 16, y: 16, z: 1 };
@@ -1768,6 +1775,7 @@ function lawEffect(l: Law, cat: string, p: Politics) {
     parts.push(`imposto ${pct(l.tax)} do PIB (agora ${pct(cur.tax!)}): <b class="${delta >= 0 ? "down" : "up"}">${signed(delta)}/semana</b>`);
   }
   if (l.invest !== undefined) parts.push(`investidores privados recebem ${pct(l.invest)} do PIB para construir (agora ${pct(cur.invest ?? 0)})`);
+  for (const [k, v] of Object.entries(l.vars ?? {})) parts.push(`<span class="${v! > 0 ? "down" : "up"}" title="${TECH_VARS[k as keyof typeof TECH_VARS]?.[1] ?? ""}">${k} ${v! > 0 ? "+" : ""}${v}</span>`); // mesmas variáveis das tecnologias
   if (l.tradeShare !== undefined) parts.push(`cidades trocam ${pct(l.tradeShare)} da sobra por semana (agora ${pct(cur.tradeShare!)})`);
   const FX: Record<string, (v: number) => string> = { control: (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}% controle`, unrest: (v) => (v > 0 ? `−${v} lealdade` : `+${-v} lealdade`),
     growth: (v) => `+${Math.round(v * 100)}% crescimento`, research: (v) => `+${Math.round(v * 100)}% pesquisa`, manpower: (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}% recrutas`,

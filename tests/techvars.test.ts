@@ -47,3 +47,15 @@ const prod = (boost: boolean) => {
 };
 assert.ok(prod(true) > prod(false), "tecnologia de produção aumenta a oferta");
 console.log(`techvars ok (${TECHS.length} tecnologias, ${Object.keys(TECH_VARS).length} variáveis)`);
+
+// leis em vigor somam nas mesmas variáveis (o cache renova quando a lei muda)
+{
+  const { LAWS } = await import("../src/politics.ts");
+  const w3 = generateWorld(120, 60, 4, 2), e3 = createEconomy(w3), c3 = e3.countries[0];
+  tick(w3, e3);
+  const before = tv(c3.research, "religiousTolerance");
+  c3.politics.laws["Religião"] = "Estado secular"; tick(w3, e3);
+  assert.ok(tv(c3.research, "religiousTolerance") >= before + 0.5 - 1e-9, "lei entra na variável");
+  for (const ls of Object.values(LAWS)) for (const l of ls) for (const k of Object.keys(l.vars ?? {})) assert.ok(k in TECH_VARS, `${l.name}: ${k}`);
+  console.log("law vars ok");
+}

@@ -365,7 +365,7 @@ for (const [tech, building] of [
 /** Tecnologia exigida por cada construção (só as que alguma tecnologia libera). */
 export const TECH_FOR_BUILDING = new Map(TECHS.flatMap((t) => (t.unlocks ?? []).map((b) => [b, t.name] as const)));
 
-export type Research = { era: number; known: Set<string>; researching: string | null; progress: Map<string, number> };
+export type Research = { era: number; known: Set<string>; researching: string | null; progress: Map<string, number>; side?: string[]; extra?: Partial<Record<TechVar, number>> }; // extra: variáveis das leis em vigor // side: pesquisas em paralelo (outras áreas)
 
 export const newResearch = (): Research => ({ era: 0, known: new Set(), researching: null, progress: new Map() });
 
@@ -378,7 +378,7 @@ export const researchMult = (r: Research) => 1 + techSum(r, "research");
 /** Aplica `points` de pesquisa. Escolhe sozinho a mais barata se nada estiver selecionado. Retorna a tecnologia concluída. */
 export function research(r: Research, points: number): Tech | null {
   if (!r.researching || r.known.has(r.researching)) {
-    const opts = available(r).sort((a, b) => a.cost - b.cost);
+    const opts = available(r).filter((t) => !r.side?.includes(t.name)).sort((a, b) => a.cost - b.cost); // a paralela não vira principal
     r.researching = opts[0]?.name ?? null;
   }
   if (!r.researching) return null;
@@ -386,7 +386,35 @@ export function research(r: Research, points: number): Tech | null {
   const done = (r.progress.get(tech.name) ?? 0) + points * researchMult(r);
   if (done < tech.cost) { r.progress.set(tech.name, done); return null; }
   r.known.add(tech.name); r.progress.delete(tech.name); r.researching = null;
-  // nova era quando todas as tecnologias da era atual são conhecidas (e a próxima tem alguma)
-  while (TECHS.some((t) => t.era === r.era + 1) && TECHS.every((t) => t.era !== r.era || r.known.has(t.name))) r.era++;
+  nextEra(r);
   return tech;
+}
+/** Nova era quando todas as tecnologias da era atual são conhecidas (e a próxima tem alguma). */
+function nextEra(r: Research) { while (TECHS.some((t) => t.era === r.era + 1) && TECHS.every((t) => t.era !== r.era || r.known.has(t.name))) r.era++; }
+
+/** Pesquisa em paralelo: uma por área, até os slots da capacidade científica. Os pontos se dividem (com perda de foco): especializa, não acelera. */
+export const PARALLEL = { techs: ["Universidades", "Academias científicas", "Computadores"], focusLoss: 0.1 };
+export const researchSlots = (r: Research) => 1 + PARALLEL.techs.filter((t) => r.known.has(t)).length;
+/** Pode pôr a tecnologia em paralelo? (disponível, área diferente das outras pesquisas, slot livre) */
+export function canSide(r: Research, name: string): string | null {
+  const t = TECHS.find((x) => x.name === name);
+  if (!t || !available(r).some((x) => x.name === name)) return "Tecnologia indisponível";
+  if (name === r.researching || r.side?.includes(name)) return "Já está em pesquisa";
+  if (1 + (r.side?.length ?? 0) >= researchSlots(r)) return `Sem vaga: ${researchSlots(r)} pesquisa(s) ao mesmo tempo (Universidades, Academias científicas e Computadores abrem mais)`;
+  const busy = [r.researching, ...(r.side ?? [])].filter(Boolean).map((n) => areaOfName(n!));
+  if (busy.includes(areaOfName(name))) return "Já há uma pesquisa nessa área";
+  return null;
+}
+const areaOfName = (n: string) => areaOf(TECHS.find((t) => t.name === n)!);
+/** Uma semana de pesquisa com as paralelas: divide os pontos e devolve o que ficou pronto. */
+export function researchStep(r: Research, points: number): Tech[] {
+  r.side = (r.side ?? []).filter((n) => !r.known.has(n));
+  const n = 1 + r.side.length, share = (points * (1 - PARALLEL.focusLoss * (n - 1))) / n, done: Tech[] = [];
+  const main = research(r, share); if (main) done.push(main);
+  for (const name of [...r.side]) {
+    const t = TECHS.find((x) => x.name === name)!, p = (r.progress.get(name) ?? 0) + share * researchMult(r);
+    if (p < t.cost) { r.progress.set(name, p); continue; }
+    r.known.add(name); r.progress.delete(name); r.side = r.side.filter((x) => x !== name); nextEra(r); done.push(t);
+  }
+  return done;
 }

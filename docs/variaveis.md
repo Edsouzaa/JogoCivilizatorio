@@ -89,6 +89,7 @@ ECON_LAW["Imposto de renda"] = { tax: 0.08 };
 | `fundShare`, `privateCp`, `invest` | (Economia) investimento privado |
 | `singleParty` | (Governo) só o partido tem poder político |
 | `fx` | efeitos `LawFx` abaixo |
+| `vars` | as mesmas variáveis das tecnologias (seção 14), somadas enquanto a lei está em vigor: `vars: { religiousTolerance: 0.3 }` |
 
 `LawFx` (valem pela metade onde o controle é baixo):
 
@@ -307,6 +308,10 @@ Ficam no campo `fx` da tecnologia e são somadas por `tv(pesquisa, chave)` (com 
 \* entra no fator da era correspondente (`ECON_ALIAS`): soma no mesmo lugar e respeita os limites de `econ()`.
 
 Equivalências decididas (para não duplicar): `research` (velocidade geral) ≠ `researchCapacity` (pesquisa por acadêmico) ≠ `scientificMethod` (pesquisa base); `plague` (mortes por peste) ≠ `publicHealth` (chance de peste) ≠ `healthcare` (mortes por fome) ≠ `diseaseResistance` (atrito por doença); `control` (controle máximo) ≠ `stateCapacity` (alcance do controle); `unrest` (pontos de agitação) ≠ `publicOrder` (pontos a menos) ≠ `socialStability` (limite da revolução).
+
+### Pesquisa em paralelo (`tech.ts PARALLEL`)
+
+Uma pesquisa por área ao mesmo tempo. Vagas: 1 + Universidades + Academias científicas + Computadores. Os pontos da semana se dividem entre as pesquisas com 10% de perda por pesquisa a mais (`focusLoss`): especializa, não acelera.
 
 ## Como adicionar uma variável nova
 

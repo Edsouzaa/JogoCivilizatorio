@@ -139,14 +139,15 @@ type HasFx = { name: string; fx?: Partial<Record<TechVar, number>> };
 let techsRef: () => readonly HasFx[] = () => [];
 /** tech.ts registra a lista (evita import circular). */
 export const setTechs = (f: () => readonly HasFx[]) => { techsRef = f; };
-const cache = new WeakMap<Research, { n: number; v: Map<string, number> }>();
+const cache = new WeakMap<Research, { n: number; x: unknown; v: Map<string, number> }>();
 /** Soma da variável nas tecnologias conhecidas (cache até o país aprender outra). */
 export function tv(r: Research, key: TechVar): number {
   let c = cache.get(r);
-  if (!c || c.n !== r.known.size) {
+  if (!c || c.n !== r.known.size || c.x !== r.extra) {
     const v = new Map<string, number>();
     for (const t of techsRef()) if (t.fx && r.known.has(t.name)) for (const [k, x] of Object.entries(t.fx)) v.set(k, (v.get(k) ?? 0) + (x ?? 0));
-    cache.set(r, (c = { n: r.known.size, v }));
+    for (const [k, x] of Object.entries(r.extra ?? {})) v.set(k, (v.get(k) ?? 0) + (x ?? 0)); // leis em vigor (economy.ts lawVars)
+    cache.set(r, (c = { n: r.known.size, x: r.extra, v }));
   }
   return c.v.get(key) ?? 0;
 }

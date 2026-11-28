@@ -1,6 +1,7 @@
 // Grupos políticos e leis (docs/politica.md).
 // Poder Político = peso político dos POPs que apoiam o grupo (decide leis e governo).
 // Poder Popular = fração de pessoas que apoiam o grupo (dá legitimidade).
+import type { TechVar } from "./techvars.ts";
 import { ERAS } from "./tech.ts";
 import { POP_TYPES, type Pops } from "./pops.ts";
 
@@ -58,6 +59,7 @@ export type Law = {
   fundShare?: number;   // Economia: fração dos dividendos privados que os donos põem no fundo de investimento (firms.ts)
   privateCp?: number;   // Economia: fração dos pontos de construção para a fila privada (construction.ts)
   invest?: number;      // fração do PIB por semana que os donos (capitalistas, aristocratas) põem no fundo de investimento
+  vars?: Partial<Record<TechVar, number>>; // variáveis de tecnologia (techvars.ts) que a lei também mexe
   singleParty?: boolean; // Governo: só o partido tem Poder Político
   federal?: boolean;     // Estados: cada estado tem lei de impostos própria
   tech?: string;         // tecnologia que torna a lei possível (além da era)
@@ -69,32 +71,32 @@ export const LAWS: Record<string, Law[]> = {
   "Governo": [
     { name: "Chefia tribal", desc: "Os chefes e anciãos decidem. Simples, mas só os clãs apoiam.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
     { name: "Chefia com conselho", desc: "O chefe governa ouvindo um conselho de anciãos.", era: 0, tech: "Conselho de anciãos", likes: ["Anciãos e Clãs", "Povo do Campo"], dislikes: [], fx: { unrest: -1, control: 0.03 } },
-    { name: "Monarquia", desc: "Um rei governa apoiado pela nobreza, pelo exército e pelo clero.", era: era("Clássica"), tech: "Direito escrito", likes: ["Latifundiários", "Forças Armadas", "Devotos"], dislikes: ["Intelectuais"] },
+    { name: "Monarquia", vars: { legitimacy: 0.0005 }, desc: "Um rei governa apoiado pela nobreza, pelo exército e pelo clero.", era: era("Clássica"), tech: "Direito escrito", likes: ["Latifundiários", "Forças Armadas", "Devotos"], dislikes: ["Intelectuais"] },
     { name: "Teocracia", desc: "O clero governa em nome da religião.", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Intelectuais", "Mercadores"] },
-    { name: "República", desc: "Cidadãos escolhem quem governa; agrada comerciantes, intelectuais e camponeses.", era: era("Clássica"), tech: "Direito escrito", likes: ["Mercadores", "Intelectuais", "Povo do Campo"], dislikes: ["Latifundiários", "Anciãos e Clãs"] },
-    { name: "Monarquia constitucional", desc: "O rei reina, o parlamento governa.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Mercadores", "Intelectuais", "Pequena Burguesia"], dislikes: ["Forças Armadas"], fx: { unrest: -2 } },
-    { name: "Partido único", desc: "Só o partido governa: grupos de fora perdem todo o Poder Político, mas não o apoio popular (risco de rival).", era: era("Grandes Guerras"), likes: ["Forças Armadas"], dislikes: ["Intelectuais", "Mercadores"], singleParty: true },
+    { name: "República", vars: { politicalParticipation: 0.05 }, desc: "Cidadãos escolhem quem governa; agrada comerciantes, intelectuais e camponeses.", era: era("Clássica"), tech: "Direito escrito", likes: ["Mercadores", "Intelectuais", "Povo do Campo"], dislikes: ["Latifundiários", "Anciãos e Clãs"] },
+    { name: "Monarquia constitucional", vars: { politicalParticipation: 0.03, judicialEfficiency: 0.05 }, desc: "O rei reina, o parlamento governa.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Mercadores", "Intelectuais", "Pequena Burguesia"], dislikes: ["Forças Armadas"], fx: { unrest: -2 } },
+    { name: "Partido único", vars: { propagandaEfficiency: 0.2, politicalParticipation: -0.05 }, desc: "Só o partido governa: grupos de fora perdem todo o Poder Político, mas não o apoio popular (risco de rival).", era: era("Grandes Guerras"), likes: ["Forças Armadas"], dislikes: ["Intelectuais", "Mercadores"], singleParty: true },
   ],
   "Impostos": [
     { name: "Tributo em espécie", desc: "Cada família entrega parte da colheita. Pouco, mas fácil de cobrar.", era: 0, likes: ["Anciãos e Clãs", "Povo do Campo"], dislikes: [], tax: 0.1 },
     { name: "Dízimo", desc: "Um décimo da produção vai para o governo e o templo.", era: era("Clássica"), likes: ["Devotos"], dislikes: ["Mercadores"], tax: 0.12 },
     { name: "Imposto por cabeça", desc: "Valor fixo por pessoa: arrecada mais, pesa sobre os pobres.", era: era("Clássica"), likes: ["Latifundiários"], dislikes: ["Povo do Campo", "Mercadores"], tax: 0.18 },
-    { name: "Imposto de renda", desc: "Cada um paga pela renda, com faixas: arrecada bem num país com salários.", era: era("Industrialização"), tech: "Economia política", likes: ["Intelectuais", "Sindicatos"], dislikes: ["Industriais", "Latifundiários"], tax: 0.22 },
-    { name: "Imposto proporcional", desc: "Cada um paga conforme a renda.", era: era("Descobertas"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Latifundiários"], tax: 0.2 },
+    { name: "Imposto de renda", vars: { censusAccuracy: 0.05 }, desc: "Cada um paga pela renda, com faixas: arrecada bem num país com salários.", era: era("Industrialização"), tech: "Economia política", likes: ["Intelectuais", "Sindicatos"], dislikes: ["Industriais", "Latifundiários"], tax: 0.22 },
+    { name: "Imposto proporcional", vars: { censusAccuracy: 0.03 }, desc: "Cada um paga conforme a renda.", era: era("Descobertas"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Latifundiários"], tax: 0.2 },
   ],
   "Estados": [
-    { name: "Centralizado", desc: "Os estados só administram: cada estado dá +2% de arrecadação (até +10%).", era: 0, likes: ["Latifundiários", "Pequena Burguesia"], dislikes: [] },
-    { name: "Federação", desc: "Cada estado escolhe a própria lei de impostos, como nos Estados Unidos.", era: era("Revoluções"), likes: ["Povo do Campo", "Mercadores", "Intelectuais"], dislikes: ["Latifundiários"], federal: true },
+    { name: "Centralizado", vars: { stateCapacity: 1 }, desc: "Os estados só administram: cada estado dá +2% de arrecadação (até +10%).", era: 0, likes: ["Latifundiários", "Pequena Burguesia"], dislikes: [] },
+    { name: "Federação", vars: { socialCohesion: 0.05 }, desc: "Cada estado escolhe a própria lei de impostos, como nos Estados Unidos.", era: era("Revoluções"), likes: ["Povo do Campo", "Mercadores", "Intelectuais"], dislikes: ["Latifundiários"], federal: true },
   ],
   "Economia": [
     { name: "Subsistência", desc: "Cada comunidade vive do que produz; quase não há troca entre cidades.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [], tradeShare: 0.4, invest: 0, privateCp: 0, fundShare: 0 },
     { name: "Tradicionalismo", desc: "Comércio pelas rotas e costumes de sempre.", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores"], tradeShare: 0.5, invest: 0.01, privateCp: 0.2, fundShare: 0.15 },
-    { name: "Mercantilismo", desc: "O Estado incentiva comércio e acumula riqueza.", era: era("Descobertas"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7, invest: 0.02, privateCp: 0.35, fundShare: 0.3 },
-    { name: "Livre comércio", desc: "Mercadorias circulam livremente entre as cidades.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], tradeShare: 0.9, invest: 0.04, privateCp: 0.6, fundShare: 0.5 },
+    { name: "Mercantilismo", vars: { exportCapacity: 0.1, importCapacity: -0.1 }, desc: "O Estado incentiva comércio e acumula riqueza.", era: era("Descobertas"), likes: ["Mercadores"], dislikes: ["Povo do Campo"], tradeShare: 0.7, invest: 0.02, privateCp: 0.35, fundShare: 0.3 },
+    { name: "Livre comércio", vars: { importCapacity: 0.1, exportCapacity: 0.05 }, desc: "Mercadorias circulam livremente entre as cidades.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], tradeShare: 0.9, invest: 0.04, privateCp: 0.6, fundShare: 0.5 },
     { name: "Agrarismo", desc: "A riqueza vem da terra: donos de terra investem, o Estado constrói o resto.", era: era("Medieval"), likes: ["Latifundiários", "Povo do Campo"], dislikes: ["Industriais"], tradeShare: 0.55, invest: 0.015, privateCp: 0.25, fundShare: 0.2 },
-    { name: "Intervencionismo", desc: "Mercado com o Estado dirigindo setores e dividindo a construção.", era: era("Revoluções"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Industriais"], tradeShare: 0.8, invest: 0.03, privateCp: 0.4, fundShare: 0.35 },
-    { name: "Economia cooperativa", desc: "Empresas dos trabalhadores: as organizações automáticas viram cooperativas.", era: era("Industrialização"), likes: ["Sindicatos", "Povo do Campo"], dislikes: ["Industriais", "Latifundiários"], tradeShare: 0.75, invest: 0.02, privateCp: 0.45, fundShare: 0.3, defaultOrg: "Cooperativa" },
-    { name: "Economia planejada", desc: "O Estado planeja e é dono: sem investidores, toda a construção é pública e as empresas são estatais.", era: era("Grandes Guerras"), likes: ["Sindicatos", "Forças Armadas"], dislikes: ["Industriais", "Mercadores", "Pequena Burguesia"], tradeShare: 0.7, invest: 0, privateCp: 0, fundShare: 0, defaultOrg: "Estatal" },
+    { name: "Intervencionismo", vars: { industrialComplexity: 0.05 }, desc: "Mercado com o Estado dirigindo setores e dividindo a construção.", era: era("Revoluções"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Industriais"], tradeShare: 0.8, invest: 0.03, privateCp: 0.4, fundShare: 0.35 },
+    { name: "Economia cooperativa", vars: { socialMobility: 0.1 }, desc: "Empresas dos trabalhadores: as organizações automáticas viram cooperativas.", era: era("Industrialização"), likes: ["Sindicatos", "Povo do Campo"], dislikes: ["Industriais", "Latifundiários"], tradeShare: 0.75, invest: 0.02, privateCp: 0.45, fundShare: 0.3, defaultOrg: "Cooperativa" },
+    { name: "Economia planejada", vars: { productionSpeed: 0.1, privateCapital: -0.1 }, desc: "O Estado planeja e é dono: sem investidores, toda a construção é pública e as empresas são estatais.", era: era("Grandes Guerras"), likes: ["Sindicatos", "Forças Armadas"], dislikes: ["Industriais", "Mercadores", "Pequena Burguesia"], tradeShare: 0.7, invest: 0, privateCp: 0, fundShare: 0, defaultOrg: "Estatal" },
     { name: "Economia mista", desc: "Estatais nos setores-chave e mercado no resto.", era: era("Multipolar"), likes: ["Intelectuais", "Pequena Burguesia", "Sindicatos"], dislikes: [], tradeShare: 0.85, invest: 0.03, privateCp: 0.5, fundShare: 0.4 },
   ],
   // ---- categorias da expansão de leis (docs/leis.md): efeitos em `fx`, aplicados por lawFx (com implementação gradual pelo controle)
@@ -107,62 +109,62 @@ export const LAWS: Record<string, Law[]> = {
   ],
   "Administração": [
     { name: "Administração tradicional", desc: "Chefes locais cuidam de tudo do seu jeito.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
-    { name: "Burocracia básica", desc: "Escribas registram terras, gente e tributos.", era: era("Clássica"), tech: "Escrita", likes: ["Pequena Burguesia"], dislikes: ["Anciãos e Clãs"], fx: { control: 0.05 } },
-    { name: "Administração patrimonial", desc: "Cargos são dos nobres e passam de pai para filho.", era: era("Medieval"), tech: "Feudalismo", likes: ["Latifundiários"], dislikes: ["Pequena Burguesia", "Intelectuais"], fx: { control: -0.03, unrest: -1 } },
-    { name: "Burocracia profissional", desc: "Funcionários de carreira, escolhidos por concurso.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Pequena Burguesia", "Intelectuais"], dislikes: ["Latifundiários"], fx: { control: 0.08 } },
-    { name: "Administração tecnocrática", desc: "Especialistas planejam com dados e estatística.", era: era("Multipolar"), tech: "Computadores", likes: ["Intelectuais", "Industriais"], dislikes: ["Povo do Campo"], fx: { control: 0.1, research: 0.05 } },
-    { name: "Administração digital", desc: "Serviços e registros pela rede.", era: era("Moderna"), tech: "Governo digital", likes: ["Intelectuais", "Industriais"], dislikes: ["Devotos"], fx: { control: 0.12 } },
+    { name: "Burocracia básica", vars: { recordKeeping: 0.05 }, desc: "Escribas registram terras, gente e tributos.", era: era("Clássica"), tech: "Escrita", likes: ["Pequena Burguesia"], dislikes: ["Anciãos e Clãs"], fx: { control: 0.05 } },
+    { name: "Administração patrimonial", vars: { bureaucraticCost: -0.1 }, desc: "Cargos são dos nobres e passam de pai para filho.", era: era("Medieval"), tech: "Feudalismo", likes: ["Latifundiários"], dislikes: ["Pequena Burguesia", "Intelectuais"], fx: { control: -0.03, unrest: -1 } },
+    { name: "Burocracia profissional", vars: { bureaucraticCapacity: 0.1, bureaucraticCost: 0.1 }, desc: "Funcionários de carreira, escolhidos por concurso.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Pequena Burguesia", "Intelectuais"], dislikes: ["Latifundiários"], fx: { control: 0.08 } },
+    { name: "Administração tecnocrática", vars: { administrativeEfficiency: 0.05, governanceEfficiency: 0.1 }, desc: "Especialistas planejam com dados e estatística.", era: era("Multipolar"), tech: "Computadores", likes: ["Intelectuais", "Industriais"], dislikes: ["Povo do Campo"], fx: { control: 0.1, research: 0.05 } },
+    { name: "Administração digital", vars: { recordKeeping: 0.1, censusAccuracy: 0.05 }, desc: "Serviços e registros pela rede.", era: era("Moderna"), tech: "Governo digital", likes: ["Intelectuais", "Industriais"], dislikes: ["Devotos"], fx: { control: 0.12 } },
   ],
   "Justiça": [
     { name: "Justiça costumeira", desc: "Os anciãos julgam pelos costumes.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
     { name: "Justiça religiosa", desc: "Sacerdotes julgam pela lei sagrada.", era: era("Clássica"), tech: "Escrita", likes: ["Devotos"], dislikes: ["Intelectuais"], fx: { unrest: -2 } },
-    { name: "Direito escrito", desc: "Leis escritas, iguais para todos os súditos.", era: era("Clássica"), tech: "Direito escrito", likes: ["Mercadores", "Pequena Burguesia"], dislikes: ["Anciãos e Clãs"], fx: { control: 0.05 } },
-    { name: "Direito civil", desc: "Códigos civis e tribunais por todo o país.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Intelectuais", "Mercadores", "Pequena Burguesia"], dislikes: ["Devotos", "Latifundiários"], fx: { control: 0.05, unrest: -1 } },
-    { name: "Justiça independente", desc: "Juízes que o governo não demite.", era: era("Grandes Guerras"), tech: "Educação pública", likes: ["Intelectuais", "Sindicatos"], dislikes: ["Forças Armadas"], fx: { unrest: -3, control: -0.02 } },
+    { name: "Direito escrito", vars: { lawEnforcement: 0.05 }, desc: "Leis escritas, iguais para todos os súditos.", era: era("Clássica"), tech: "Direito escrito", likes: ["Mercadores", "Pequena Burguesia"], dislikes: ["Anciãos e Clãs"], fx: { control: 0.05 } },
+    { name: "Direito civil", vars: { judicialEfficiency: 0.05, lawEnforcement: 0.05 }, desc: "Códigos civis e tribunais por todo o país.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Intelectuais", "Mercadores", "Pequena Burguesia"], dislikes: ["Devotos", "Latifundiários"], fx: { control: 0.05, unrest: -1 } },
+    { name: "Justiça independente", vars: { judicialEfficiency: 0.1 }, desc: "Juízes que o governo não demite.", era: era("Grandes Guerras"), tech: "Educação pública", likes: ["Intelectuais", "Sindicatos"], dislikes: ["Forças Armadas"], fx: { unrest: -3, control: -0.02 } },
   ],
   "Trabalho": [
     { name: "Trabalho familiar", desc: "Cada família trabalha a própria terra.", era: 0, likes: ["Povo do Campo"], dislikes: [] },
-    { name: "Trabalho servil", desc: "Servos presos à terra do senhor.", era: era("Medieval"), tech: "Feudalismo", likes: ["Latifundiários"], dislikes: ["Povo do Campo", "Intelectuais"], fx: { manpower: 0.05, unrest: 3 } },
-    { name: "Trabalho assalariado", desc: "Trabalhadores livres vendem seu trabalho.", era: era("Revoluções"), tech: "Economia política", likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], fx: { growth: 0.05 } },
-    { name: "Trabalho regulamentado", desc: "Jornada, segurança e salário mínimo por lei.", era: era("Industrialização"), tech: "Sindicatos", likes: ["Sindicatos", "Intelectuais"], dislikes: ["Industriais"], fx: { unrest: -3 } },
+    { name: "Trabalho servil", vars: { socialMobility: -0.2, mechanization: -0.05 }, desc: "Servos presos à terra do senhor.", era: era("Medieval"), tech: "Feudalismo", likes: ["Latifundiários"], dislikes: ["Povo do Campo", "Intelectuais"], fx: { manpower: 0.05, unrest: 3 } },
+    { name: "Trabalho assalariado", vars: { socialMobility: 0.1 }, desc: "Trabalhadores livres vendem seu trabalho.", era: era("Revoluções"), tech: "Economia política", likes: ["Industriais", "Mercadores"], dislikes: ["Latifundiários"], fx: { growth: 0.05 } },
+    { name: "Trabalho regulamentado", vars: { laborProductivity: 0.03, socialStability: 0.03 }, desc: "Jornada, segurança e salário mínimo por lei.", era: era("Industrialização"), tech: "Sindicatos", likes: ["Sindicatos", "Intelectuais"], dislikes: ["Industriais"], fx: { unrest: -3 } },
   ],
   "Educação": [
     { name: "Educação familiar", desc: "Os pais ensinam o ofício aos filhos.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
-    { name: "Educação religiosa", desc: "Templos e mosteiros ensinam a ler.", era: era("Medieval"), tech: "Universidades", likes: ["Devotos"], dislikes: ["Intelectuais"], fx: { research: 0.05 } },
-    { name: "Educação privada", desc: "Escolas pagas para quem pode.", era: era("Renascença"), tech: "Imprensa", likes: ["Mercadores", "Pequena Burguesia"], dislikes: ["Povo do Campo"], fx: { research: 0.08 } },
-    { name: "Educação pública", desc: "Escola básica gratuita para todos.", era: era("Industrialização"), tech: "Educação pública", likes: ["Intelectuais", "Sindicatos", "Povo do Campo"], dislikes: ["Devotos"], fx: { research: 0.15, unrest: -1 } },
-    { name: "Educação técnica e superior", desc: "Universidades e escolas técnicas públicas.", era: era("Multipolar"), tech: "Computadores", likes: ["Intelectuais", "Industriais"], dislikes: [], fx: { research: 0.25 } },
+    { name: "Educação religiosa", vars: { literacy: 0.01 }, desc: "Templos e mosteiros ensinam a ler.", era: era("Medieval"), tech: "Universidades", likes: ["Devotos"], dislikes: ["Intelectuais"], fx: { research: 0.05 } },
+    { name: "Educação privada", vars: { educationQuality: 0.1 }, desc: "Escolas pagas para quem pode.", era: era("Renascença"), tech: "Imprensa", likes: ["Mercadores", "Pequena Burguesia"], dislikes: ["Povo do Campo"], fx: { research: 0.08 } },
+    { name: "Educação pública", vars: { educationAccess: 0.2, literacy: 0.03 }, desc: "Escola básica gratuita para todos.", era: era("Industrialização"), tech: "Educação pública", likes: ["Intelectuais", "Sindicatos", "Povo do Campo"], dislikes: ["Devotos"], fx: { research: 0.15, unrest: -1 } },
+    { name: "Educação técnica e superior", vars: { researchCapacity: 0.1, educationQuality: 0.1 }, desc: "Universidades e escolas técnicas públicas.", era: era("Multipolar"), tech: "Computadores", likes: ["Intelectuais", "Industriais"], dislikes: [], fx: { research: 0.25 } },
   ],
   "Saúde": [
     { name: "Medicina tradicional", desc: "Curandeiros e ervas.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
-    { name: "Assistência religiosa", desc: "Hospitais dos templos cuidam dos pobres.", era: era("Clássica"), tech: "Medicina antiga", likes: ["Devotos"], dislikes: [], fx: { growth: 0.05 } },
-    { name: "Saúde pública básica", desc: "Saneamento, vacinas e postos de saúde.", era: era("Revoluções"), tech: "Saneamento", likes: ["Intelectuais", "Sindicatos"], dislikes: ["Industriais"], fx: { growth: 0.1, unrest: -1 } },
-    { name: "Saúde pública universal", desc: "Atendimento gratuito para todos.", era: era("Multipolar"), tech: "Previdência social", likes: ["Sindicatos", "Povo do Campo", "Intelectuais"], dislikes: ["Industriais"], fx: { growth: 0.15, unrest: -3 } },
+    { name: "Assistência religiosa", vars: { healthcare: 0.05 }, desc: "Hospitais dos templos cuidam dos pobres.", era: era("Clássica"), tech: "Medicina antiga", likes: ["Devotos"], dislikes: [], fx: { growth: 0.05 } },
+    { name: "Saúde pública básica", vars: { publicHealth: 0.1 }, desc: "Saneamento, vacinas e postos de saúde.", era: era("Revoluções"), tech: "Saneamento", likes: ["Intelectuais", "Sindicatos"], dislikes: ["Industriais"], fx: { growth: 0.1, unrest: -1 } },
+    { name: "Saúde pública universal", vars: { publicHealth: 0.15, healthcare: 0.1 }, desc: "Atendimento gratuito para todos.", era: era("Multipolar"), tech: "Previdência social", likes: ["Sindicatos", "Povo do Campo", "Intelectuais"], dislikes: ["Industriais"], fx: { growth: 0.15, unrest: -3 } },
   ],
   "Recrutamento": [
     { name: "Recrutamento tribal", desc: "Todo homem da tribo pega em armas.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
-    { name: "Exército permanente", desc: "Soldados pagos o ano todo, treinados.", era: era("Clássica"), tech: "Direito escrito", likes: ["Forças Armadas"], dislikes: ["Povo do Campo"], fx: { army: 0.05, manpower: -0.03 } },
-    { name: "Recrutamento feudal", desc: "Cada senhor traz seus homens.", era: era("Medieval"), tech: "Feudalismo", likes: ["Latifundiários"], dislikes: ["Forças Armadas"], fx: { manpower: 0.05 } },
-    { name: "Conscrição", desc: "Serviço militar obrigatório.", era: era("Revoluções"), tech: "Conscrição", likes: ["Forças Armadas"], dislikes: ["Povo do Campo", "Intelectuais"], fx: { manpower: 0.1, unrest: 2 } },
-    { name: "Exército profissional", desc: "Voluntários de carreira, bem treinados.", era: era("Multipolar"), tech: "Computadores", likes: ["Forças Armadas", "Intelectuais"], dislikes: [], fx: { army: 0.1, manpower: -0.05 } },
+    { name: "Exército permanente", vars: { armyTraining: 0.25, armyRecovery: 0.1 }, desc: "Soldados pagos o ano todo, treinados.", era: era("Clássica"), tech: "Direito escrito", likes: ["Forças Armadas"], dislikes: ["Povo do Campo"], fx: { army: 0.05, manpower: -0.03 } },
+    { name: "Recrutamento feudal", vars: { armyMobilization: 0.1 }, desc: "Cada senhor traz seus homens.", era: era("Medieval"), tech: "Feudalismo", likes: ["Latifundiários"], dislikes: ["Forças Armadas"], fx: { manpower: 0.05 } },
+    { name: "Conscrição", vars: { armyMobilization: 0.2, armyReinforcement: 0.1 }, desc: "Serviço militar obrigatório.", era: era("Revoluções"), tech: "Conscrição", likes: ["Forças Armadas"], dislikes: ["Povo do Campo", "Intelectuais"], fx: { manpower: 0.1, unrest: 2 } },
+    { name: "Exército profissional", vars: { armyProfessionalism: 0.05, armyTraining: 0.25 }, desc: "Voluntários de carreira, bem treinados.", era: era("Multipolar"), tech: "Computadores", likes: ["Forças Armadas", "Intelectuais"], dislikes: [], fx: { army: 0.1, manpower: -0.05 } },
   ],
   "Religião": [
     { name: "Religião tradicional", desc: "Os deuses dos antepassados.", era: 0, likes: ["Anciãos e Clãs", "Devotos"], dislikes: [] },
-    { name: "Religião oficial", desc: "Uma fé do Estado, com templos e clero pagos.", era: era("Clássica"), tech: "Escrita", likes: ["Devotos"], dislikes: ["Intelectuais"], fx: { unrest: -2 } },
-    { name: "Tolerância religiosa", desc: "Outras fés podem existir em paz.", era: era("Renascença"), tech: "Humanismo", likes: ["Mercadores", "Intelectuais"], dislikes: ["Devotos"], fx: { unrest: -1, growth: 0.02 } },
-    { name: "Estado secular", desc: "Igreja e Estado separados.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Devotos"], fx: { research: 0.05 } },
+    { name: "Religião oficial", vars: { religiousTolerance: -0.2, legitimacy: 0.0005 }, desc: "Uma fé do Estado, com templos e clero pagos.", era: era("Clássica"), tech: "Escrita", likes: ["Devotos"], dislikes: ["Intelectuais"], fx: { unrest: -2 } },
+    { name: "Tolerância religiosa", vars: { religiousTolerance: 0.3 }, desc: "Outras fés podem existir em paz.", era: era("Renascença"), tech: "Humanismo", likes: ["Mercadores", "Intelectuais"], dislikes: ["Devotos"], fx: { unrest: -1, growth: 0.02 } },
+    { name: "Estado secular", vars: { religiousTolerance: 0.5 }, desc: "Igreja e Estado separados.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Devotos"], fx: { research: 0.05 } },
   ],
   "Imigração": [
     { name: "Costume migratório", desc: "Quem chega é recebido pelos costumes.", era: 0, likes: [], dislikes: [] },
-    { name: "Fronteiras fechadas", desc: "Ninguém de fora se muda para cá.", era: era("Clássica"), tech: "Direito escrito", likes: ["Devotos", "Latifundiários"], dislikes: ["Mercadores", "Industriais"], fx: { immigration: -1 } },
-    { name: "Imigração seletiva", desc: "Só alguns imigrantes são aceitos.", era: era("Revoluções"), tech: "Economia política", likes: ["Pequena Burguesia"], dislikes: ["Industriais"], fx: { immigration: -0.5 } },
-    { name: "Imigração aberta", desc: "Todos podem vir trabalhar.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Industriais", "Mercadores"], dislikes: ["Devotos", "Sindicatos"], fx: { immigration: 0.5 } },
+    { name: "Fronteiras fechadas", vars: { migrationControl: 0.3 }, desc: "Ninguém de fora se muda para cá.", era: era("Clássica"), tech: "Direito escrito", likes: ["Devotos", "Latifundiários"], dislikes: ["Mercadores", "Industriais"], fx: { immigration: -1 } },
+    { name: "Imigração seletiva", vars: { migrationControl: 0.15, migrationAttraction: 0.05 }, desc: "Só alguns imigrantes são aceitos.", era: era("Revoluções"), tech: "Economia política", likes: ["Pequena Burguesia"], dislikes: ["Industriais"], fx: { immigration: -0.5 } },
+    { name: "Imigração aberta", vars: { migrationAttraction: 0.2 }, desc: "Todos podem vir trabalhar.", era: era("Revoluções"), tech: "Iluminismo", likes: ["Industriais", "Mercadores"], dislikes: ["Devotos", "Sindicatos"], fx: { immigration: 0.5 } },
   ],
   "Investimento": [
     { name: "Costume", desc: "Quem tem recursos constrói o que a tradição manda.", era: 0, likes: ["Anciãos e Clãs"], dislikes: [] },
     { name: "Investimento restrito", desc: "Investidores só podem abrir extração e lavoura; indústria é do Estado.", era: era("Clássica"), likes: ["Latifundiários", "Devotos"], dislikes: ["Mercadores", "Industriais"], policy: "restrito" },
-    { name: "Investimento orientado", desc: "Investidores só entram onde falta mercadoria (preço acima do normal).", era: era("Descobertas"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Industriais"], policy: "orientado" },
-    { name: "Investimento livre", desc: "Investidores constroem onde quiserem.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Sindicatos"], policy: "livre" },
+    { name: "Investimento orientado", vars: { privateCapital: 0.05 }, desc: "Investidores só entram onde falta mercadoria (preço acima do normal).", era: era("Descobertas"), likes: ["Intelectuais", "Pequena Burguesia"], dislikes: ["Industriais"], policy: "orientado" },
+    { name: "Investimento livre", vars: { privateCapital: 0.1 }, desc: "Investidores constroem onde quiserem.", era: era("Revoluções"), likes: ["Industriais", "Mercadores"], dislikes: ["Sindicatos"], policy: "livre" },
   ],
 };
 for (const laws of Object.values(LAWS)) for (const l of laws) for (const g of [...l.likes, ...l.dislikes]) if (G[g] === undefined) throw new Error(`lei ${l.name}: grupo ${g}`);

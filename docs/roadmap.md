@@ -131,6 +131,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Personagens, etapa 5: crônica central (chronicle.ts) com batalhas, guerras, paz, tratados, leis, governo, golpes, revoluções, mortes, fundações, conquistas e exílios, cada um registrado uma vez e referenciado pelos personagens; crônica na Visão Geral e no livro; tratados (acordo comercial, súdito) na vida dos governantes; regência (cônjuge ou escolhido) quando o herdeiro tem menos de 16 anos.
 - Personagens, etapa 6: diplomata como cargo (3 candidatos; diplomacia dá pontos a mais por gesto e tolerância nos acordos; negociações na vida dele e na crônica); avaliação do comando em cada batalha (números, terreno, suprimento, troca de baixas) no livro; crônica filtrável por tipo. Referência de variáveis em docs/variaveis.md.
 - Tecnologia em três áreas (Produção, Militar, Social) com 211 tecnologias (98 novas), pré-requisitos cruzados, 110 variáveis com leitura central (techvars.ts), difusão parcial entre vizinhos e parceiros, Complexidade Social com instituições; árvore em abas com requisitos externos `Nome (Era)`, legenda das linhas e painel de detalhes.
+- Tecnologia, etapa 2: pesquisa em paralelo (uma por área, vagas por Universidades, Academias científicas e Computadores, pontos divididos com perda de foco); 45 leis mexem nas variáveis de tecnologia (campo `vars`); painel da tecnologia mostra os métodos de produção liberados com os insumos que exigem.
 
 ## Próximos (nesta ordem)
 
@@ -151,7 +152,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 8. **População**
     - Cultura/língua/religião por POP (hoje é por cidade), grupos culturais, famílias de línguas e religiões, surgimento e divisão de culturas.
 9. **Leis**
-11. **Tecnologia, etapa 2**: pesquisa paralela por área (slots pela capacidade científica), leis e incentivos usando as variáveis novas, desbloqueio de métodos de produção por tecnologia com insumos exigidos.
+11. **Tecnologia, etapa 3**: IA usando a pesquisa paralela e escolhendo a área pela personalidade; incentivos e eventos com variáveis de tecnologia.
 10. **Personagens, etapa 7**: idiomas aprendidos por convivência (diplomata no estrangeiro), mortos/feridos/capturados separados no combate, narrativa da biografia por IA (opcional, só com fatos registrados).
 10. **Construção estilo Vic3 (resto)**: setor de construção (capacidade, materiais), propriedade dos edifícios, privatização e nacionalização, investimento estrangeiro.
 11. **Diplomacia**

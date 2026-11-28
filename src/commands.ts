@@ -26,7 +26,7 @@ import { hireGeneral, lawNote, hireDiplomat } from "./characters.ts";
 import { buildOutpost, buyHex } from "./expansion.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
-import { available } from "./tech.ts";
+import { available, canSide } from "./tech.ts";
 import type { World } from "./world.ts";
 
 export type Cmd =
@@ -64,6 +64,7 @@ export type Cmd =
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
   | { t: "recruit"; hex: number; unit?: string }
+  | { t: "techSide"; name: string; on: boolean } // pesquisa em paralelo noutra área (tech.ts)
   | { t: "diplomat"; pick?: number } // nomear diplomata (um de três candidatos)
   | { t: "general"; id: number; pick?: number } // contratar um dos 3 candidatos para a unidade
   | { t: "front"; ids: number[]; enemy: number; mode: "defend" | "attack" } // ordem de frente para um grupo
@@ -175,6 +176,12 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "harbor": return ownCity(c.city) ? buildHarbor(e, c.city) : "Cidade não é sua";
     case "road": return ownCity(c.city) ? buildRoad(e, c.city) : "Cidade não é sua";
     case "transfer": return ownCity(c.from) && ownCity(c.to) ? transferSize(w, e, c.from, c.to) : "Cidade não é sua";
+    case "techSide": {
+      if (typeof c.name !== "string") return "Tecnologia inválida";
+      if (!c.on) { co.research.side = (co.research.side ?? []).filter((n) => n !== c.name); return null; }
+      const err = canSide(co.research, c.name); if (err) return err;
+      (co.research.side ??= []).push(c.name); return null;
+    }
     case "tech": {
       if (!available(co.research).some((t) => t.name === c.name)) return "Tecnologia indisponível";
       co.research.researching = c.name;

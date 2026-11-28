@@ -57,3 +57,21 @@ console.log("tech ok");
   assert.ok(base > 0);
 }
 console.log("literacy ok");
+
+// pesquisa em paralelo: uma por área, vagas pela capacidade científica; os pontos se dividem (não acelera)
+{
+  const { researchStep, canSide, researchSlots, PARALLEL } = await import("../src/tech.ts");
+  const r2 = newResearch();
+  r2.researching = "Coleta organizada";
+  assert.equal(researchSlots(r2), 1);
+  assert.match(canSide(r2, "Tradições de parentesco")!, /vaga/);
+  r2.known.add("Universidades");
+  assert.equal(canSide(r2, "Tradições de parentesco"), null);
+  assert.match(canSide(r2, "Ferramentas de pedra polida")!, /área/); // Produção, como a principal
+  r2.side = ["Tradições de parentesco"];
+  researchStep(r2, 10);
+  const a = r2.progress.get("Coleta organizada")!, b = r2.progress.get("Tradições de parentesco")!;
+  assert.ok(a > 0 && b > 0, "as duas andam");
+  assert.ok(Math.abs(a + b - 10 * (1 - PARALLEL.focusLoss) * researchMult(r2)) < 1e-6, "não acelera: a soma perde o foco");
+  console.log("parallel research ok");
+}

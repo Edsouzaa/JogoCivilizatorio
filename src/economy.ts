@@ -38,9 +38,9 @@ import { stepNaval, type ShipOrder } from "./naval.ts";
 import { activeMethods, combine, methodKey, INDUSTRIES as INDUSTRY_NAMES } from "./methods.ts";
 import { stepFirms, privateShareOf, type FirmRun, type Ledger } from "./firms.ts";
 import { stepConstruction, methodInputs, sectorMethod, CONSTRUCTION_METHODS, type Project } from "./construction.ts";
-import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research } from "./tech.ts";
+import { newResearch, research, available, techSum, ERAS, TECHS, TECH_FOR_BUILDING, ERA_RESEARCH, START_YEAR, type Research, researchStep } from "./tech.ts";
 import { jobsFor, idleType, newPops, distributeIncome, computeQol, updateLoyalty, lowerClassQol, P, POP_RULES, type Pops } from "./pops.ts";
-import { lawFx, newPolitics, updatePolitics, advanceLaw, lawOf, type Politics } from "./politics.ts";
+import { lawFx, newPolitics, updatePolitics, advanceLaw, lawOf, LAWS, type Politics } from "./politics.ts";
 import { cityTax, adminBonus, updateStates, type State } from "./states.ts";
 import type { Flag } from "./flags.ts";
 import { makeName } from "./names.ts";
@@ -1102,6 +1102,8 @@ export function tick(w: World, e: Economy) {
     const cap = c.pop * c.control * Math.max(0.05, RULES.manpowerShare + techSum(c.research, "manpower") + lawFx(c.politics, "manpower", c.control) + incCountryFx(e, ci + 1, "manpower")) - c.pops.count[P["Soldados"]];
     c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen * tvMul(c.research, "armyMobilization"));
     updatePolitics(c.politics, c.pops, c.research.era);
+    { const lv: Record<string, number> = {}; for (const cat of Object.keys(LAWS)) for (const [k, v] of Object.entries(lawOf(c.politics, cat).vars ?? {})) lv[k] = (lv[k] ?? 0) + v!;
+      const key = JSON.stringify(lv); if (key !== JSON.stringify(c.research.extra ?? {})) c.research.extra = lv; } // leis usam as mesmas variáveis das tecnologias
     c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest") + lawFx(c.politics, "unrest", c.control) + (c.culturePenalty ?? 0) * (1 - (c.incCulture ?? 0)) * tvCut(c.research, "socialCohesion") + incCountryFx(e, ci + 1, "unrest") - tv(c.research, "publicOrder"));
     c.politics.legitimacy = Math.min(1, c.politics.legitimacy + incCountryFx(e, ci + 1, "legitimacy")); // templos, combate à corrupção // + leis + minorias não aceitas
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
@@ -1123,8 +1125,8 @@ export function tick(w: World, e: Economy) {
     const knowers = (e.contacts?.[ci] ?? []).filter((o) => c.research.researching && e.countries[o - 1].research.known.has(c.research.researching)).length;
     c.researchWeek *= (1 + Math.min(RULES.diffusionMax, RULES.diffusion * knowers)) * (knowers ? 1 : tvMul(c.research, "innovation")); // ninguém em volta sabe: inovação própria
     if (e.week % 4 === 0) diffuse(e, ci);
-    const learned = research(c.research, c.researchWeek);
-    if (learned) { updateBonus(c); c.infamy += learned.infamy ?? 0; }
+    const learned = researchStep(c.research, c.researchWeek); // principal + paralelas (tech.ts)
+    if (learned.length) { updateBonus(c); for (const t of learned) c.infamy += t.infamy ?? 0; }
     c.infamy = Math.max(0, c.infamy - INFAMY.decayWeek);
     if (c.infamy >= INFAMY.pactsBreak) for (const k of [...e.pacts]) if (k.split("-").map(Number).includes(ci + 1)) e.pacts.delete(k); // ninguém quer negócio
   });
