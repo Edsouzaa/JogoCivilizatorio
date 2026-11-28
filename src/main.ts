@@ -13,7 +13,8 @@ import { BUDGET_IN, TAX_KINDS, classTaxOf, canTax } from "./budget.ts";
 import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./eramods.ts";
 import { artSVG } from "./art.ts";
 import { subsistAt, SUBSIST } from "./subsistence.ts";
-import { TECH_AREAS, TL, techLayout, techEdges } from "./techlayout.ts";
+import { TL, techLayout, techEdges, externalReqs, reqLabel } from "./techlayout.ts";
+import { AREAS, TECH_VARS, type Area } from "./techvars.ts";
 import { eventsOfCountry, eventsOfCharacter, type Ev } from "./chronicle.ts";
 import { POLICIES, policyOf, MARKET, commerceOf, complexityImpact, complexityCost } from "./markets.ts";
 import { deploy, widthOf, BATTLE, type Battle } from "./battle.ts";
@@ -24,7 +25,7 @@ import { navalQueueOf, yardTier, YARDS, SHIP_YARD, NAVAL } from "./naval.ts";
 import { methodsOf, activeMethods, methodKey, combine, CATEGORIES, type Method } from "./methods.ts";
 import { ledgerOf, FIRM } from "./firms.ts";
 import { queueOf, queuedLevels, cpCost, baseCp, privateShare, etaWeeks, sectorMethod, CONSTRUCTION_METHODS, CONSTRUCT } from "./construction.ts";
-import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available } from "./tech.ts";
+import { ERAS, ERA_WEEKS_PER_SECOND, DAY_PHASES_ERA, MAX_SPEED, ERA_YEARS, START_YEAR, TECHS, available, areaOf, subOf } from "./tech.ts";
 import { POP_TYPES, CLASSES, POP_RULES, politicalWeight, averageLoyalty, lowerClassQol, type Pops } from "./pops.ts";
 import { GROUPS, LAWS, proposeLaw, cancelLaw, lawSupport, lawOf, lawPhase, LAW_PHASES, POLITICS_RULES, type Politics, type Law } from "./politics.ts";
 import { pixelToHex, wrapCol, hexCenter, hexDistance, forNeighbors, SQRT3 } from "./hex.ts";
@@ -39,7 +40,7 @@ import { INCENTIVES, hasIncentive, adminCap, countrySocialComplexity, socialComp
 import { icon, hydrateIcons } from "./icons.ts";
 import { foundingCost, distanceLabel, hexPrice, EXPAND } from "./expansion.ts";
 import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES, PERSONALITIES, TRAIT_CAT, COMMAND_NAME, WEEKDAYS, generalCandidates, titlesOf, epithet, diplomatOf, diplomatBonus, diplomatCandidates, DIPLOMAT } from "./characters.ts";
-import { unitOf, statsOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
+import { unitOf, statsOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES, UNITS } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
 import { drawFlag, randomFlag, rgbHex, hexRgb, FLAG_LAYOUTS, FLAG_SYMBOLS, type Flag } from "./flags.ts";
@@ -687,6 +688,8 @@ document.addEventListener("pointerdown", (e) => {
   if (d.privatize) { const [hex, b] = d.privatize.split("|").map(Number); return cmd({ t: "privatize", hex, b, n: 1 }); }
   if (d.nationalize) { const [hex, b] = d.nationalize.split("|").map(Number); return cmd({ t: "nationalize", hex, b, n: 1 }); }
   if (d.pausebuild) return cmd({ t: "pauseBuild", id: +d.pausebuild });
+  if (d.ttab !== undefined && !d.tsel) { techTab = d.ttab as Area; return updateUI(); }
+  if (d.tsel !== undefined) { if (d.ttab) techTab = d.ttab as Area; techSel = d.tsel; return updateUI(); }
   if (d.tech && active) return cmd({ t: "tech", name: d.tech });
   if (d.law && active) {
     const [cat, name] = d.law.split("|"), c = eco.countries[active - 1];
@@ -1171,25 +1174,51 @@ function goodsCardsHtml() {
   }).join("") + "<small>Preço com a variação dos últimos 6 meses. Vermelho = mais caro (falta), verde = mais barato (sobra).</small>";
 }
 
+// ---- Tecnologia em três abas (Produção, Militar, Social): faixas por subcategoria; requisito de outra área vira rótulo "Nome (Era)"
+let techTab: Area = "Produção", techSel = "";
 function techTreeHtml(all = false) {
   if (!active) return "";
   const r = eco.countries[active - 1].research, avail = new Set(available(r).map((t) => t.name));
   const lastEra = all ? ERAS.length - 1 : Math.min(ERAS.length - 1, r.era + 1); // tela cheia: todas as eras
-  const L = techLayout(lastEra);
-  const paths = techEdges(L).map((e) => `<path class="${r.known.has(e.from) ? (r.known.has(e.to) ? "k" : "a") : ""}" d="M${e.pts.map((p) => p.join(",")).join(" L")}"/>`).join("");
+  const L = techLayout(lastEra, techTab);
+  // caminho da tecnologia escolhida: todos os pré-requisitos (de qualquer área) e o que ela libera
+  const sel = TECHS.find((t) => t.name === techSel), path = new Set<string>(), deps = new Set<string>();
+  const up = (n: string) => { for (const q of TECHS.find((t) => t.name === n)?.requires ?? []) if (!path.has(q)) { path.add(q); up(q); } };
+  if (sel) { up(sel.name); for (const t of TECHS) if (t.requires.includes(sel.name)) deps.add(t.name); }
+  const lineCls = (from: string, to: string) => `${r.known.has(from) ? (r.known.has(to) ? "k" : to === r.researching ? "r" : "a") : "p"}${sel && (path.has(from) || from === sel.name) && (path.has(to) || to === sel.name) ? " hl" : ""}`;
+  const paths = techEdges(L).map((e) => `<path class="${lineCls(e.from, e.to)}" d="M${e.pts.map((p) => p.join(",")).join(" L")}"/>`).join("");
   const eras = Array.from({ length: lastEra + 1 }, (_, e) => e).map((e) => {
     const x = L.X(L.eraStart[e]) - TL.gx / 2, w = L.X(L.eraStart[e + 1]) - TL.gx / 2 - x;
     return `<div class="tera${e % 2 ? " odd" : ""}" style="left:${x}px;width:${w}px;height:${L.height}px"><span>${ERAS[e]}</span></div>`;
   }).join("");
-  const areas = TECH_AREAS.map(([name], a) => `<div class="tband" style="top:${L.bandTop[a]}px;width:${L.width}px"><span>${name}</span></div>`).join("");
+  const bands = L.bandNames.map((name, a) => `<div class="tband" style="top:${L.bandTop[a]}px;width:${L.width}px"><span>${name}</span></div>`).join("");
   const cards = L.ts.map((t) => {
-    const st = r.known.has(t.name) ? "known" : avail.has(t.name) ? "avail" : "locked";
-    const prog = r.progress.get(t.name) ?? 0;
-    return `<div class="tcard ${st}${t.name === r.researching ? " cur" : ""}" style="left:${L.X(L.col.get(t.name)!)}px;top:${L.Y(t.name)}px;width:${TL.cw}px;height:${TL.ch}px" ${st === "avail" ? `data-tech="${t.name}"` : ""} title="${t.requires.length ? "Requer: " + t.requires.join(", ") : "Sem pré-requisitos"}">` +
-      `<b>${artSVG("tech", t.name, 18)} ${t.name}</b><small>${st === "known" ? "conhecida" : fmt(t.cost) + " pts"}${prog && st !== "known" ? ` · ${pct(prog / t.cost)}` : ""}</small><small class="fx">${techEffect(t)}</small></div>`;
+    const st = r.known.has(t.name) ? "known" : avail.has(t.name) ? "avail" : "locked", prog = r.progress.get(t.name) ?? 0;
+    const x = L.X(L.col.get(t.name)!), y = L.Y(t.name), ext = externalReqs(t);
+    const labels = ext.map((p, k) => `<div class="text ${r.known.has(p.name) ? "k" : p.name === r.researching ? "r" : "p"}" style="left:${x + 10}px;top:${y - 12 * (ext.length - k) - 2}px" data-ttab="${areaOf(p)}" data-tsel="${p.name}" title="Requisito da aba ${areaOf(p)}">${reqLabel(p)}</div>`).join("");
+    const mark = sel?.name === t.name ? " sel" : path.has(t.name) ? " path" : deps.has(t.name) ? " dep" : "";
+    return labels + `<div class="tcard ${st}${t.name === r.researching ? " cur" : ""}${mark}${ext.length ? " ext" : ""}" style="left:${x}px;top:${y}px;width:${TL.cw}px;height:${TL.ch}px" data-tsel="${t.name}">` +
+      `<b>${artSVG("tech", t.name, 18)} ${t.name}</b><small>${st === "known" ? "conhecida" : st === "locked" ? "requisitos incompletos" : fmt(t.cost) + " pts"}${prog && st !== "known" ? ` · ${pct(prog / t.cost)}` : ""}${t.unlocks?.length ? ` · libera ${t.unlocks.length}` : ""}</small><small class="fx">${t.desc ?? techEffect(t)}</small></div>`;
   }).join("");
   return (all ? "" : researchHtml(r, eco.countries[active - 1].researchWeek, true)) +
-    `<div class="tscroll"><div class="tree" style="width:${L.width}px;height:${L.height}px">${eras}${areas}<svg class="tlines" width="${L.width}" height="${L.height}">${paths}</svg>${cards}</div></div>`;
+    `<div class="tscroll"><div class="tree" style="width:${L.width}px;height:${L.height}px">${eras}${bands}<svg class="tlines" width="${L.width}" height="${L.height}">${paths}</svg>${cards}</div></div>`;
+}
+/** Cabeçalho da árvore: abas, legenda e detalhes da tecnologia escolhida. */
+function techTopHtml(r: Economy["countries"][number]["research"]) {
+  const tabs = `<div class="tabs">${AREAS.map((a) => `<button data-ttab="${a}" class="${a === techTab ? "on" : ""}">${a} <small>(${TECHS.filter((t) => areaOf(t) === a && r.known.has(t.name)).length}/${TECHS.filter((t) => areaOf(t) === a).length})</small></button>`).join(" ")}</div>`;
+  const legend = `<div class="tlegend"><span><i class="k"></i>concluída</span><span><i class="a"></i>requisito pronto</span><span><i class="r"></i>em pesquisa</span><span><i class="p"></i>pendente</span><span><b class="text">Nome (Era)</b> requisito de outra aba (clique para ir)</span></div>`;
+  const t = TECHS.find((x) => x.name === techSel);
+  if (!t) return tabs + legend;
+  const avail = available(r).some((x) => x.name === t.name), prog = r.progress.get(t.name) ?? 0;
+  const reqs = t.requires.map((q) => { const p = TECHS.find((x) => x.name === q)!; return `<a data-ttab="${areaOf(p)}" data-tsel="${q}" style="cursor:pointer" class="${r.known.has(q) ? "down" : "up"}">${reqLabel(p)}${areaOf(p) !== areaOf(t) ? ` — aba ${areaOf(p)}` : ""}</a>`; }).join(", ") || "nenhum";
+  const next = TECHS.filter((x) => x.requires.includes(t.name)).map((x) => `<a data-ttab="${areaOf(x)}" data-tsel="${x.name}" style="cursor:pointer">${x.name}</a>`).join(", ") || "—";
+  const vars = Object.entries(t.fx ?? {}).map(([k, v]) => `<li><b>${k}</b> ${v! > 0 ? "+" : ""}${v} — ${TECH_VARS[k as keyof typeof TECH_VARS]?.[1] ?? ""}</li>`).join("");
+  const units = UNITS.filter((u) => u.tech === t.name).map((u) => u.name), laws = Object.values(LAWS).flat().filter((l) => l.tech === t.name).map((l) => l.name);
+  return tabs + legend + `<div class="card tdetail"><b>${artSVG("tech", t.name, 20)} ${t.name}</b> <small>${areaOf(t)} · ${subOf(t)} · era ${ERAS[t.era]} · ${fmt(t.cost)} pts${prog && !r.known.has(t.name) ? ` · ${pct(prog / t.cost)} feito` : ""}${r.known.has(t.name) ? " · conhecida" : ""}</small>` +
+    (t.desc ? `<p><small>${t.desc}</small></p>` : "") + `<small>Requisitos: ${reqs}<br>Abre caminho para: ${next}<br>Efeitos antigos: ${techEffect(t) || "—"}</small>` +
+    (vars ? `<ul style="margin:4px 0;padding-left:18px;font-size:12px">${vars}</ul>` : "") +
+    `<small>${t.unlocks?.length ? `Construções: ${t.unlocks.join(", ")}. ` : ""}${units.length ? `Unidades: ${units.join(", ")}. ` : ""}${laws.length ? `Leis: ${laws.join(", ")}.` : ""}</small>` +
+    (avail && !r.known.has(t.name) ? ` <button data-tech="${t.name}">Pesquisar</button>` : "") + ` <button data-tsel="">Fechar</button></div>`;
 }
 
 let techCam = { x: 16, y: 16, z: 1 };
@@ -1201,7 +1230,7 @@ function techView(cat: HTMLElement) {
     cat.innerHTML = `<div class="ttop"></div><div class="tview"><div class="tworld"></div></div>`;
     view = cat.querySelector<HTMLElement>(".tview")!;
     view.addEventListener("pointerdown", (ev) => { // arrastar com o botão esquerdo (clicar numa tecnologia continua pesquisando)
-      if (ev.button !== 0 || (ev.target as HTMLElement).closest("[data-tech]")) return;
+      if (ev.button !== 0 || (ev.target as HTMLElement).closest("[data-tech],[data-tsel]")) return;
       const sx = ev.clientX - techCam.x, sy = ev.clientY - techCam.y;
       view!.setPointerCapture(ev.pointerId); view!.style.cursor = "grabbing";
       const move = (m: PointerEvent) => { techCam.x = m.clientX - sx; techCam.y = m.clientY - sy; placeTech(); };
@@ -1218,7 +1247,7 @@ function techView(cat: HTMLElement) {
   }
   const r = active ? eco.countries[active - 1].research : null;
   setHtml(cat.querySelector(".ttop")!, `<h2>${icon("tech", 20)} Tecnologia <small>arraste para mover · roda do mouse para zoom</small> <button data-menu="tech" style="float:right" title="Fechar">${icon("close")}</button></h2>` +
-    (r ? researchHtml(r, eco.countries[active - 1].researchWeek, true) : "<small>Escolha um país.</small>"));
+    (r ? researchHtml(r, eco.countries[active - 1].researchWeek, true) + techTopHtml(r) : "<small>Escolha um país.</small>"));
   const world = cat.querySelector<HTMLElement>(".tworld")!, before = lastHtml.get(world);
   setHtml(world, techTreeHtml(true));
   if (lastHtml.get(world) !== before) hydrateIcons(world);
