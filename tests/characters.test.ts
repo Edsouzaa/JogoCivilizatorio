@@ -159,7 +159,8 @@ console.log("characters ok");
   assert.equal(kid.name.split(" ").slice(1).join(" "), r.name.split(" ").slice(1).join(" "), "sobrenome da família");
   e.countries[0].politics.laws["Governo"] = "Chefia tribal";
   r.dies = e.week; e.week += 4 - (e.week % 4); ch.stepCharacters(w, e);
-  assert.equal(ch.rulerOf(e, 1)!.id, kid.id, "o filho herda");
+  assert.equal(e.countries[0].heirWaiting, kid.id, "filho bebê: herdeiro com regente");
+  assert.equal(ch.rulerOf(e, 1)!.id, r.spouse, "o cônjuge vivo é o regente");
   // governante de outra fé perde legitimidade
   const heir = ch.rulerOf(e, 1)!, leg = (e.countries[0].politics.legitimacy = 0.5);
   heir.religion = ((e.countries[0].stateReligion ?? 0) + 1) % 5; e.week += 4; ch.stepCharacters(w, e);
@@ -170,4 +171,49 @@ console.log("characters ok");
   heir.traits.push("Caolho"); assert.match(portraitSVG(heir, 3), /M18 22 L45 31/);
   assert.match(portraitSVG(heir, 3), /#e3b93c/, "governante medieval de coroa");
   console.log("characters ok (religião, família, herdeiros, retratos)");
+}
+
+// etapa 5: crônica central (um fato, várias referências), tratados, regência
+{
+  const ch = await import("../src/characters.ts");
+  const cr = await import("../src/chronicle.ts");
+  const { generateWorld } = await import("../src/world.ts");
+  const { createEconomy, proposePact } = await import("../src/economy.ts");
+  const { addRelation } = await import("../src/diplomacy.ts");
+  const w = generateWorld(120, 60, 6, 2), e = createEconomy(w);
+  ch.stepCharacters(w, e);
+  // batalha com dois comandantes: um evento, os dois o referenciam
+  const mk = (id: number, country: number) => ({ id, kind: "army", country, hex: e.cities[0].hex, strength: 20, org: 1, target: null, progress: 0, equip: 1 }) as never as import("../src/economy.ts").Division;
+  const a = mk(970, 1), b = mk(971, 2); e.divisions.push(a, b); e.countries[0].treasury = e.countries[1].treasury = 1000;
+  ch.hireGeneral(w, e, a.id, 0); ch.hireGeneral(w, e, b.id, 0);
+  const n0 = e.chronicle?.length ?? 0;
+  ch.recordBattle(e, { id: 1, hex: a.hex, start: e.week, attacker: 1, defender: 2, startAtt: 50, startDef: 40, deadAtt: 5, deadDef: 20 }, "att", [a], [b], "de Teste");
+  const evs = e.chronicle!.slice(n0).filter((v) => v.t === "batalha");
+  assert.equal(evs.length, 1, "um evento só");
+  assert.ok(evs[0].c.includes(a.general!) && evs[0].c.includes(b.general!));
+  assert.equal(cr.eventsOfCharacter(e, a.general!).filter((v) => v.t === "batalha").length, 1);
+  assert.ok(evs[0].d >= 0 && evs[0].d < 7);
+  // tratado: acordo comercial entra na crônica e na vida dos dois governantes
+  addRelation(e, 1, 2, 100);
+  assert.equal(proposePact(e, 1, 2), null);
+  const t = e.chronicle!.at(-1)!; assert.equal(t.t, "tratado"); assert.deepEqual(t.k.sort(), [1, 2]);
+  assert.ok(ch.rulerOf(e, 1)!.life.some((l) => l.includes("acordo comercial")));
+  // regência: herdeiro criança espera a maioridade; regente governa; depois o herdeiro assume
+  const r = ch.rulerOf(e, 1)!; r.born = e.week - 30 * 52; r.dies = e.week + 9999;
+  e.countries[0].politics.laws["Governo"] = "Chefia tribal";
+  const kid = ch.newCharacter(w, e, 1, 5); kid.born = e.week - 5 * 52; kid.dies = e.week + 80 * 52; kid.parent = r.id; (r.heirs ??= []).push(kid.id); e.characters!.push(kid);
+  r.dies = e.week; ch.stepCharacters(w, e);
+  const regent = ch.rulerOf(e, 1)!;
+  assert.notEqual(regent.id, kid.id); assert.equal(e.countries[0].heirWaiting, kid.id);
+  assert.equal(regent.offices!.at(-1)!.title, "Regente");
+  assert.ok(e.characters!.includes(kid), "herdeiro guardado durante a regência");
+  regent.dies = e.week + 9999; e.week += 11 * 52; ch.stepCharacters(w, e);
+  assert.equal(ch.rulerOf(e, 1)!.id, kid.id, "maioridade: o herdeiro assume");
+  assert.equal(regent.offices!.at(-1)!.end, `${kid.name} atingiu a maioridade`);
+  // limite: a crônica não cresce sem fim e guarda os importantes
+  cr.chronicle(e, "guerra", "guerra importante", [1, 2], [], 3);
+  for (let k = 0; k < cr.CHRONICLE.max + 50; k++) cr.chronicle(e, "governo", "teste", [1], [], 1);
+  assert.ok(e.chronicle!.length <= cr.CHRONICLE.max);
+  assert.ok(e.chronicle!.some((v) => v.x === "guerra importante"), "importante não some primeiro");
+  console.log("characters ok (crônica, tratados, regência)");
 }

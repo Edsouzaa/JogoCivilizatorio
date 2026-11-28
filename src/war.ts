@@ -1,6 +1,7 @@
 import { resolveNaval, convoyFactor, bombardMods } from "./seawar.ts";
 import { stepAir, airSupport, airRecon, AIRW } from "./airwar.ts";
 import { resolveBattles, entrench, setRiverCheck, BATTLE_HOOKS } from "./battle.ts";
+import { chronicle } from "./chronicle.ts";
 import { incFx } from "./admin.ts";
 import { stepSupply, attrition, depotHexes } from "./logistics.ts";
 import { lawFx } from "./politics.ts";
@@ -160,6 +161,7 @@ export function declareWar(e: Economy, a: number, b: number): string | null {
   e.countries[a - 1].infamy += INFAMY.declareWar * (hasClaimOn(e, a, b) ? CLAIM.infamyCut : 1); // com justificativa pesa menos
   e.pacts.delete(key(a, b)); // guerra cancela o acordo comercial
   noteRuler(e, a, `declarou guerra a §${b}§`); noteRuler(e, b, `foi atacado por §${a}§`);
+  chronicle(e, "guerra", `§${a}§ declara guerra a §${b}§`, [a, b], [rulerOf(e, a)?.id, rulerOf(e, b)?.id].filter((x): x is number => x !== undefined), 3);
   return null;
 }
 
@@ -404,6 +406,7 @@ export function stepWar(w: World, e: Economy) {
     if (Math.max(...mine.map((d) => d.siege!)) < siegeWeeks(city.size, mine.length) / siegePower) return;
     for (const i of e.owned) if (e.market[i] === k + 1 && w.owner[i] === city.country) e.occupier[i] = who;
     for (const d of mine) { d.siege = 0; const g = d.general ? e.characters?.find((x) => x.id === d.general) : undefined; if (g && !g.taken?.includes(city.name)) { (g.taken ??= []).push(city.name); note(g, e.week, `tomou a cidade de ${city.name} (§${city.country}§) depois de um cerco`); } }
+    chronicle(e, "conquista", `§${who}§ toma ${city.name} de §${city.country}§ em cerco`, [who, city.country], mine.map((d) => d.general).filter((x): x is number => !!x), 3);
     changed = true;
   });
 
@@ -538,6 +541,7 @@ export function makePeace(w: World, e: Economy, a: number, b: number): string | 
   delete e.warStats?.[key(a, b)];
   noteRuler(e, a, winner === a ? `venceu a guerra contra §${b}§` : winner === b ? `perdeu a guerra contra §${b}§` : `fez a paz com §${b}§ sem vencedor`);
   noteRuler(e, b, winner === b ? `venceu a guerra contra §${a}§` : winner === a ? `perdeu a guerra contra §${a}§` : `fez a paz com §${a}§ sem vencedor`);
+  chronicle(e, "paz", winner ? `paz: §${winner}§ vence a guerra contra §${loser}§` : `paz sem vencedor entre §${a}§ e §${b}§`, [a, b], [rulerOf(e, a)?.id, rulerOf(e, b)?.id].filter((x): x is number => x !== undefined), 3);
   if (winner) { e.countries[winner - 1].glory = (e.countries[winner - 1].glory ?? 0) + DIPLO.warWin; e.countries[loser - 1].glory = (e.countries[loser - 1].glory ?? 0) - DIPLO.warWin; }
   dropHomeless(e);
   // tropas que ficaram em território que agora é do outro voltam para a capital

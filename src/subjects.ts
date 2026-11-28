@@ -3,6 +3,8 @@ import { record } from "./budget.ts";
 //   Tributário: paga tributo, resto livre.         Vassalo: paga e entra nas guerras do soberano.
 //   Fantoche: paga mais, entra nas guerras e não pode fazer acordos sozinho.   Protetorado: não paga; o protetor entra nas guerras dele.
 // A autonomia anda todo mês (soberano forte e querido segura; fraco e odiado perde). Em 100 o súdito se solta.
+import { chronicle } from "./chronicle.ts";
+import { rulerOf, noteRuler } from "./characters.ts";
 import type { Economy } from "./economy.ts";
 import { relation, addRelation, prestige } from "./diplomacy.ts";
 
@@ -36,6 +38,9 @@ export function proposeSubject(e: Economy, overlord: number, target: number, kin
   if (prestige(e, overlord) < SUBJ.prestigeRatio * prestige(e, target)) return `Recusado: seu prestígio precisa ser ${SUBJ.prestigeRatio}× o deles`;
   if (relation(e, overlord, target) < def.relationMin) return `Recusado: relação precisa ser pelo menos ${def.relationMin}`;
   (e.subjects ??= {})[target] = { overlord, kind, autonomy: SUBJ.autonomyStart };
+  const ro = rulerOf(e, overlord), rt = rulerOf(e, target);
+  chronicle(e, "tratado", `§${target}§ vira ${kind} de §${overlord}§`, [overlord, target], [ro?.id, rt?.id].filter((x): x is number => x !== undefined), 3);
+  noteRuler(e, overlord, `tornou §${target}§ ${kind}`); noteRuler(e, target, `aceitou ser ${kind} de §${overlord}§`);
   return null;
 }
 

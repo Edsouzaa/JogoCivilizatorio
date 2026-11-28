@@ -6,6 +6,7 @@ import type { Economy } from "./economy.ts";
 import { makeName, LANGUAGES } from "./names.ts";
 import { lawOf } from "./politics.ts";
 import { START_YEAR } from "./tech.ts";
+import { chronicle } from "./chronicle.ts";
 
 export type Looks = { skin: number; hair: number; hairStyle: number; beard: number; face: number; body: number; eyes: number; scar: boolean };
 export type Character = {
@@ -141,6 +142,7 @@ export const note = (c: Character, week: number, text: string) => c.life.push(`$
 export function lawNote(e: Economy, country: number, name: string, result: "proposta" | "aprovada" | "retirada") {
   const r = rulerOf(e, country); if (!r) return;
   (r.laws ??= []).push({ name, week: e.week, result });
+  if (result === "aprovada") chronicle(e, "lei", `aprovada a lei ${name} em §${country}§`, [country], [r.id], 2);
   note(r, e.week, `${WEEKDAYS[dayOf(e.week, name.length)]}: ${result === "proposta" ? "propôs" : result === "aprovada" ? "viu aprovada" : "retirou"} a lei ${name}`);
 }
 /** Anota na vida do governante do país, se houver. */
@@ -154,9 +156,10 @@ export const rulerOf = (e: Economy, country: number) => e.characters?.find((c) =
 export function openOffice(c: Character, title: string, country: number, week: number, why: string) { (c.offices ??= []).push({ title, country, from: week, why }); }
 export function closeOffice(c: Character, title: string, week: number, end: string) { const o = [...(c.offices ?? [])].reverse().find((x) => x.title === title && x.to === undefined); if (o) { o.to = week; o.end = end; } }
 /** Põe o personagem no governo do país (herdeiro, eleito, general que assume ou golpe). */
-function enthrone(w: World, e: Economy, country: number, c: Character, how: string) {
+function enthrone(w: World, e: Economy, country: number, c: Character, how: string, title = "Governante") {
   note(c, e.week, `${WEEKDAYS[dayOf(e.week, c.id)]}: ${how} de ${w.countries[country - 1].name}`);
-  openOffice(c, "Governante", country, e.week, how);
+  openOffice(c, title, country, e.week, how);
+  chronicle(e, how.includes("golpe") ? "golpe" : how.includes("revolução") ? "revolução" : "governo", `${c.name} ${how} de §${country}§`, [country], [c.id], how.includes("golpe") || how.includes("revolução") ? 4 : 2);
   e.countries[country - 1].ruler = c.id;
 }
 /** Coroa (ou elege) um governante novo para o país. */
@@ -233,7 +236,8 @@ export function hireGeneral(w: World, e: Economy, id: number, pick = 0): string 
 
 /** Batalha decidida: entra no registro de cada comandante, com números; experiência vira traço. Não inventa o que o combate não mede. */
 export function recordBattle(e: Economy, b: { id: number; hex: number; start: number; attacker: number; defender: number; startAtt: number; startDef: number; deadAtt: number; deadDef: number }, winner: "att" | "def", att: { general?: number }[], def: { general?: number }[], place: string) {
-  const day = dayOf(e.week, b.id);
+  const day = dayOf(e.week, b.id), gens = [...att, ...def].map((d) => d.general).filter((x): x is number => !!x);
+  chronicle(e, "batalha", `batalha ${place}: vitória ${winner === "att" ? `de §${b.attacker}§ (atacante)` : `de §${b.defender}§ (defensor)`} — ${Math.round(b.startAtt)} × ${Math.round(b.startDef)} soldados, baixas ${Math.round(b.deadAtt)} e ${Math.round(b.deadDef)}`, [b.attacker, b.defender], gens, 2);
   const sides: [typeof att, "atacante" | "defensor"][] = [[att, "atacante"], [def, "defensor"]];
   for (const [ds, side] of sides) for (const d of ds) {
     const g = d.general ? e.characters?.find((x) => x.id === d.general) : undefined;
@@ -254,7 +258,7 @@ export function recordBattle(e: Economy, b: { id: number; hex: number; start: nu
 }
 
 /** Uma vez por mês: governantes envelhecem e morrem; vem o sucessor. Devolve as mortes (para avisar o jogador). */
-export const FAMILY = { marryAge: 18, childMax: 4, fertileUntil: 45, otherFaith: 0.003, devout: 0.001 };
+export const FAMILY = { majority: 16, marryAge: 18, childMax: 4, fertileUntil: 45, otherFaith: 0.003, devout: 0.001 };
 const HEREDITARY = ["Chefia tribal", "Chefia com conselho", "Monarquia", "Monarquia absoluta", "Monarquia constitucional", "Império"];
 /** Cônjuge ou filho de quem não governa mais: sai da lista (a não ser que esteja guardado). */
 function kinOnly(e: Economy, c: Character, rulers: Set<number | undefined>) {
@@ -293,6 +297,7 @@ function exile(w: World, e: Economy, c: Character, from: number) {
   const host = e.countries.map((_, i) => i + 1).filter((k) => k !== from && e.cities.some((x) => x.country === k)).sort((a, b) => rel(b) - rel(a))[0];
   if (!host) { c.gone = true; return; }
   c.exiledTo = host; c.gone = true;
+  chronicle(e, "exílio", `${c.name} parte de §${from}§ para o exílio em §${host}§`, [from, host], [c.id], 2);
   note(c, e.week, `${WEEKDAYS[dayOf(e.week, c.id + 1)]}: partiu para o exílio em §${host}§`);
   openOffice(c, "Exilado", host, e.week, `fugiu de §${from}§`);
   const l = w.countries[host - 1].lang ?? 0;
@@ -339,12 +344,23 @@ export function stepCharacters(w: World, e: Economy) {
       ctry.politics.legitimacy = AGITATION.newLegitimacy;
       return;
     }
+    if (ctry.heirWaiting !== undefined) { // regência acaba na maioridade do herdeiro (ou se ele morrer)
+      const heir = e.characters?.find((x) => x.id === ctry.heirWaiting);
+      if (!heir || heir.dead) ctry.heirWaiting = undefined;
+      else if (ageOf(heir, e.week) >= FAMILY.majority) {
+        closeOffice(ruler, "Regente", e.week, `${heir.name} atingiu a maioridade`); note(ruler, e.week, `entregou o governo a ${heir.name}`);
+        ctry.heirWaiting = undefined; heir.parent = undefined;
+        enthrone(w, e, k, heir, "assumiu o governo ao atingir a maioridade");
+        return;
+      }
+    }
     family(w, e, ruler, k);
     const sr = ctry.stateReligion; // governante de outra fé perde legitimidade; devoto da fé do Estado ganha um pouco
     if (sr !== undefined && ruler.religion !== undefined) ctry.politics.legitimacy = Math.max(0, Math.min(1, ctry.politics.legitimacy + (ruler.religion !== sr ? -FAMILY.otherFaith : ruler.traits.includes("Devoto") ? FAMILY.devout : 0)));
     if (e.week < ruler.dies) return;
     ruler.dead = true;
-    note(ruler, e.week, `morreu aos ${ageOf(ruler, e.week)} anos`); closeOffice(ruler, "Governante", e.week, "morte");
+    note(ruler, e.week, `morreu aos ${ageOf(ruler, e.week)} anos`); closeOffice(ruler, "Governante", e.week, "morte"); closeOffice(ruler, "Regente", e.week, "morte");
+    chronicle(e, "morte", `morre ${ruler.name}, que governava §${k}§, aos ${ageOf(ruler, e.week)} anos`, [k], [ruler.id], 2);
     deaths.push(ruler);
     const gov = lawOf(ctry.politics, "Governo").name;
     if (gen && (gov === "República" ? skill(gen, "dip") >= 50 : ambitious(gen) || gen.traits.includes("Herói de guerra"))) { // o herói das batalhas assume (e segue general)
@@ -352,12 +368,20 @@ export function stepCharacters(w: World, e: Economy) {
       return;
     }
     const heir = HEREDITARY.includes(gov) ? (ruler.heirs ?? []).map((id) => e.characters?.find((x) => x.id === id)).filter((h): h is Character => !!h && !h.dead && !h.gone).sort((a, b) => a.born - b.born)[0] : undefined;
+    if (heir && ageOf(heir, e.week) < FAMILY.majority) { // criança: regente governa até a maioridade
+      const sp = ruler.spouse !== undefined ? e.characters?.find((x) => x.id === ruler.spouse && !x.dead) : undefined;
+      const regent = sp ?? newCharacter(w, e, k, e.week * 17 + k);
+      if (!sp) { note(regent, regent.born, `nasceu em §${k}§`); (e.characters ??= []).push(regent); }
+      ctry.heirWaiting = heir.id;
+      enthrone(w, e, k, regent, `governa como regente de ${heir.name}`, "Regente");
+      return;
+    }
     if (heir) { heir.parent = undefined; enthrone(w, e, k, heir, `herdou o governo de ${ruler.female ? "sua mãe" : "seu pai"}, ${ruler.name},`); return; }
     crown(w, e, k, gov === "República" ? "eleito para governar" : gov === "Teocracia" ? "escolhido pelo clero para governar" : gov === "Partido único" ? "escolhido pelo partido para comandar" : "herdou o governo");
   });
   // morto só continua guardado se o jogador guardou na história (o livro dele)
   for (const c of e.characters ?? []) if ((c.exiledTo || c.gone) && !c.dead && e.week >= c.dies) { c.dead = true; note(c, e.week, `morreu aos ${ageOf(c, e.week)} anos${c.exiledTo ? ` no exílio, em §${c.exiledTo}§` : ""}`); closeOffice(c, "Exilado", e.week, "morte"); }
-  const rulers = new Set(e.countries.map((x) => x.ruler));
+  const rulers = new Set([...e.countries.map((x) => x.ruler), ...e.countries.map((x) => x.heirWaiting)]);
   e.characters = (e.characters ?? []).filter((c) => (!c.dead || c.saved) && (c.saved || c.role || c.command || rulers.has(c.id) || c.exiledTo || c.gone || !kinOnly(e, c, rulers)));
   return deaths;
 }

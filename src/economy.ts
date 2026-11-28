@@ -3,6 +3,7 @@ import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { stepRivers } from "./navigation.ts";
 import { econ, debtCap } from "./eramods.ts";
 import { subsistAt, SUBSIST, type SubInfo } from "./subsistence.ts";
+import { chronicle, type Ev } from "./chronicle.ts";
 /** Vagas das construções do hex: quem trabalha nelas não vive da terra. */
 export function jobsAt(e: Economy, i: number) { let j = 0; if (e.producers.has(i)) for (let b = 0; b < BUILDINGS.length; b++) if (e.levels[b][i]) j += e.levels[b][i] * BUILDINGS[b].workers; return j; }
 const addSub = (t: NonNullable<Country["sub"]>, s: SubInfo) => { t.capacity += s.capacity; t.dependants += s.dependants; t.gross += s.gross; t.self += s.self; t.surplus += s.surplus; t.deficit += s.deficit; };
@@ -309,6 +310,7 @@ export type Country = {
   radicals: number;     // fração da população com lealdade baixa
   migration: number;    // saldo migratório do último mês (+ chegou, − saiu)
   subsistence: number;  // valor da comida de subsistência comida em casa na semana (renda em espécie de quem vive da terra)
+  heirWaiting?: number; // herdeiro criança esperando a maioridade (há regente)
   incLiteracy?: number; incSkill?: number; incCulture?: number; // marcas permanentes dos incentivos (admin.ts)
   subSold?: number;     // valor do excedente de subsistência vendido na semana
   sub?: { capacity: number; dependants: number; gross: number; self: number; surplus: number; deficit: number }; // totais da subsistência (subsistence.ts)
@@ -404,6 +406,7 @@ export type Economy = {
   outposts?: { country: number; hex: number }[]; // postos avançados (acampamentos)
   construction?: Project[]; nextProject?: number; // filas de obras (construction.ts)
   battles?: Battle[]; nextBattle?: number;        // batalhas terrestres (battle.ts)
+  chronicle?: Ev[]; nextEvent?: number;          // crônica: acontecimentos registrados uma vez (chronicle.ts)
   hexCity?: Record<number, number>;               // hex → centro da cidade escolhida à mão (como no Civilization); o resto é automático
   tradeNodes?: TradeNode[];                       // nós comerciais e poder de cada país (markets.ts)
   naval?: ShipOrder[]; nextNaval?: number;        // fila de navios (naval.ts)
@@ -648,7 +651,7 @@ export function foundCity(w: World, e: Economy, unit: number, later = false): st
   if (!w.owner[i]) w.owner[i] = country;
   claim(w, country, i, RULES.settleClaimRadius);
   e.cities.push({ name: cityName(w, e, country), country, hex: i, size: 1, urban: [], market: newMarket(), port: false, identity: homeIdentity(w, e, country), founded: e.week });
-  { const r = rulerOf(e, country); if (r) { (r.founded ??= []).push(e.cities.at(-1)!.name); noteRuler(e, country, `fundou a cidade de ${e.cities.at(-1)!.name}`); } }
+  { const r = rulerOf(e, country); if (r) { (r.founded ??= []).push(e.cities.at(-1)!.name); noteRuler(e, country, `fundou a cidade de ${e.cities.at(-1)!.name}`); } chronicle(e, "fundação", `fundação de ${e.cities.at(-1)!.name} (§${country}§)`, [country], r ? [r.id] : [], 2); }
   if (!later) refresh(w, e);
   return null;
 }
@@ -703,6 +706,9 @@ export function proposePact(e: Economy, a: number, b: number): string | null {
   if (puppet) return "Fantoche não assina acordos sem o soberano";
   if (relation(e, a, b) < DIPLO.pactMin) return `Recusado: relações ruins demais (${Math.round(relation(e, a, b))})`;
   e.pacts.add(pactKey(a, b));
+  const ra = rulerOf(e, a), rb = rulerOf(e, b);
+  chronicle(e, "tratado", `acordo comercial entre §${a}§ e §${b}§`, [a, b], [ra?.id, rb?.id].filter((x): x is number => x !== undefined), 2);
+  noteRuler(e, a, `assinou um acordo comercial com §${b}§`); noteRuler(e, b, `assinou um acordo comercial com §${a}§`);
   return null;
 }
 export const cancelPact = (e: Economy, a: number, b: number) => { e.pacts.delete(pactKey(a, b)); };

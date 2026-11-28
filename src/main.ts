@@ -14,6 +14,7 @@ import { econ, debtCap, ERA_ECON, ECON_TECH, ECON_LAW, type EconKey } from "./er
 import { artSVG } from "./art.ts";
 import { subsistAt, SUBSIST } from "./subsistence.ts";
 import { TECH_AREAS, TL, techLayout, techEdges } from "./techlayout.ts";
+import { eventsOfCountry, eventsOfCharacter, type Ev } from "./chronicle.ts";
 import { POLICIES, policyOf, MARKET, commerceOf, complexityImpact, complexityCost } from "./markets.ts";
 import { deploy, widthOf, BATTLE, type Battle } from "./battle.ts";
 import { levelName, depotHexes, PRIORITIES } from "./logistics.ts";
@@ -1253,7 +1254,13 @@ function overviewHtml() {
   const c = eco.countries[active - 1], card = (k: string, v: string) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`;
   return `<div class="cards">${card("População", fmt(c.pop))}${card("PIB anual", fmt(c.gdpWeek * 52))}${card("Dívida", fmt(c.debt))}${card("Controle", pct(c.control ?? 1))}` +
     `${card("Recrutas", fmt(c.manpower))}${card("Infâmia", String(Math.round(c.infamy)))}${card("Cidades", String(eco.cities.filter((k) => k.country === active).length))}${card("Colonos", String(settlersOf(eco, active)))}</div>` +
-    headerHtml() + warsHtml();
+    headerHtml() + warsHtml() + chronicleHtml(eventsOfCountry(eco, active), 25);
+}
+/** Crônica: acontecimentos registrados (mais recentes primeiro), com dia da semana e os personagens envolvidos. */
+function chronicleHtml(evs: Ev[], n: number) {
+  if (!evs.length) return "";
+  const who = (id: number) => { const x = eco.characters?.find((y) => y.id === id); return x ? `<a data-char="${x.id}" style="cursor:pointer;text-decoration:underline dotted">${x.name}</a>` : ""; };
+  return `<h3>${icon("book")} Crônica</h3><table>${evs.slice(-n).reverse().map((v) => `<tr><td><small>${WEEKDAYS[v.d].split("-")[0]}, ${dateLabel(v.w)}</small></td><td>${lifeText(world, v.x)}${v.c.length ? `<br><small>${v.c.map(who).filter(Boolean).join(", ")}</small>` : ""}</td></tr>`).join("")}</table>`;
 }
 
 // construção em massa (docs/construcoes.md): escolhas do jogador no painel
@@ -1777,6 +1784,7 @@ function openBook(id: number) {
     ${c.founded?.length || c.taken?.length ? `<h2>Cidades</h2><p>${c.founded?.length ? `Fundadas no seu governo: ${esc(c.founded.join(", "))}. ` : ""}${c.taken?.length ? `Tomadas em cerco: ${esc(c.taken.join(", "))}.` : ""}</p>` : ""}
     <h2>Personalidade e traços</h2><ul>${c.personality ? `<li><b>${esc(c.personality)}</b> — ${esc(PERSONALITIES[c.personality]?.desc ?? "")}</li>` : ""}${c.traits.map((t) => `<li><b>${esc(t)}</b> <small>${TRAIT_CAT[t] ?? ""} · ${Object.entries(TRAIT_FX[t] ?? {}).map(([k, v]) => `${v! > 0 ? "+" : ""}${v} ${k}`).join(", ") || "sem efeito nos atributos"}</small></li>`).join("")}</ul>
     ${c.record?.length ? `<h2>Batalhas</h2><table style="width:100%;border-collapse:collapse;font-size:13px;page-break-inside:auto"><tr><th align="left">Data</th><th align="left">Batalha</th><th>Lado</th><th>Forças (suas × inimigo)</th><th>Baixas (suas / inimigo)</th><th>Resultado</th></tr>${c.record.map((b) => `<tr style="border-top:1px dotted #c9b88f;page-break-inside:avoid"><td>${WEEKDAYS[b.day]}, ${esc(dateLabel(b.week))}</td><td>${esc(b.place)} contra ${esc(world.countries[b.enemy - 1]?.name ?? "?")}</td><td>${b.side}</td><td align="center">${b.own} × ${b.foe}</td><td align="center">${b.ownLost} / ${b.foeLost}</td><td>${b.won ? "vitória" : "derrota"} (${b.weeks} sem.)</td></tr>`).join("")}</table><p><small>Baixas somam mortos, feridos e capturados: o combate do jogo não separa os três.</small></p>` : ""}
+    ${eventsOfCharacter(eco, c.id).length ? `<h2>Acontecimentos registrados</h2><ul>${eventsOfCharacter(eco, c.id).map((v) => `<li>${WEEKDAYS[v.d]}, ${esc(dateLabel(v.w))} — ${esc(lifeText(world, v.x))}</li>`).join("")}</ul>` : ""}
     <h2>Linha do tempo</h2><ul>${c.life.map((l) => `<li>${esc(lifeText(world, l))}</li>`).join("")}</ul>
     <p><small>Gerado em ${esc(dateLabel(eco.week))} · mundo ${world.seed}</small></p></body></html>`);
   win.document.close();
