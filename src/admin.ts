@@ -3,6 +3,8 @@
 // Incentivo = política numa cidade ou num estado inteiro: custa pontos para ativar e por semana, conforme a
 // Complexidade Social da região. O efeito cresce aos poucos (progresso) e alguns deixam marcas permanentes.
 import { BUILDINGS, type Economy, type City } from "./economy.ts";
+import { TECHS, areaOf } from "./tech.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export const ADMIN = {
   perLevel: 2,      // pontos por semana por nível de centro administrativo com papel
@@ -79,7 +81,7 @@ export type Incentive = { city: number; kind: IncentiveKind; state?: number; sta
 export const citiesOf = (e: Economy, x: Incentive) => x.state !== undefined ? e.cities.map((k, i) => [k, i] as const).filter(([k]) => k.state === x.state).map(([, i]) => i) : [x.city];
 const applies = (e: Economy, x: Incentive, k: number) => x.state !== undefined ? e.cities[k]?.state === x.state : x.city === k;
 /** Progresso 0..1 do efeito (sobe até ramp semanas; parado se suspenso). */
-export const progressOf = (e: Economy, x: Incentive) => x.suspended ? 0 : Math.min(1, (e.week - (x.start ?? e.week) + 1) / INCENTIVES[x.kind].ramp);
+export const progressOf = (e: Economy, x: Incentive) => x.suspended ? 0 : Math.min(1, ((e.week - (x.start ?? e.week) + 1) * tvMul(e.countries[(e.cities[x.city]?.country ?? 1) - 1].research, "socialAdministration")) / INCENTIVES[x.kind].ramp);
 
 /** O incentivo está ativo na cidade k (nela ou no estado dela)? */
 export const hasIncentive = (e: Economy, k: number, kind: IncentiveKind) => !!e.incentives?.some((x) => x.kind === kind && !x.suspended && applies(e, x, k));
@@ -96,6 +98,11 @@ export function incCountryFx(e: Economy, country: number, key: FxKey) {
   return tot ? v / tot : 0;
 }
 
+/** Instituições: tecnologias sociais conhecidas (governo, administração, educação, saúde...). */
+const institutions = (c: Economy["countries"][number]) => { let n = 0; for (const t of c.research.known) if (SOCIAL.has(t)) n++; return n; };
+const SOCIAL = new Set(TECHS.filter((t) => areaOf(t) === "Social").map((t) => t.name));
+/** Complexidade Social do país inteiro (todas as cidades). */
+export const countrySocialComplexity = (e: Economy, country: number) => socialComplexity(e, e.cities.map((k, i) => (k.country === country ? i : -1)).filter((i) => i >= 0));
 /** Complexidade Social (0–100+) de um conjunto de cidades: diversidade de cultura, língua e religião, urbanização, tamanho, letrados e classes. */
 export function socialComplexity(e: Economy, cities: number[]) {
   const ks = cities.map((k) => e.cities[k]).filter(Boolean) as City[];
@@ -106,15 +113,16 @@ export function socialComplexity(e: Economy, cities: number[]) {
   const div = ks.reduce((s, k) => s + w(k) * (ent(k.identity?.culture) + ent(k.identity?.language) + ent(k.identity?.religion)), 0);
   const c = e.countries[ks[0].country - 1], urban = ks.reduce((s, k) => s + k.urban.length, 0) / Math.max(1, ks.reduce((s, k) => s + k.size, 0));
   const classes = c.pops.count.reduce((s, v) => s + (v > 1 ? 1 : 0), 0);
-  return Math.round(12 * div + 15 * urban * Math.min(1, ks.length / 3 + 0.3) + 10 * Math.log10(pop / 500 + 1) + 20 * (c.literacy ?? 0) + 1.5 * classes + 4 * c.research.era);
+  return Math.round(12 * div + 15 * urban * Math.min(1, ks.length / 3 + 0.3) + 10 * Math.log10(pop / 500 + 1) + 20 * (c.literacy ?? 0) + 1.5 * classes + 2 * c.research.era + 0.25 * institutions(c));
 }
 /** Custo final (ativação, manutenção) do incentivo no território: base × (1 + Complexidade/100), estado +25%. */
 export function incentiveCost(e: Economy, kind: IncentiveKind, cities: number[], state: boolean) {
   const d = INCENTIVES[kind], m = (1 + socialComplexity(e, cities) / 100) * (state ? ADMIN.stateMult : 1);
-  return { cost: d.cost * m, upkeep: d.upkeep * m, mult: m };
+  const r = e.countries[(e.cities[cities[0]]?.country ?? 1) - 1].research; // registros barateiam a ativação; burocracia profissional a manutenção
+  return { cost: d.cost * m * tvCut(r, "recordKeeping"), upkeep: d.upkeep * m * tvCut(r, "bureaucraticCost"), mult: m };
 }
 
-export const adminCap = (e: Economy, country: number) => ADMIN.capBase * (e.countries[country - 1].research.era + 1);
+export const adminCap = (e: Economy, country: number) => ADMIN.capBase * (e.countries[country - 1].research.era + 1) * tvMul(e.countries[country - 1].research, "bureaucraticCapacity");
 
 /** Pode ativar? (dono, já ativo, grupo concorrente, requisito, pontos). */
 export function canIncentive(e: Economy, country: number, kind: IncentiveKind, target: { city?: number; state?: number }): string | null {

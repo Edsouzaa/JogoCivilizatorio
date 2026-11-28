@@ -20,6 +20,7 @@ import { techSum } from "./tech.ts";
 import { STATES } from "./states.ts";
 import { forNeighbors, hexDistance } from "./hex.ts";
 import { T, TERRAINS, across, riverAt, snowAt, weatherAt, deepOcean, type World } from "./world.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export const WAR = {
   divisionSize: 25,    // soldados por divisão (saem do manpower); bando do tamanho das tribos do começo
@@ -88,13 +89,13 @@ export function buildAir(w: World, e: Economy, country: number, hex: number, pla
   return null;
 }
 
-const airPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (d.ready ?? 1) * (1 + techSum(e.countries[d.country - 1].research, "air")) * craftOf(PLANES, d.unit).power, 0); // sem combustível ou com tempo ruim, voa menos
+const airPower = (e: Economy, ds: Division[]) => ds.reduce((s, d) => s + d.strength * d.org * (d.ready ?? 1) * (1 + techSum(e.countries[d.country - 1].research, "air")) * tvMul(e.countries[d.country - 1].research, "airTraining") * craftOf(PLANES, d.unit).power, 0); // sem combustível ou com tempo ruim, voa menos
 
 /** Superioridade aérea de `a` sobre `b` numa região (0..1; 0,5 se ninguém voa lá). */
 export function airSuperiority(e: Economy, region: number, a: number, b: number) {
   if (region < 0) return 0.5;
   const over = (c: number) => airPower(e, e.divisions.filter((d) => d.kind === "air" && d.country === c && d.strength >= 1 && missionOf(e, d) === region));
-  const pa = over(a), pb = over(b);
+  const pa = over(a) * tvMul(e.countries[a - 1].research, "airSuperiority"), pb = over(b) * tvMul(e.countries[b - 1].research, "airSuperiority");
   return pa + pb > 0 ? pa / (pa + pb) : 0.5;
 }
 
@@ -198,7 +199,8 @@ export function orderMove(w: World, e: Economy, id: number, target: number): str
   if (!d) return "Divisão não existe";
   if (d.kind === "air") { // missão: região até AIR.range da base
     const dd = hexDistance(d.hex % w.W, (d.hex / w.W) | 0, target % w.W, (target / w.W) | 0, w.W);
-    if (dd > AIR.range) return `Fora do alcance (máx. ${AIR.range} hexes da base)`;
+    const range = AIR.range + Math.floor(tv(e.countries[d.country - 1].research, "airRange"));
+    if (dd > range) return `Fora do alcance (máx. ${range} hexes da base)`;
     if (airRegion(e, target) < 0) return "Sem região aérea aí (só sobre território com cidade)";
     d.target = target === d.hex ? null : target;
     return null;
@@ -247,7 +249,7 @@ setRiverCheck(crossesRiver); // battle.ts usa sem importar war.ts (função decl
 BATTLE_HOOKS.extra.push((w, e, b, country) => bombardMods(w, e, b, country));
 BATTLE_HOOKS.extra.push((_w, e, b, country) => {
   const r = airRegion(e, b.hex), enemy = country === b.attacker ? b.defender : b.attacker;
-  return airSupport(e, r, country, (h) => airRegion(e, h)) && airSuperiority(e, r, country, enemy) >= 0.5 ? [["Apoio aéreo", AIRW.support]] : [];
+  return airSupport(e, r, country, (h) => airRegion(e, h)) && airSuperiority(e, r, country, enemy) >= 0.5 ? [["Apoio aéreo", Math.round((AIRW.support + tv(e.countries[country - 1].research, "airSupport")) * 10) / 10]] : [];
 });
 BATTLE_HOOKS.extra.push((_w, e, b, country) => { // incentivos da região onde se luta: fortificação e segurança (defendendo), preparação (tropas da região)
   const k = e.market[b.hex] - 1; if (k < 0 || e.cities[k].country !== country) return [];
@@ -316,7 +318,7 @@ const warsOf = (e: Economy, country: number) => {
 /** Apoio do povo à guerra (0..1): cai com o tempo e com os mortos (em relação à população). */
 export function warSupport(e: Economy, country: number, s: WarStats) {
   const c = e.countries[country - 1], dead = (s.dead[country] ?? 0) + (s.civil[country] ?? 0);
-  return Math.max(0, Math.min(1, 1 - (e.week - s.start) / WAR.supportWeeks - (c.pop ? (dead / c.pop) * WAR.supportDeadMult : 0)));
+  return Math.max(0, Math.min(1, 1 - (e.week - s.start) / (WAR.supportWeeks * tvMul(c.research, "propagandaEfficiency")) - (c.pop ? (dead / c.pop) * WAR.supportDeadMult : 0)));
 }
 
 /** Avança a guerra uma semana (chamar depois de tick). */
@@ -332,7 +334,7 @@ export function stepWar(w: World, e: Economy) {
     const c = e.countries[country - 1], m = e.cities.find((k) => k.country === country)!.market;
     const fill = m.demand[ARMS] ? Math.min(1, m.supply[ARMS] / m.demand[ARMS]) : 1;
     for (const d of e.divisions) if (d.country === country && d.kind === "army") d.equip = 0.5 + 0.5 * fill;
-    const cost = n * WAR.upkeep * econ(c, "monetization"); // exército tribal vive do que leva: só a parte monetizada é soldo
+    const cost = n * WAR.upkeep * econ(c, "monetization") * tvCut(c.research, "armyMaintenance"); // exército tribal vive do que leva: só a parte monetizada é soldo
     const paidShare = spend(c, cost, "Exército");
     for (const s of warsOf(e, country)) s.cost[country] = (s.cost[country] ?? 0) + cost * paidShare;
     if (paidShare < 1) for (const d of e.divisions) if (d.country === country && d.kind === "army") d.org = Math.max(0, d.org - WAR.unpaidOrg * (1 - paidShare)); // sem soldo: desorganiza
@@ -403,7 +405,7 @@ export function stepWar(w: World, e: Economy) {
     const who = besiegers[0].country, mine = besiegers.filter((d) => d.country === who);
     for (const d of mine) d.siege = (d.siege ?? 0) + 1;
     const siegePower = Math.max(...mine.map((d) => statsOf(d).siege)); // máquinas de cerco e artilharia abrem as muralhas
-    if (Math.max(...mine.map((d) => d.siege!)) < siegeWeeks(city.size, mine.length) / siegePower) return;
+    if (Math.max(...mine.map((d) => d.siege!)) < siegeWeeks(city.size, mine.length) / (siegePower * tvMul(e.countries[who - 1].research, "armySiege"))) return;
     for (const i of e.owned) if (e.market[i] === k + 1 && w.owner[i] === city.country) e.occupier[i] = who;
     for (const d of mine) { d.siege = 0; const g = d.general ? e.characters?.find((x) => x.id === d.general) : undefined; if (g && !g.taken?.includes(city.name)) { (g.taken ??= []).push(city.name); note(g, e.week, `tomou a cidade de ${city.name} (§${city.country}§) depois de um cerco`); } }
     chronicle(e, "conquista", `§${who}§ toma ${city.name} de §${city.country}§ em cerco`, [who, city.country], mine.map((d) => d.general).filter((x): x is number => !!x), 3);
@@ -475,11 +477,11 @@ export function stepWar(w: World, e: Economy) {
     }
     if (fighting.has(d) || d.strength < 1) continue; // morta não se recupera nem recebe reforço
     // organização volta com descanso e suprimento; cansaço atrasa
-    d.org = Math.min(1, d.org + WAR.orgRecovery * (d.kind === "army" ? (d.supply?.level ?? 1) * (1 - 0.5 * (d.fatigue ?? 0)) : 1));
+    d.org = Math.min(1, d.org + WAR.orgRecovery * tvMul(e.countries[d.country - 1].research, "armyRecovery") * (d.kind === "army" ? (d.supply?.level ?? 1) * (1 - 0.5 * (d.fatigue ?? 0)) : 1));
     const c = e.countries[d.country - 1];
     const full = d.kind === "fleet" ? NAVY.sailors : d.kind === "air" ? AIR.pilots : WAR.divisionSize * (d.size ?? 1);
     if (controller(w, e, d.hex) === d.country && d.strength < full && c.manpower > 0) { // reforço em território (ou águas) próprio: precisa de gente e de armas
-      const add = Math.min(WAR.reinforce * (d.kind === "army" ? Math.max(0.5, (d.equip - 0.5) * 2) : 1), c.manpower, full - d.strength); // sem armas no mercado, reforça pela metade (lanças improvisadas)
+      const add = Math.min(WAR.reinforce * tvMul(c.research, "armyReinforcement") * (d.kind === "army" ? Math.max(0.5, (d.equip - 0.5) * 2) : 1), c.manpower, full - d.strength); // sem armas no mercado, reforça pela metade (lanças improvisadas)
       d.strength += add; c.manpower -= add;
     }
   }
@@ -488,7 +490,7 @@ export function stepWar(w: World, e: Economy) {
 }
 
 /** Alcance do abastecimento em hexes: cresce com a era (carroças → ferrovias → caminhões). */
-export const supplyRange = (e: Economy, country: number) => WAR.supplyBase + WAR.supplyPerEra * e.countries[country - 1].research.era;
+export const supplyRange = (e: Economy, country: number) => WAR.supplyBase + WAR.supplyPerEra * e.countries[country - 1].research.era + Math.floor(tv(e.countries[country - 1].research, "supplyRange"));
 /** Distância até o depósito mais perto: cidade do país ou cidade inimiga que ele ocupa (vira base de suprimento). */
 /** Depósito mais perto do exército (hex), ou −1. */
 export function nearestDepot(w: World, e: Economy, d: Division) {

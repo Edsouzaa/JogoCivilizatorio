@@ -5,6 +5,7 @@
 import type { World } from "./world.ts";
 import type { Economy } from "./economy.ts";
 import { LANGUAGES, makeName } from "./names.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export type Mix = Record<number, number>; // id → fração (soma 1)
 export type Identity = { culture: Mix; language: Mix; religion: Mix };
@@ -68,8 +69,8 @@ export function stepCulture(w: World, e: Economy) {
     homeIdentity(w, e, city.country); // garante os campos do país
     const ctrl = city.urban.length ? city.urban.reduce((s, j) => s + e.control[j], 0) / city.urban.length : 1;
     const boost = 1 + CULTURE.literacyBoost * (c.literacy ?? 0);
-    shift(city.identity.culture, c.primaryCulture!, CULTURE.assimilateYear * ctrl * boost);
-    shift(city.identity.language, c.officialLanguage!, CULTURE.languageYear * ctrl * boost);
+    shift(city.identity.culture, c.primaryCulture!, CULTURE.assimilateYear * ctrl * boost * tvMul(c.research, "culturalIntegration"));
+    shift(city.identity.language, c.officialLanguage!, CULTURE.languageYear * ctrl * boost * tvMul(c.research, "assimilation"));
     shift(city.identity.religion, c.stateReligion!, CULTURE.convertYear * ctrl * boost);
     const p = city.market.pop;
     pop[city.country - 1] += p;

@@ -5,6 +5,7 @@ import { techSum } from "./tech.ts";
 import { mulberry32, type World } from "./world.ts";
 import { GOODS, type Economy } from "./economy.ts";
 import { incFx } from "./admin.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export const EVENTS = {
   famineFood: 0.25,     // comida ofertada / necessária (somando os tipos) abaixo disto = fome...
@@ -34,13 +35,13 @@ export function stepEvents(w: World, e: Economy) {
     const m = city.market;
     const need = FOOD.reduce((s, g) => s + m.need[g], 0), have = FOOD.reduce((s, g) => s + m.supply[g], 0);
     // histerese: a fome só acaba quando a comida passa bem do limite (senão ela entra e sai toda semana)
-    const hungry = m.pop >= EVENTS.famineMinPop && need > 0 && have / need < EVENTS.famineFood * (e.famine![k] ? EVENTS.famineEnd : 1);
+    const hungry = m.pop >= EVENTS.famineMinPop && need > 0 && have / need < EVENTS.famineFood * (e.famine![k] ? EVENTS.famineEnd * tvCut(e.countries[city.country - 1].research, "disasterResponse", 0.5) : 1);
     if (hungry && !e.famine![k]) started.push({ kind: "fome", city: k });
     e.famine![k] = hungry;
-    if (hungry && !incFx(e, k, "famine")) death[k] += EVENTS.famineDeath;
+    if (hungry && !incFx(e, k, "famine")) death[k] += EVENTS.famineDeath * tvCut(e.countries[city.country - 1].research, "healthcare");
     const med = medicineMult(e, city.country);
     if (e.plague![k] > 0) { e.plague![k]--; death[k] += EVENTS.plagueDeath * med; }
-    else if (e.week % 4 === 0 && rand() < EVENTS.plagueChance * city.size * med) { e.plague![k] = EVENTS.plagueWeeks; started.push({ kind: "peste", city: k }); }
+    else if (e.week % 4 === 0 && rand() < EVENTS.plagueChance * city.size * med * tvCut(e.countries[city.country - 1].research, "publicHealth")) { e.plague![k] = EVENTS.plagueWeeks; started.push({ kind: "peste", city: k }); }
   });
   if (e.week % 4 === 0) e.cities.forEach((city, k) => { // a peste viaja com o comércio
     if (!(e.plague![k] > 0)) return;

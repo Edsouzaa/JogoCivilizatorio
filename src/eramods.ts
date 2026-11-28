@@ -7,6 +7,7 @@
 //   upkeep: × manutenção das construções                                foodLoss: comida de subsistência perdida por mês
 //   credit: capacidade de endividamento (× PIB anual)                   privateInvest: × o que os donos põem no fundo
 import { lawOf } from "./politics.ts";
+import { tv, ECON_ALIAS } from "./techvars.ts";
 import type { Country } from "./economy.ts";
 
 export type EconKey = "tax" | "monetization" | "trade" | "industry" | "admin" | "construction" | "upkeep" | "foodLoss" | "credit" | "privateInvest";
@@ -62,6 +63,7 @@ export function econ(c: Country, key: EconKey): number {
   let v = ERA_ECON[c.research.era][key];
   for (const t of c.research.known) v += (SUBTRACT.includes(key) ? -1 : 1) * (ECON_TECH[t]?.[key] ?? 0);
   for (const cat of Object.keys(c.politics.laws)) v += (SUBTRACT.includes(key) ? -1 : 1) * (ECON_LAW[lawOf(c.politics, cat).name]?.[key] ?? 0);
+  v += (SUBTRACT.includes(key) ? -1 : 1) * tv(c.research, ECON_ALIAS[key]); // variável de tecnologia que é este fator (techvars.ts)
   const max = key === "industry" || key === "construction" || key === "trade" ? 1.5 : key === "upkeep" ? 2 : 1;
   const min = key === "upkeep" ? 0.8 : 0;
   return Math.max(min, Math.min(max, v));

@@ -7,6 +7,7 @@ import { makeName, LANGUAGES } from "./names.ts";
 import { lawOf } from "./politics.ts";
 import { START_YEAR } from "./tech.ts";
 import { chronicle } from "./chronicle.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export type Looks = { skin: number; hair: number; hairStyle: number; beard: number; face: number; body: number; eyes: number; scar: boolean };
 export type Character = {
@@ -124,7 +125,7 @@ export function newCharacter(w: World, e: Economy, country: number, seed: number
   const c: Character = {
     id: (e.nextCharacter = (e.nextCharacter ?? 0) + 1), country, female,
     name: `${makeName(lang, seed * 3 + country)} ${makeName(lang, w.seed + country * 7)}`,
-    born: e.week - age * 52, dies: e.week + (life - age) * 52,
+    born: e.week - age * 52, dies: e.week + (life - age + Math.round(tv(e.countries[country - 1]?.research ?? { known: new Set() } as never, "lifeExpectancy"))) * 52,
     adm: attr(), dip: attr(), mil: attr(), traits, personality,
     looks: { skin: Math.floor(r() * 5), hair: Math.floor(r() * 5), hairStyle: traits.includes("Calvo") ? 2 : Math.floor(r() * 4), beard: female ? 0 : traits.includes("Barba longa") ? 3 : Math.floor(r() * 4), face: Math.floor(r() * 3), body: Math.floor(r() * 3), eyes: Math.floor(r() * 3), scar: traits.includes("Cicatrizado") || r() < 0.08 },
     life: [],
@@ -373,7 +374,7 @@ export function stepCharacters(w: World, e: Economy) {
       agit = undefined;
     }
     // revolução: radicais demais e governo sem legitimidade; o agitador toma o poder, o governante vai para o exílio
-    if (agit && ctry.radicals > AGITATION.revolt && ctry.politics.legitimacy < AGITATION.legitimacy && dayOf(e.week, agit.id) === 0) {
+    if (agit && ctry.radicals > AGITATION.revolt + tv(ctry.research, "socialStability") && ctry.politics.legitimacy < AGITATION.legitimacy && dayOf(e.week, agit.id) === 0) {
       note(ruler, e.week, `foi derrubado pela revolução de ${agit.name}`); closeOffice(ruler, "Governante", e.week, `derrubado pela revolução de ${agit.name}`);
       exile(w, e, ruler, k);
       closeOffice(agit, "Agitador político", e.week, "a revolução venceu");
@@ -393,7 +394,7 @@ export function stepCharacters(w: World, e: Economy) {
     }
     family(w, e, ruler, k);
     const sr = ctry.stateReligion; // governante de outra fé perde legitimidade; devoto da fé do Estado ganha um pouco
-    if (sr !== undefined && ruler.religion !== undefined) ctry.politics.legitimacy = Math.max(0, Math.min(1, ctry.politics.legitimacy + (ruler.religion !== sr ? -FAMILY.otherFaith : ruler.traits.includes("Devoto") ? FAMILY.devout : 0)));
+    if (sr !== undefined && ruler.religion !== undefined) ctry.politics.legitimacy = Math.max(0, Math.min(1, ctry.politics.legitimacy + (ruler.religion !== sr ? -FAMILY.otherFaith * tvCut(ctry.research, "religiousTolerance", 0) : ruler.traits.includes("Devoto") ? FAMILY.devout : 0)));
     if (e.week < ruler.dies) return;
     ruler.dead = true;
     note(ruler, e.week, `morreu aos ${ageOf(ruler, e.week)} anos`); closeOffice(ruler, "Governante", e.week, "morte"); closeOffice(ruler, "Regente", e.week, "morte");

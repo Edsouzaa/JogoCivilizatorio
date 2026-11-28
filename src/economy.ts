@@ -4,8 +4,29 @@ import { stepRivers } from "./navigation.ts";
 import { econ, debtCap } from "./eramods.ts";
 import { subsistAt, SUBSIST, type SubInfo } from "./subsistence.ts";
 import { chronicle, type Ev } from "./chronicle.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
+const LIVESTOCK = new Set(["Pasto", "Estábulo"]);
+const RAW = new Set<string>(RESOURCES); // matéria-prima: recurso natural (o resto é manufaturado)
 /** Vagas das construções do hex: quem trabalha nelas não vive da terra. */
 export function jobsAt(e: Economy, i: number) { let j = 0; if (e.producers.has(i)) for (let b = 0; b < BUILDINGS.length; b++) if (e.levels[b][i]) j += e.levels[b][i] * BUILDINGS[b].workers; return j; }
+/** Difusão (mensal): tecnologias que vizinhos e parceiros já conhecem ganham progresso parcial — nunca a tecnologia inteira. */
+export const DIFFUSE = { rate: 0.01, maxKnowers: 3, cap: 0.4 }; // por vizinho que conhece, × custo, por mês; teto = cap (+ technologySpread) do custo
+function diffuse(e: Economy, ci: number) {
+  const c = e.countries[ci], r = c.research, near = e.contacts?.[ci] ?? [];
+  if (!near.length) return;
+  const speed = DIFFUSE.rate * tvMul(r, "knowledgeDiffusion") * (0.5 + (c.literacy ?? 0)), cap = DIFFUSE.cap + tv(r, "technologySpread");
+  for (const t of available(r)) {
+    if (t.name === r.researching) continue;
+    const k = near.filter((o) => e.countries[o - 1].research.known.has(t.name)).length;
+    if (!k) continue;
+    r.progress.set(t.name, Math.min(t.cost * cap, (r.progress.get(t.name) ?? 0) + t.cost * speed * Math.min(DIFFUSE.maxKnowers, k)));
+  }
+}
+/** Insumo da indústria pelas tecnologias: energia, combustível, matéria-prima (recurso natural) ou manufaturado. */
+function inputCut(r: Research, gi: number) {
+  const n = GOODS[gi];
+  return n === "Energia elétrica" ? tvCut(r, "energyEfficiency") : n === "Combustível" ? tvCut(r, "fuelEfficiency") : RAW.has(n) ? tvCut(r, "resourceEfficiency") : tvCut(r, "inputEfficiency");
+}
 const addSub = (t: NonNullable<Country["sub"]>, s: SubInfo) => { t.capacity += s.capacity; t.dependants += s.dependants; t.gross += s.gross; t.self += s.self; t.surplus += s.surplus; t.deficit += s.deficit; };
 import { releaseStock, storeSurplus, updateAccess, updateNodes, updateComplexity, policyOf, advantage, powerShare, type TradeNode } from "./markets.ts";
 import { AIRW } from "./airwar.ts";
@@ -292,6 +313,7 @@ export type City = {
   road?: number;        // nível da estrada que liga a cidade ao resto do país (0 = trilha)
   bombed?: number;      // bombardeio estratégico: produção menor até esta semana (airwar.ts)
   access?: number;      // acesso ao mercado nacional 0..1 (markets.ts)
+  bombHit?: number;     // dano do último bombardeio (airwar.ts: bombardeio × interceptação)
   node?: string;        // nó comercial (markets.ts)
   popMark?: number;     // população da cidade no último hex ganho (ou na fundação): base do próximo crescimento
   navalWeek?: number;   // pontos navais dos estaleiros da cidade nesta semana (naval.ts)
@@ -471,7 +493,7 @@ export function refresh(w: World, e: Economy) {
   for (let step = 1; queue.length; step++) {
     const next: number[] = [];
     for (const i of queue) {
-      const reach = cityReach(e.cities[e.market[i] - 1].size);
+      const kc = e.cities[e.market[i] - 1], reach = cityReach(kc.size) + Math.floor(tv(e.countries[kc.country - 1].research, "urbanPlanning"));
       if (step > reach) continue;
       forNeighbors(i % w.W, (i / w.W) | 0, w.W, w.H, (j) => {
         if (!e.market[j] && w.owner[j] === w.owner[i]) { e.market[j] = e.market[i]; next.push(j); }
@@ -744,8 +766,8 @@ function foreignTrade(w: World, e: Economy) {
         let offer = 0, lack = 0;
         // vantagem comercial (eficiência) e parte do poder comercial nos nós em comum decidem quanto do excedente sai
         const adv = advantage(e, from, econ(cf, "trade"), techSum(cf.research, "trade")), share = 0.5 + powerShare(e, from, to);
-        const fs = Math.min(1, RULES.foreignShare * adv * share);
-        pool.forEach((k, i) => { const v = k.country === from ? avail(k, i) : 0; if (k.country === from && v > 0) offer += v * Math.min(1, fs * portMult(e, k)); if (k.country === to && net[i] < 0) lack -= net[i]; });
+        const fs = Math.min(1, RULES.foreignShare * adv * share * tvMul(cf.research, "shippingCapacity") * tvMul(cf.research, "exportCapacity"));
+        pool.forEach((k, i) => { const v = k.country === from ? avail(k, i) : 0; if (k.country === from && v > 0) offer += v * Math.min(1, fs * portMult(e, k)); if (k.country === to && net[i] < 0) lack -= net[i] * tvMul(ct.research, "importCapacity"); });
         // pouca frota capaz de cruzar o oceano profundo: além-mar sem Navegação só passa uma fração
         const moved = Math.min(offer, lack) * (overseas && !e.countries[from - 1].research.known.has("Navegação") ? RULES.oceanTradeNoNav : 1);
         if (moved <= 0) continue;
@@ -772,7 +794,7 @@ function trade(e: Economy, need: (m: Market, gi: number) => number) {
   }
   for (const [country, cs] of byCountry) {
     if (cs.length < 2) continue;
-    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : portMult(e, c)) * (1 + RULES.roadTrade * (c.road ?? 0)) * (c.access ?? 1)); // acesso ao mercado nacional (markets.ts)
+    const ms = cs.map((c) => c.market), port = cs.map((c) => (c.blockaded ? 0.5 : portMult(e, c)) * (1 + RULES.roadTrade * (c.road ?? 0)) * (c.access ?? 1) * tvMul(e.countries[c.country - 1].research, "transportCapacity") * tvMul(e.countries[c.country - 1].research, "railCapacity")); // acesso ao mercado nacional (markets.ts)
     const c0 = e.countries[country - 1];
     const share = lawOf(c0.politics, "Economia").tradeShare! * (1 + techSum(c0.research, "trade")) * econ(c0, "trade"); // lei de Economia + tecnologia + era
     for (let gi = 1; gi < NG; gi++) {
@@ -821,7 +843,7 @@ function updatePops(e: Economy, c: Country, country: number) {
 // shortcut: qualquer distância e para um único destino; trocar por vizinhos/rotas quando houver fronteiras e comércio exterior.
 export function migrate(w: World, e: Economy) {
   const qol = e.countries.map((c) => lowerClassQol(c.pops));
-  const open = e.countries.map((c) => 1 + lawFx(c.politics, "immigration")); // lei de Imigração: 0 = fronteiras fechadas
+  const open = e.countries.map((c) => (1 + lawFx(c.politics, "immigration")) * tvMul(c.research, "migrationAttraction")); // lei de Imigração: 0 = fronteiras fechadas
   const dest = e.countries.map((_, a) => {
     let best = -1;
     e.countries.forEach((_, b) => { if (b !== a && open[b] > 0 && (best < 0 || qol[b] > qol[best])) best = b; });
@@ -835,7 +857,7 @@ export function migrate(w: World, e: Economy) {
   for (const i of e.owned) {
     const a = w.owner[i] - 1;
     if (!rate[a] || e.urban[i]) continue;
-    const moved = w.pop[i] * rate[a];
+    const moved = w.pop[i] * rate[a] * tvCut(e.countries[a].research, "migrationControl");
     w.pop[i] -= moved; outflow[a] += moved; inflow[dest[a]] += moved;
   }
   e.countries.forEach((c, b) => {
@@ -894,7 +916,7 @@ export function tick(w: World, e: Economy) {
     const sub = subsistAt(w, e, i, c, POP_DEMAND[FOOD[0]], jobsAt(e, i), BUILDINGS, econ(c, "foodLoss") / 4);
     if (!e.urban[i] && w.pop[i] > 1) { // cidades atraem a população em volta, enquanto houver lugar; terra apertada empurra mais gente
       const to = city.urban[(e.week + i) % city.urban.length];
-      const moved = Math.min(w.pop[i] * RULES.migrationWeek * (1 + 2 * Math.max(0, sub.pressure - 1)), Math.max(0, popCap(w, e, to) - w.pop[to]));
+      const moved = Math.min(w.pop[i] * RULES.migrationWeek * tvMul(c.research, "socialMobility") * (1 + 2 * Math.max(0, sub.pressure - 1)), Math.max(0, popCap(w, e, to) - w.pop[to]));
       w.pop[i] -= moved; w.pop[to] += moved;
     }
     city.market.pop += w.pop[i]; ctrlCity[k - 1] += w.pop[i] * e.control[i];
@@ -926,18 +948,20 @@ export function tick(w: World, e: Economy) {
       const lv = e.levels[b][i];
       if (!lv) continue;
       const def = BUILDINGS[b], key = methodKey(i, b), fx = combine(activeMethods(e, key, def.name, known, org));
-      const run: FirmRun = { key, hex: i, b, city: k - 1, country: w.owner[i], lv, workers: lv * def.workers * fx.workers, outs: [], ins: [], fx, q: 0 };
+      const farm = BUILDING_KIND[def.name] === "farm", r0 = c.research;
+      const crew = (farm ? tvCut(r0, "mechanization") : def.industry ? tvCut(r0, "automation") : 1) / tvMul(r0, "laborProductivity"); // tecnologias: menos gente para operar
+      const run: FirmRun = { key, hex: i, b, city: k - 1, country: w.owner[i], lv, workers: lv * def.workers * fx.workers * crew, outs: [], ins: [], fx, q: 0 };
       here.push(run); runs.push(run);
       required += run.workers;
       if (def.industry || def.depot) continue; // depósito não produz
       if (def.boosts === undefined) {
-        const q = lv * RULES.outputPerLevel * (1 + c.bonus[b]), g = outputOf(w, b, i);
+        const g = outputOf(w, b, i), q = lv * RULES.outputPerLevel * (1 + c.bonus[b]) * (LIVESTOCK.has(def.name) ? tvMul(r0, "livestock") : farm ? tvMul(r0, "agriculture") : tvMul(r0, "extraction")) * (g !== w.resource[i] ? tvMul(r0, "resourceDiscovery") : 1);
         out.set(g, (out.get(g) ?? 0) + q); run.q = q; run.outs.push([g, q]);
         if (g === w.resource[i]) mined += q;
       } else mult += lv * def.mult!;
     }
-    const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare) / required) : 0; // hex vazio não opera tudo
-    const penalty = ((e.cities[k - 1].bombed ?? -1) >= e.week ? 1 - AIRW.bombing : 1) * (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals) * (0.5 + 0.5 * (c.upkeepPaid ?? 1)); // sem manutenção paga, produz menos
+    const staffing = required ? Math.min(1, (w.pop[i] * RULES.hexLaborShare * tvMul(c.research, "productionCapacity")) / required) : 0; // hex vazio não opera tudo
+    const penalty = ((e.cities[k - 1].bombed ?? -1) >= e.week ? 1 - (e.cities[k - 1].bombHit ?? AIRW.bombing) : 1) * (c.bankruptWeeks > 0 ? RULES.bankruptPenalty : 1) * (1 - RULES.radicalPenalty * c.radicals * tvCut(c.research, "lawEnforcement")) * (0.5 + 0.5 * (c.upkeepPaid ?? 1)); // sem manutenção paga, produz menos
     const natural = (1 + incFx(e, k - 1, here.some((r) => BUILDING_KIND[BUILDINGS[r.b].name] === "farm") ? "farm" : "extract")) * (e.urban[i] ? RULES.urbanExtract : 1) * (1 - CONTROL.market + CONTROL.market * e.control[i]); // incentivos de agricultura/extração/isenção; pouco controle: parte some no caminho
     const f = mult * staffing * penalty * natural;
     for (const [gi, q] of out) m.supply[gi] += q * f;
@@ -953,7 +977,7 @@ export function tick(w: World, e: Economy) {
       if (r.bonus.length) pending.push(r);
     }
     if (mined && w.reserve[i] !== Infinity) { // jazida: cada semana de extração gasta a reserva
-      w.reserve[i] -= (mined / RULES.outputPerLevel) * staffing;
+      w.reserve[i] -= (mined / RULES.outputPerLevel) * staffing * tvCut(c.research, "resourceDepletion");
       if (w.reserve[i] <= 0) {
         for (let b = 0; b < NB; b++) if (!BUILDINGS[b].industry && outputOf(w, b, i) === w.resource[i]) e.levels[b][i] = 0; // a mina fecha (a lavoura de cima continua)
         exhaust(w, i); e.exhausted.push(i);
@@ -995,7 +1019,7 @@ export function tick(w: World, e: Economy) {
     for (const b of INDUSTRIES) { // na ordem de BUILDINGS: o bronze feito aqui já serve ao armeiro
       const thr = throughput[k][b];
       if (!thr) continue;
-      const outputs = convertedOutputs(e, city.country, b) ?? BUILDINGS[b].industry!.outputs, inputs: [number, number][] = industryInputs(e, b, city).map(([gi, q]) => [gi, q * thr]);
+      const outputs = convertedOutputs(e, city.country, b) ?? BUILDINGS[b].industry!.outputs, inputs: [number, number][] = industryInputs(e, b, city).map(([gi, q]) => [gi, q * thr * inputCut(e.countries[city.country - 1].research, gi)]);
       for (const [gi, q] of mIn[k].get(b) ?? []) inputs.push([gi, q]);
       let eff = 1;
       for (const [gi, q] of inputs) { m.demand[gi] += q; if (q > 0) eff = Math.min(eff, Math.max(0, m.supply[gi] - m.used[gi]) / q); }
@@ -1006,7 +1030,7 @@ export function tick(w: World, e: Economy) {
       const adm = BUILDINGS[b].industry!.admin;
       if (adm) { const c = e.countries[city.country - 1]; c.adminWeek = (c.adminWeek ?? 0) + adm * om * eff * econ(c, "admin"); }
       const nav = BUILDINGS[b].industry!.naval;
-      if (nav) city.navalWeek = (city.navalWeek ?? 0) + nav * om * eff; // naval.ts
+      if (nav) city.navalWeek = (city.navalWeek ?? 0) + nav * om * eff * tvMul(e.countries[city.country - 1].research, "productionSpeed"); // naval.ts
       if (b === SECTOR) { const c = e.countries[city.country - 1]; c.cpWeek = (c.cpWeek ?? 0) + CONSTRUCTION_METHODS[sectorMethod(e, city.country)].cp * om * eff; }
     }
   });
@@ -1020,9 +1044,9 @@ export function tick(w: World, e: Economy) {
   foreignTrade(w, e);
 
   const ARMS = g("Armas"); // exércitos compram armas no mercado da capital
-  for (const d of e.divisions) if (d.kind === "army") { const m = e.cities.find((k) => k.country === d.country)?.market; if (!m) continue; m.demand[ARMS] += ARMS_PER_DIVISION; for (const [gi, q] of demandOf(e, d)) m.demand[gi] += q; } // armas e suprimentos do exército (logistics.ts)
+  for (const d of e.divisions) if (d.kind === "army") { const m = e.cities.find((k) => k.country === d.country)?.market; if (!m) continue; m.demand[ARMS] += ARMS_PER_DIVISION * tvCut(e.countries[d.country - 1].research, "armyEquipment"); for (const [gi, q] of demandOf(e, d)) m.demand[gi] += q; } // armas e suprimentos do exército (logistics.ts)
   const FUEL = g("Combustível");
-  for (const d of e.divisions) if (d.kind === "air") { const m = e.cities.find((k) => k.country === d.country)?.market; if (m) m.demand[FUEL] += AIRW.fuel; } // aviões queimam combustível
+  for (const d of e.divisions) if (d.kind === "air") { const m = e.cities.find((k) => k.country === d.country)?.market; if (m) m.demand[FUEL] += AIRW.fuel * tvCut(e.countries[d.country - 1].research, "fuelEfficiency"); } // aviões queimam combustível
 
   e.cities.forEach((city) => {
     const m = city.market;
@@ -1043,7 +1067,7 @@ export function tick(w: World, e: Economy) {
       let g = 0;
       for (let gi = 1; gi < NG; gi++) g += (m.supply[gi] - (m.released?.[gi] ?? 0) - (m.self?.[gi] ?? 0)) * BASE_PRICE[gi] * m.price[gi]; // estoque que volta não é produção nova; o que a família come em casa não é mercado
       const exempt = hasIncentive(e, k, "Isenção fiscal") ? 0 : 1;
-      gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (1 + incFx(e, k, "tax")) * (m.pop ? ctrlCity[k] / m.pop : 1); // só arrecada onde controla
+      gdp += g; nominal += g * cityTax(e, k); taxed += g * cityTax(e, k) * exempt * (1 + incFx(e, k, "tax")) * (m.pop ? Math.min(1, ctrlCity[k] / m.pop + (1 - ctrlCity[k] / m.pop) * tv(e.countries[city.country - 1].research, "censusAccuracy")) : 1); // só arrecada onde controla
     });
     c.gdpWeek = gdp;
     c.investWeek = gdp * (lawOf(c.politics, "Economia").invest ?? 0) * econ(c, "privateInvest") * econ(c, "monetization"); // o dinheiro é dos donos, não do tesouro
@@ -1076,19 +1100,19 @@ export function tick(w: World, e: Economy) {
     updatePops(e, c, ci + 1);
     c.control = c.pop ? ctrlCountry[ci] / c.pop : 1;
     const cap = c.pop * c.control * Math.max(0.05, RULES.manpowerShare + techSum(c.research, "manpower") + lawFx(c.politics, "manpower", c.control) + incCountryFx(e, ci + 1, "manpower")) - c.pops.count[P["Soldados"]];
-    c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen);
+    c.manpower = Math.min(cap, c.manpower + cap * RULES.manpowerRegen * tvMul(c.research, "armyMobilization"));
     updatePolitics(c.politics, c.pops, c.research.era);
-    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest") + lawFx(c.politics, "unrest", c.control) + (c.culturePenalty ?? 0) * (1 - (c.incCulture ?? 0)) + incCountryFx(e, ci + 1, "unrest"));
+    c.radicals = updateLoyalty(c.pops, c.politics.legitimacy, techSum(c.research, "unrest") + lawFx(c.politics, "unrest", c.control) + (c.culturePenalty ?? 0) * (1 - (c.incCulture ?? 0)) * tvCut(c.research, "socialCohesion") + incCountryFx(e, ci + 1, "unrest") - tv(c.research, "publicOrder"));
     c.politics.legitimacy = Math.min(1, c.politics.legitimacy + incCountryFx(e, ci + 1, "legitimacy")); // templos, combate à corrupção // + leis + minorias não aceitas
     c.politics.legitimacy = Math.max(0, c.politics.legitimacy - updateStates(e, ci + 1)); // estados insatisfeitos
-    c.politics.legitimacy = Math.max(0, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals);
+    c.politics.legitimacy = Math.max(0, Math.min(1, c.politics.legitimacy - RULES.radicalLegitimacy * c.radicals * tvCut(c.research, "judicialEfficiency") + tv(c.research, "legitimacy")));
     const ideas = Math.min(0.3, 0.1 * (e.incentives ?? []).filter((x) => x.kind === "Impor ideias" && e.cities[x.city]?.country === ci + 1).length);
-    const law = advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci), ideas);
+    const law = advanceLaw(c.politics, mulberry32(w.seed * 7 + e.week * 131 + ci), ideas + tv(c.research, "politicalParticipation"), tvMul(c.research, "governanceEfficiency"), tv(c.research, "politicalOrganization"));
     if (law) lawNote(e, ci + 1, law, "aprovada");
     // ERA_RESEARCH[era] / ERA_RESEARCH[0]: cada era pesquisa na escala da tabela de custos
-    const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01) + (c.incLiteracy ?? 0); // + campanhas de alfabetização (ficam)
-    c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear / 52);
-    c.researchWeek = (1 + RULES.literacyResearch * c.literacy + lawFx(c.politics, "research", c.control) + incCountryFx(e, ci + 1, "research")) * (RULES.researchBase + Math.sqrt(c.pop / RULES.researchPerPop) + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
+    const litTarget = RULES.literacyTechs.reduce((s, [t, v]) => s + (c.research.known.has(t) ? v : 0), 0.01) + (c.incLiteracy ?? 0) + tv(c.research, "literacy"); // + campanhas de alfabetização (ficam) + tecnologias de ensino
+    c.literacy = (c.literacy ?? 0.01) + Math.sign(litTarget - (c.literacy ?? 0.01)) * Math.min(Math.abs(litTarget - (c.literacy ?? 0.01)), RULES.literacyYear * tvMul(c.research, "educationAccess") / 52);
+    c.researchWeek = (1 + RULES.literacyResearch * tvMul(c.research, "educationQuality") * c.literacy + lawFx(c.politics, "research", c.control) + incCountryFx(e, ci + 1, "research")) * (RULES.researchBase * tvMul(c.research, "scientificMethod") + Math.sqrt(c.pop / RULES.researchPerPop) + c.pops.count[P["Acadêmicos"]] * POP_RULES.researchPerAcademic * tvMul(c.research, "researchCapacity")) * ERA_RESEARCH[c.research.era] / ERA_RESEARCH[0];
     if (c.research.era === 0) { // comércio puxa a tribo para fora do isolamento, mas não garante
       let partners = 0;
       for (const key of e.pacts) if (key.split("-").includes(String(ci + 1))) partners++;
@@ -1097,7 +1121,8 @@ export function tick(w: World, e: Economy) {
     // difusão: cada vizinho/parceiro que já sabe o que estamos pesquisando dá +DIFFUSION (até o teto)
     if (!c.research.researching) c.research.researching = available(c.research).sort((a, b) => a.cost - b.cost)[0]?.name ?? null;
     const knowers = (e.contacts?.[ci] ?? []).filter((o) => c.research.researching && e.countries[o - 1].research.known.has(c.research.researching)).length;
-    c.researchWeek *= 1 + Math.min(RULES.diffusionMax, RULES.diffusion * knowers);
+    c.researchWeek *= (1 + Math.min(RULES.diffusionMax, RULES.diffusion * knowers)) * (knowers ? 1 : tvMul(c.research, "innovation")); // ninguém em volta sabe: inovação própria
+    if (e.week % 4 === 0) diffuse(e, ci);
     const learned = research(c.research, c.researchWeek);
     if (learned) { updateBonus(c); c.infamy += learned.infamy ?? 0; }
     c.infamy = Math.max(0, c.infamy - INFAMY.decayWeek);

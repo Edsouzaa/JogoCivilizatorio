@@ -8,6 +8,7 @@ import type { World } from "./world.ts";
 import { RULES, type Economy } from "./economy.ts"; // RULES só é lido dentro das funções (import circular)
 import { incFx } from "./admin.ts";
 import { EXPAND } from "./expansion.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 const INTEGRATION = 0.25; // incentivo "Integração": + controle máximo
 
 export const CONTROL = {
@@ -29,7 +30,7 @@ export function seats(w: World, e: Economy, country: number) {
 export function maxControl(w: World, e: Economy, i: number, seatsOf: number[]) {
   const country = w.owner[i];
   if (!country) return 0;
-  const range = CONTROL.rangeBase + CONTROL.rangePerEra * e.countries[country - 1].research.era;
+  const range = CONTROL.rangeBase + CONTROL.rangePerEra * e.countries[country - 1].research.era + tv(e.countries[country - 1].research, "stateCapacity");
   let d = Infinity;
   for (const s of seatsOf) d = Math.min(d, hexDistance(i % w.W, (i / w.W) | 0, s % w.W, (s / w.W) | 0, w.W));
   return Math.max(CONTROL.min, Math.min(1, 1 - d / range));
@@ -45,6 +46,6 @@ export function updateControl(w: World, e: Economy, start = false) {
     const integ = k >= 0 ? INTEGRATION * incFx(e, k, "control") + RULES.roadControl * (e.cities[k].road ?? 0) : 0;
     const iso = k >= 0 && e.cities[k].isolated ? EXPAND.isolation : 1; // cidade sem ligação com a capital: difícil de administrar
     const max = e.occupier[i] ? 0 : Math.min(1, (maxControl(w, e, i, cache.get(c)!) + integ + techSum(e.countries[c - 1].research, "control") + lawFx(e.countries[c - 1].politics, "control", e.countries[c - 1].control)) * iso); // + tecnologias de governo
-    e.control[i] = start ? max : e.control[i] > max ? max : Math.min(max, e.control[i] + CONTROL.risePerMonth);
+    e.control[i] = start ? max : e.control[i] > max ? max : Math.min(max, e.control[i] + CONTROL.risePerMonth * tvMul(e.countries[c - 1].research, "armySuppression"));
   }
 }

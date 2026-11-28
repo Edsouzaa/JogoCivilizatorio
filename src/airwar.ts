@@ -3,6 +3,7 @@
 import { GOODS, type Division, type Economy } from "./economy.ts";
 import { weatherAt, T, type World } from "./world.ts";
 import { seaWeather } from "./seawar.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export const AIR_MISSIONS = ["Superioridade aérea", "Apoio aéreo", "Bombardeio estratégico", "Reconhecimento", "Abastecimento aéreo"] as const;
 export type AirMission = (typeof AIR_MISSIONS)[number];
@@ -28,11 +29,12 @@ export function stepAir(w: World, e: Economy, regionOf: (hex: number) => number,
     const wx = w.terrain[hex] === T.OCEAN ? seaWeather(w, hex, e.week) : weatherAt(w, hex, e.week);
     const bad = wx === "chuva" || wx === "neblina" || wx === "neve" || wx === "tempestade" || wx === "nevoeiro" || wx === "lama";
     const cmdr = d.general ? e.characters?.find((c) => c.id === d.general) : undefined; // comandante aéreo: prontidão +10% (logística aérea +20%)
-    d.ready = Math.min(1, fuel * (bad ? AIRW.badWeather : 1) * (cmdr ? (cmdr.spec === "Logística aérea" ? 1.2 : 1.1) : 1));
+    const ra = e.countries[d.country - 1].research;
+    d.ready = Math.min(1, Math.max(fuel > 0 ? Math.min(fuel, tv(ra, "airOrganization")) : 0, fuel * (bad ? Math.min(1, AIRW.badWeather + tv(ra, "airReconnaissance")) : 1) * (cmdr ? (cmdr.spec === "Logística aérea" ? 1.2 : 1.1) : 1)));
     if (d.ready < 0.05) continue;
     const region = regionOf(hex), m = airMissionOf(d);
-    if (m === "Bombardeio estratégico") for (const k of e.cities) if (atWar(k.country, d.country) && regionOf(k.hex) === region) k.bombed = e.week + AIRW.bombWeeks;
-    if (m === "Abastecimento aéreo") for (const a of e.divisions) if (a.kind === "army" && a.country === d.country && regionOf(a.hex) === region && a.stock) a.stock.food += AIRW.airlift * d.ready;
+    if (m === "Bombardeio estratégico") for (const k of e.cities) if (atWar(k.country, d.country) && regionOf(k.hex) === region) { k.bombed = e.week + AIRW.bombWeeks; k.bombHit = Math.min(0.6, AIRW.bombing * tvMul(e.countries[d.country - 1].research, "airBombing") * tvCut(e.countries[k.country - 1].research, "airInterception", 0.2)); }
+    if (m === "Abastecimento aéreo") for (const a of e.divisions) if (a.kind === "army" && a.country === d.country && regionOf(a.hex) === region && a.stock) a.stock.food += AIRW.airlift * d.ready * tvMul(e.countries[d.country - 1].research, "airLogistics");
   }
 }
 /** Apoio aéreo: o país tem esquadrão pronto com essa missão na região. */

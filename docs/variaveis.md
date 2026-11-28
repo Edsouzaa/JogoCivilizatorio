@@ -1,6 +1,6 @@
 # Variáveis de efeito (para tecnologias, leis, eventos, incentivos e personagens)
 
-Referência para reescrever tecnologias e criar eventos. Cada variável abaixo **já está ligada** a uma mecânica do jogo; usar uma chave que não está aqui não faz nada (precisa ser programada antes).
+Referência para reescrever tecnologias e criar eventos. As **110 variáveis novas de tecnologia** (campo `fx`) estão na seção 14 e em `src/techvars.ts`. Cada variável abaixo **já está ligada** a uma mecânica do jogo; usar uma chave que não está aqui não faz nada (precisa ser programada antes).
 Convenções: "fração" = 0,1 significa +10%. Valores negativos funcionam (penalidade). Somas de várias fontes se acumulam, salvo onde dito.
 
 ---
@@ -28,7 +28,7 @@ Formato de uma tecnologia:
 | `fleet` | fração | + força das frotas | batalha naval (`Tecnologia naval` no dado) | 0,05–0,2 |
 | `air` | fração | + força dos esquadrões | combate aéreo | 0,05–0,2 |
 | `manpower` | fração | + parte da população mobilizável | recrutas | 0,02–0,1 |
-| `unrest` | pontos | + alvo de lealdade (positivo = menos agitação; negativo = ideias novas agitam) | lealdade, radicais | −3 a +5 |
+| `unrest` | pontos | agitação: **positivo = mais agitação** (ideias novas agitam), negativo = menos (tira pontos do alvo de lealdade) | lealdade, radicais | −5 a +5 |
 | `growth` | fração | + crescimento natural da população | `growPopulation` | 0,1–0,5 |
 | `popCap` | fração | + teto de população de todo hex | `popCap` | 0,05–0,2 |
 | `urbanCap` | fração | + teto dos centros urbanos | `popCap` | 0,1–0,3 |
@@ -290,6 +290,23 @@ Guerra geral (`WAR`): `divisionSize` 25, `recruitCost` 60, `upkeep` 0,3, `reinfo
 - **Economia de guerra** (`WAR_ECON`, `wareconomy.ts`): paz / guerra / guerra total mudam produção militar e civil.
 
 ---
+
+## 14. Variáveis novas de tecnologia (`src/techvars.ts`)
+
+Ficam no campo `fx` da tecnologia e são somadas por `tv(pesquisa, chave)` (com cache). A lista completa, com o que cada uma faz e **onde age**, está em `TECH_VARS`; o teste `tests/techvars.test.ts` garante que toda variável tem leitura no código.
+
+```ts
+{ name: "Legiões profissionais", era: 1, sub: "Exército", requires: ["Cavalaria", "Direito escrito"],
+  fx: { armyOrganization: 0.05, armyTraining: 0.25, armyProfessionalism: 0.05 }, desc: "…" }
+```
+
+- **Produção:** agriculture, livestock, extraction, manufacturing*, resourceEfficiency, inputEfficiency, laborProductivity, productionCapacity, productionSpeed, constructionEfficiency, constructionSpeed*, transportCapacity, railCapacity, shippingCapacity, storageCapacity, marketAccess, marketIntegration*, priceEfficiency*, exportCapacity, importCapacity, privateCapital*, capitalAccumulation*, industrialComplexity, mechanization, automation, energyEfficiency, fuelEfficiency, resourceDiscovery, resourceDepletion, foodPreservation*.
+- **Militar:** armyOrganization, armyDiscipline, armyTraining (pontos), armyProfessionalism, armyRecovery, armyMobilization, armyReinforcement, armyReconnaissance, armyInitiative (pontos), armyCoordination, armyEntrenchment (pontos), armySiege, armyBreakthrough (pontos), armySuppression, armyMaintenance, armyEquipment, artilleryEfficiency, cavalryEfficiency, armorEfficiency, navalOrganization, navalDoctrine (pontos), navalReconnaissance, navalRange (hexes), navalFirepower, navalProtection, navalLogistics, airOrganization, airTraining, airReconnaissance, airRange (hexes), airSuperiority, airSupport (pontos), airInterception, airBombing, airLogistics, logisticsCapacity, supplyEfficiency, supplyRange (hexes), attritionReduction, fortificationEfficiency (pontos), commandCapacity.
+- **Social:** literacy, educationAccess, educationQuality, researchCapacity, scientificMethod, knowledgeDiffusion, technologySpread, innovation, administrativeEfficiency*, bureaucraticCapacity, bureaucraticCost, stateCapacity (hexes), governanceEfficiency, taxCollection*, censusAccuracy, recordKeeping, lawEnforcement, judicialEfficiency, publicOrder (pontos), legitimacy (por semana), politicalParticipation, politicalOrganization, socialMobility, socialStability, socialCohesion, culturalIntegration, religiousTolerance, assimilation, migrationAttraction, migrationControl, healthcare, publicHealth, diseaseResistance, lifeExpectancy (anos), urbanPlanning (hexes), infrastructureMaintenance*, disasterResponse, socialAdministration, propagandaEfficiency.
+
+\* entra no fator da era correspondente (`ECON_ALIAS`): soma no mesmo lugar e respeita os limites de `econ()`.
+
+Equivalências decididas (para não duplicar): `research` (velocidade geral) ≠ `researchCapacity` (pesquisa por acadêmico) ≠ `scientificMethod` (pesquisa base); `plague` (mortes por peste) ≠ `publicHealth` (chance de peste) ≠ `healthcare` (mortes por fome) ≠ `diseaseResistance` (atrito por doença); `control` (controle máximo) ≠ `stateCapacity` (alcance do controle); `unrest` (pontos de agitação) ≠ `publicOrder` (pontos a menos) ≠ `socialStability` (limite da revolução).
 
 ## Como adicionar uma variável nova
 

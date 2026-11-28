@@ -13,6 +13,7 @@ import { incCountryFx } from "./admin.ts";
 import { complexityCost } from "./markets.ts";
 import { econ, debtCap, spend } from "./eramods.ts";
 import type { World } from "./world.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export type Project = {
   id: number; country: number; hex: number; b: number;
@@ -73,7 +74,7 @@ export function queueBuild(w: World, e: Economy, hex: number, b: number, priv = 
   const lv = e.levels[b][hex] + queuedLevels(e, hex, b);
   e.construction ??= [];
   const cm = complexityCost(e.countries[country - 1], b); // economia complexa: construção sofisticada custa mais (markets.ts)
-  e.construction.push({ id: (e.nextProject = (e.nextProject ?? 0) + 1), country, hex, b, cp: Math.round(cpCost(b) * (1 + (cm - 1) / 2)), done: 0, cost: RULES.buildCost * (lv + 1) * cm, paid: 0, priv, week: e.week });
+  e.construction.push({ id: (e.nextProject = (e.nextProject ?? 0) + 1), country, hex, b, cp: Math.round(cpCost(b) * (1 + (cm - 1) / 2)), done: 0, cost: RULES.buildCost * (lv + 1) * cm * tvCut(e.countries[country - 1].research, "constructionEfficiency"), paid: 0, priv, week: e.week });
   return null;
 }
 

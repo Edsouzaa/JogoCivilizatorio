@@ -35,7 +35,7 @@ import { subjectOf, SUBJECT_KINDS, SUBJ, type SubjectKind } from "./subjects.ts"
 import { personality, desires, claimsOf, hasClaimOn } from "./claims.ts";
 import { proposalsTo, PROPOSAL_WEEKS } from "./proposals.ts";
 import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
-import { INCENTIVES, hasIncentive, adminCap, socialComplexity, incentiveCost, canIncentive, progressOf, citiesOf, type IncentiveKind } from "./admin.ts";
+import { INCENTIVES, hasIncentive, adminCap, countrySocialComplexity, socialComplexity, incentiveCost, canIncentive, progressOf, citiesOf, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
 import { foundingCost, distanceLabel, hexPrice, EXPAND } from "./expansion.ts";
 import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES, PERSONALITIES, TRAIT_CAT, COMMAND_NAME, WEEKDAYS, generalCandidates, titlesOf, epithet, diplomatOf, diplomatBonus, diplomatCandidates, DIPLOMAT } from "./characters.ts";
@@ -1510,7 +1510,7 @@ function adminHtml() {
   const c = eco.countries[active - 1];
   const inc = (eco.incentives ?? []).filter((x) => eco.cities[x.city]?.country === active);
   return `<div class="cards"><div class="card"><div class="k">Pontos administrativos</div><div class="v">${Math.floor(c.admin ?? 0)} / ${adminCap(eco, active)}</div></div>` +
-    `<div class="card"><div class="k">Por semana</div><div class="v">${signed(c.adminWeek ?? 0)}</div></div><div class="card"><div class="k">Controle médio</div><div class="v">${pct(c.control ?? 1)}</div></div></div>` +
+    `<div class="card"><div class="k">Por semana</div><div class="v">${signed(c.adminWeek ?? 0)}</div></div><div class="card"><div class="k">Controle médio</div><div class="v">${pct(c.control ?? 1)}</div></div><div class="card" title="Instituições, letrados, urbanização, diversidade e classes: encarece incentivos; tecnologias de registros e burocracia barateiam"><div class="k">Complexidade Social</div><div class="v">${countrySocialComplexity(eco, active)}</div></div><div class="card" title="Cadeias produtivas e tecnologias: encarece construções sofisticadas"><div class="k">Complexidade da Economia</div><div class="v">${Math.round(c.complexity ?? 0)}</div></div></div>` +
     `<h3>Incentivos ativos</h3>` + (inc.length ? `<table>${inc.map((x) => `<tr><td>${x.kind}</td><td>${x.state !== undefined ? eco.states.find((s) => s.id === x.state)?.name ?? "estado" : eco.cities[x.city].name}</td><td><small>${pct(progressOf(eco, x))}</small></td><td><button data-incentive="${x.kind}|${x.state !== undefined ? `s:${x.state}` : `c:${x.city}`}|off">Encerrar</button></td></tr>`).join("")}</table>` : "<small>Nenhum. Clique numa cidade sua para criar.</small>") +
     `<h3>Estados</h3>` + (statesOf(eco, active).map((s) => `<div>${s.name} · ${s.interest} ${s.happy ? "" : '<span class="bad">insatisfeito</span>'}</div>`).join("") || "<small>Nenhum estado.</small>");
 }

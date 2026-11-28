@@ -9,6 +9,7 @@ import { statsOf } from "./units.ts";
 import { techSum } from "./tech.ts";
 import { styleOf } from "./characters.ts";
 import { weatherAt } from "./world.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export const LOGI = {
   foodPerSoldier: 0.004,   // comida (unidades de mercado) por soldado por semana
@@ -47,7 +48,7 @@ export const levelName = (v: number) => LOGI.levels.find(([min]) => v >= min)?.[
 export function demandOf(e: Economy, d: Division): [number, number][] {
   const out: [number, number][] = [[GOODS.indexOf("Grãos"), d.strength * LOGI.foodPerSoldier]];
   if (needAmmo(e, d)) out.push([GOODS.indexOf("Pólvora"), d.strength * LOGI.ammoPerSoldier]);
-  if (needFuel(d)) out.push([GOODS.indexOf("Combustível"), d.strength * LOGI.fuelPerSoldier]);
+  if (needFuel(d)) out.push([GOODS.indexOf("Combustível"), d.strength * LOGI.fuelPerSoldier * tvCut(e.countries[d.country - 1].research, "fuelEfficiency")]);
   return out;
 }
 
@@ -71,10 +72,11 @@ export function stepSupply(w: World, e: Economy, depotDist: (d: Division) => num
     const prio = (d: Division) => d.priority ?? (fighting.has(d) ? 2 : 4);
     const order = ds.map((d) => ({ d, dist: depotDist(d) })).sort((a, b) => prio(a.d) - prio(b.d) || a.dist - b.dist);
     capacity += depotCapacity(e, country);
+    capacity *= tvMul(c.research, "logisticsCapacity");
     for (const { d, dist } of order) {
       const gen = d.general ? e.characters?.find((x) => x.id === d.general) : undefined, logi = gen && styleOf(gen) === "Logístico" ? LOGI.logisticStyle : 0;
       const wx = weatherAt(w, d.hex, e.week), mud = wx === "lama" || wx === "neve" ? LOGI.badWeather : 0; // lama e neve atrasam carroças e caminhões
-      const r = range(country), eff = dist <= r ? Math.min(1, (1 - LOGI.rangeLoss * dist / Math.max(1, r)) * (1 + rail + logi) * (1 - mud)) * seaRoute(d) : 0; // além-mar: comboio
+      const r = range(country), eff = dist <= r ? Math.min(1, (1 - LOGI.rangeLoss * tvCut(c.research, "supplyEfficiency") * dist / Math.max(1, r)) * (1 + rail + logi) * (1 - mud)) * seaRoute(d) : 0; // além-mar: comboio
       const share = Math.min(1, capacity / Math.max(1, d.strength)); // capacidade de transporte do país (não se usa duas vezes)
       capacity = Math.max(0, capacity - d.strength * eff);
       const reserve = LOGI.reserveWeeks + c.research.era / 2, s = (d.stock ??= { food: reserve / 2, ammo: reserve / 2, fuel: reserve / 2 });
@@ -100,9 +102,9 @@ export function attrition(w: World, e: Economy, d: Division, moved: boolean, hos
   const hunger = 1 - (d.supply?.food ?? 1);
   const home = !hostile && (d.supply?.level ?? 1) >= 0.75 ? ATTRITION.homeShare : 1; // em casa e abastecido: quartéis, não campanha
   const wx = weatherAt(w, d.hex, e.week);
-  let rate = ((ATTRITION.terrain[w.terrain[d.hex]] ?? 0.002) * (snow ? 2 : 1) + (snow ? ATTRITION.winter : 0) + (wx === "calor" ? ATTRITION.heat : 0) + (wx === "chuva" || wx === "lama" ? ATTRITION.rain : 0)) * home
+  let rate = ((ATTRITION.terrain[w.terrain[d.hex]] ?? 0.002) * (snow ? 2 : 1) + (snow ? ATTRITION.winter : 0) + (wx === "calor" ? ATTRITION.heat : 0) + (wx === "chuva" || wx === "lama" ? ATTRITION.rain * tvCut(c.research, "diseaseResistance") : 0)) * home
     + (hostile ? ATTRITION.hostile : 0) + hunger * ATTRITION.hunger;
-  rate *= 1 - Math.min(0.6, techSum(c.research, "plague")); // medicina corta doença
+  rate *= (1 - Math.min(0.6, techSum(c.research, "plague"))) * tvCut(c.research, "attritionReduction"); // medicina corta doença; tecnologias de campanha cortam o resto
   d.fatigue = Math.max(0, Math.min(1, (d.fatigue ?? 0) + (moved ? ATTRITION.fatigueMove * (wx === "calor" || wx === "lama" ? 1.5 : 1) : -ATTRITION.fatigueRest)));
   d.morale = Math.max(0, Math.min(1, (d.morale ?? 1) - hunger * ATTRITION.hungerMorale + (hunger === 0 && !moved ? 0.02 : 0)));
   if ((d.supply?.fuel ?? 1) < 0.5 && needFuel(d)) d.target = null; // sem combustível, blindado não anda

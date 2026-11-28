@@ -9,6 +9,7 @@ import { techSum } from "./tech.ts";
 import { lawFx } from "./politics.ts";
 import { attrMod, styleOf, type Character, type Style, skill } from "./characters.ts";
 import { weatherAt } from "./world.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export const BATTLE = {
   rounds: 2,             // rodadas por semana (fixo: não depende do computador)
@@ -85,10 +86,15 @@ function phasePower(e: Economy, ds: Division[], role: "atk" | "def", phase: "fog
     let share = phase === "fogo" ? fire * aff / 0.5 : (1 - fire) * (1 - aff) / 0.5;
     if (phase === "fogo" && (d.supply?.ammo ?? 1) < 0.5) share *= 0.5; // sem munição: fogo fraco (logistics.ts)
     if ((d.supply?.food ?? 1) < 0.25) share *= 0.7;                      // fome
-    return s + d.strength * d.org * d.equip * (1 + techSum(c.research, "army") + lawFx(c.politics, "army", c.control)) * u[role] * share;
+    return s + d.strength * d.org * d.equip * (1 + techSum(c.research, "army") + lawFx(c.politics, "army", c.control)) * u[role] * share * catMul(c.research, d);
   }, 0);
 }
 
+/** Eficiência por categoria de soldado (artilharia, montaria, blindados), pela mistura do regimento. */
+const CAT_VAR: Record<string, "artilleryEfficiency" | "cavalryEfficiency" | "armorEfficiency"> = { Artilharia: "artilleryEfficiency", Cerco: "artilleryEfficiency", Montaria: "cavalryEfficiency", Blindados: "armorEfficiency" };
+function catMul(r: Parameters<typeof tv>[0], d: Division) {
+  return Object.entries(d.mix ?? { [unitOf(d.unit).name]: 1 }).reduce((a, [n, f]) => { const k = CAT_VAR[unitOf(n).cat]; return a + f * (k ? tvMul(r, k) : 1); }, 0);
+}
 /** Modificadores do dado de um lado (todos listados no histórico). */
 const generalOf = (e: Economy, ds: Division[]) => ds.map((d) => (d.general ? e.characters?.find((x) => x.id === d.general && !x.dead) : undefined)).find(Boolean) as Character | undefined;
 /** Fração dos soldados das categorias dadas (para montaria, artilharia...). */
@@ -100,7 +106,11 @@ const shareOf = (ds: Division[], cats: string[]) => {
 function modsOf(w: World, e: Economy, b: Battle, ds: Division[], side: "att" | "def", enemy: Division[], riverAtt: boolean, phase: "fogo" | "choque"): [string, number][] {
   const mods: [string, number][] = [];
   const gen = generalOf(e, ds), style = gen ? styleOf(gen) : undefined;
-  if (gen) mods.push([`General ${gen.name}`, Math.round(2 * (attrMod(skill(gen, "mil")) + 0.5) * 10) / 10]); // 0 a +2
+  const rs = e.countries[ds[0].country - 1].research, pts = (v: number) => Math.round(v * 10) / 10;
+  if (gen) mods.push([`General ${gen.name}`, pts(2 * (attrMod(skill(gen, "mil")) + 0.5) * tvMul(rs, "commandCapacity"))]); // 0 a +2 (× capacidade de comando)
+  if (tv(rs, "armyTraining") >= 0.1) mods.push(["Treinamento", pts(tv(rs, "armyTraining"))]);
+  if (side === "att" && tv(rs, "armyInitiative") >= 0.1) mods.push(["Iniciativa", pts(tv(rs, "armyInitiative"))]);
+  if (side === "att" && phase === "choque" && tv(rs, "armyBreakthrough") >= 0.1) mods.push(["Ruptura", pts(tv(rs, "armyBreakthrough"))]);
   if (style === "Defensivo" && side === "def") mods.push(["Estilo defensivo", 1]);
   if (style === "Agressivo" && side === "att") mods.push(["Estilo agressivo", 1]);
   if (style === "Cauteloso" && side === "att") mods.push(["Estilo cauteloso", -0.5]);
@@ -117,13 +127,13 @@ function modsOf(w: World, e: Economy, b: Battle, ds: Division[], side: "att" | "
   const terr = w.terrain[b.hex];
   if (side === "def") {
     if (BATTLE.terrainDefense[terr]) mods.push(["Terreno", BATTLE.terrainDefense[terr]]);
-    if (e.market[b.hex] && e.cities[e.market[b.hex] - 1]?.hex === b.hex) mods.push(["Cidade", BATTLE.urbanDefense]);
+    if (e.market[b.hex] && e.cities[e.market[b.hex] - 1]?.hex === b.hex) mods.push(["Cidade", pts(BATTLE.urbanDefense + tv(rs, "fortificationEfficiency"))]);
     const ent = Math.max(0, ...ds.map((d) => d.entrench ?? 0));
     if (ent >= 0.5) mods.push(["Entrincheiramento", Math.round(ent * 10) / 10]);
   } else {
     if (terr === T.MOUNTAIN) mods.push(["Atacar montanha", BATTLE.mountainAttack]);
     if (riverAtt) mods.push(["Travessia de rio", BATTLE.river]);
-    if (b.dirs > 1) mods.push(["Flanqueamento", (b.dirs - 1) * (style === "Flanqueador" ? 2 : 1)]);
+    if (b.dirs > 1) mods.push(["Flanqueamento", pts((b.dirs - 1) * (style === "Flanqueador" ? 2 : 1) * tvMul(rs, "armyCoordination"))]);
   }
   const sup = Math.min(...ds.map((d) => d.supply?.level ?? 1));
   if (sup < 0.25) mods.push(["Quase sem suprimentos", -2]); else if (sup < 0.5) mods.push(["Suprimento crítico", -1]);
@@ -140,7 +150,7 @@ function modsOf(w: World, e: Economy, b: Battle, ds: Division[], side: "att" | "
 function events(w: World, e: Economy, b: Battle, phase: "fogo" | "choque", round: number, att: Division[], def: Division[], rand: () => number, ma: [string, number][], md: [string, number][]) {
   const terr = w.terrain[b.hex], open = [T.PLAINS, T.GRASS, T.STEPPE, T.SAVANNA].includes(terr), cover = [T.FOREST, T.JUNGLE, T.HILLS, T.TAIGA].includes(terr);
   const out: string[] = [];
-  if (round === 0 && phase === "fogo" && b.log.length === 0 && cover && shareOf(att, ["Montaria"]) === 0 && !BATTLE_HOOKS.recon(e, b.hex, b.attacker) && rand() < BATTLE.ambush.chance) { ma.push(["Emboscada", BATTLE.ambush.mod]); out.push("Emboscada!"); }
+  if (round === 0 && phase === "fogo" && b.log.length === 0 && cover && shareOf(att, ["Montaria"]) === 0 && !BATTLE_HOOKS.recon(e, b.hex, b.attacker) && rand() < BATTLE.ambush.chance * tvCut(e.countries[b.attacker - 1].research, "armyReconnaissance", 0)) { ma.push(["Emboscada", BATTLE.ambush.mod]); out.push("Emboscada!"); }
   const sides: [Division[], [string, number][], Division[], string][] = [[att, ma, def, "atacante"], [def, md, att, "defensor"]];
   for (const [ds, mods, enemy, who] of sides) {
     if (phase === "choque" && open && shareOf(ds, ["Montaria"]) >= BATTLE.charge.share && rand() < BATTLE.charge.chance) {
@@ -195,16 +205,17 @@ export function resolveBattles(w: World, e: Economy, battles: Map<number, Divisi
         const pa = phasePower(e, att.front, "atk", phase), pd = phasePower(e, def.front, "def", phase);
         // baixas: cada lado mata pelo próprio poder e pela parte que teve no dado; com teto por fase
         const sa = generalOf(e, att.front), sd = generalOf(e, def.front), styleA = sa ? styleOf(sa) : undefined, styleD = sd ? styleOf(sd) : undefined;
-        const killD = Math.min(sum(def.front) * BATTLE.maxLossShare, pa * BATTLE.casualty * (2 * ta) / (ta + td) * (styleD ? BATTLE.styleLoss[styleD] ?? 1 : 1));
-        const killA = Math.min(sum(att.front) * BATTLE.maxLossShare, pd * BATTLE.casualty * (2 * td) / (ta + td) * (styleA ? BATTLE.styleLoss[styleA] ?? 1 : 1));
+        const rA = e.countries[A - 1].research, rD = e.countries[D - 1].research;
+        const killD = Math.min(sum(def.front) * BATTLE.maxLossShare, pa * BATTLE.casualty * (2 * ta) / (ta + td) * (styleD ? BATTLE.styleLoss[styleD] ?? 1 : 1) * tvCut(rD, "armyProfessionalism"));
+        const killA = Math.min(sum(att.front) * BATTLE.maxLossShare, pd * BATTLE.casualty * (2 * td) / (ta + td) * (styleA ? BATTLE.styleLoss[styleA] ?? 1 : 1) * tvCut(rA, "armyProfessionalism"));
         const before = new Map([...att.front, ...def.front].map((d) => [d, d.strength]));
         losses(def.front, killD); losses(att.front, killA);
         b.deadAtt += killA; b.deadDef += killD;
         // organização: perde mais quem teve menos poder e menos dado
         const orgD = Math.min(BATTLE.maxOrgDamage, BATTLE.orgDamage * (pa / (pd || 1)) * (ta / td)), orgA = Math.min(BATTLE.maxOrgDamage, BATTLE.orgDamage * (pd / (pa || 1)) * (td / ta));
-        for (const d of def.front) d.org = Math.max(0, d.org - orgD);
-        for (const d of att.front) d.org = Math.max(0, d.org - orgA);
-        for (const [d, s0] of before) { const insp = (att.front.includes(d) ? styleA : styleD) === "Inspirador" ? BATTLE.inspireMorale : 1; d.morale = Math.max(0, (d.morale ?? 1) - BATTLE.moraleLoss * insp * (s0 - d.strength) / Math.max(1, s0)); }
+        for (const d of def.front) d.org = Math.max(0, d.org - orgD * tvCut(rD, "armyOrganization"));
+        for (const d of att.front) d.org = Math.max(0, d.org - orgA * tvCut(rA, "armyOrganization"));
+        for (const [d, s0] of before) { const insp = (att.front.includes(d) ? styleA : styleD) === "Inspirador" ? BATTLE.inspireMorale : 1; d.morale = Math.max(0, (d.morale ?? 1) - BATTLE.moraleLoss * insp * tvCut(e.countries[d.country - 1].research, "armyDiscipline") * (s0 - d.strength) / Math.max(1, s0)); }
         const text = ta > td ? (ta >= td + 3 ? "Ataque rompe a linha" : "Vantagem do atacante") : td > ta ? (td >= ta + 3 ? "Ataque repelido com perdas" : "Vantagem do defensor") : "Equilíbrio";
         b.log.push({ week: e.week, round: r + 1, phase, att: { roll: ra, mods: ma, total: ta }, def: { roll: rd, mods: md, total: td }, text: `${happened.length ? happened.join(". ") + ". " : ""}${text}: atacante perde ${Math.round(killA)} soldados e ${Math.round(orgA * 100)}% de organização; defensor ${Math.round(killD)} e ${Math.round(orgD * 100)}%` });
         if (b.log.length > BATTLE.logKeep) b.log.shift();
@@ -257,6 +268,6 @@ export const setRiverCheck = (f: typeof crossesRiverFn) => { crossesRiverFn = f;
 export function entrench(e: Economy, d: Division, moved: boolean) {
   if (moved || d.target !== null) { d.entrench = 0; return; }
   const k = e.countries[d.country - 1].research.known;
-  const cap = BATTLE.entrenchMax + (k.has("Castelos") ? 0.5 : 0) + (k.has("Fortificações em estrela") ? 0.5 : 0) + (k.has("Concreto armado") ? 1 : 0);
+  const cap = BATTLE.entrenchMax + (k.has("Castelos") ? 0.5 : 0) + (k.has("Fortificações em estrela") ? 0.5 : 0) + (k.has("Concreto armado") ? 1 : 0) + tv(e.countries[d.country - 1].research, "armyEntrenchment");
   d.entrench = Math.min(cap, (d.entrench ?? 0) + BATTLE.entrenchPerWeek);
 }

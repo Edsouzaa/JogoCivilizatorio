@@ -6,6 +6,7 @@ import { techSum } from "./tech.ts";
 import { attrMod, skill } from "./characters.ts";
 import { craftOf, SHIPS } from "./units.ts";
 import type { Battle } from "./battle.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export type SeaWeather = "calmo" | "agitado" | "tempestade" | "nevoeiro" | "gelo";
 export const NAVAL_MISSIONS = ["Superioridade naval", "Patrulha", "Escolta de comboios", "Bloqueio", "Bombardeio costeiro", "Defesa costeira"] as const;
@@ -61,7 +62,9 @@ export function resolveNaval(w: World, e: Economy, atWar: (a: number, b: number)
           const m: [string, number][] = [];
           const t = (x: Division[]) => Math.max(0, ...x.map((d) => techSum(e.countries[d.country - 1].research, "fleet")));
           const dt = Math.round((t(me) - t(them)) * 2); if (dt) m.push(["Tecnologia naval", Math.max(-3, Math.min(3, dt))]);
-          if (r === 0 && shareOf(me, "Submarinos") >= SEA.sub.share && shareOf(them, "Submarinos") === 0) m.push(["Emboscada submarina", SEA.sub.mod]);
+          const rme = e.countries[me[0].country - 1].research, rthem = e.countries[them[0].country - 1].research;
+          if (r === 0 && shareOf(me, "Submarinos") >= SEA.sub.share && shareOf(them, "Submarinos") === 0 && tv(rthem, "navalReconnaissance") < 0.2) m.push(["Emboscada submarina", SEA.sub.mod]); // reconhecimento naval anula
+          if (tv(rme, "navalDoctrine") >= 0.1) m.push(["Doutrina naval", Math.round(tv(rme, "navalDoctrine") * 10) / 10]);
           if (shareOf(me, "Porta-aviões") > 0 && shareOf(them, "Porta-aviões") === 0) m.push(["Aviação embarcada", SEA.carrier.mod]);
           if (me.some((d) => missionOfFleet(d) === "Superioridade naval")) m.push(["Busca o combate", SEA.seek]);
           const adm = me.map((d) => d.general && e.characters?.find((c) => c.id === d.general)).find(Boolean);
@@ -74,10 +77,11 @@ export function resolveNaval(w: World, e: Economy, atWar: (a: number, b: number)
         const ra = 1 + Math.floor(rand() * 10), rd = 1 + Math.floor(rand() * 10);
         const ta = Math.max(1, ra + ma.reduce((s, [, v]) => s + v, 0)), td = Math.max(1, rd + md.reduce((s, [, v]) => s + v, 0));
         const storm = wx === "tempestade" ? SEA.storm.loss : 1, pa = power(e, fx), pd = power(e, fy);
-        const kY = Math.min(sum(fy) * SEA.maxLoss, pa * SEA.casualty * storm * (2 * ta) / (ta + td)), kX = Math.min(sum(fx) * SEA.maxLoss, pd * SEA.casualty * storm * (2 * td) / (ta + td));
+        const rx = e.countries[fx[0].country - 1].research, ry = e.countries[fy[0].country - 1].research;
+        const kY = Math.min(sum(fy) * SEA.maxLoss, pa * SEA.casualty * storm * (2 * ta) / (ta + td) * tvMul(rx, "navalFirepower") * tvCut(ry, "navalProtection")), kX = Math.min(sum(fx) * SEA.maxLoss, pd * SEA.casualty * storm * (2 * td) / (ta + td) * tvMul(ry, "navalFirepower") * tvCut(rx, "navalProtection"));
         losses(fy, kY); losses(fx, kX); b.deadAtt += kX; b.deadDef += kY;
-        for (const d of fy) d.org = Math.max(0, d.org - Math.min(SEA.maxOrg, SEA.orgDamage * (pa / (pd || 1)) * (ta / td)));
-        for (const d of fx) d.org = Math.max(0, d.org - Math.min(SEA.maxOrg, SEA.orgDamage * (pd / (pa || 1)) * (td / ta)));
+        for (const d of fy) d.org = Math.max(0, d.org - Math.min(SEA.maxOrg, SEA.orgDamage * (pa / (pd || 1)) * (ta / td)) * tvCut(ry, "navalOrganization"));
+        for (const d of fx) d.org = Math.max(0, d.org - Math.min(SEA.maxOrg, SEA.orgDamage * (pd / (pa || 1)) * (td / ta)) * tvCut(rx, "navalOrganization"));
         b.log.push({ week: e.week, round: r + 1, phase: "fogo", att: { roll: ra, mods: ma, total: ta }, def: { roll: rd, mods: md, total: td },
           text: `${wx !== "calmo" ? `Mar ${wx}. ` : ""}${ta > td ? "Vantagem do atacante" : td > ta ? "Vantagem do defensor" : "Equilíbrio"}: atacante perde ${Math.round(kX)} marinheiros, defensor ${Math.round(kY)}` });
         if (b.log.length > 40) b.log.shift();
@@ -102,11 +106,12 @@ const sum = (ds: Division[]) => ds.reduce((s, d) => s + d.strength, 0);
  */
 export function convoyFactor(w: World, e: Economy, d: Division, depot: number, atWar: (a: number, b: number) => boolean) {
   if (depot < 0 || !w.continent || w.continent[depot] === w.continent[d.hex]) return 1;
-  const near = (f: Division) => Math.abs(((f.hex / w.W) | 0) - ((d.hex / w.W) | 0)) <= SEA.convoy.reach * 3 && Math.min(Math.abs((f.hex % w.W) - (d.hex % w.W)), w.W - Math.abs((f.hex % w.W) - (d.hex % w.W))) <= SEA.convoy.reach * 3;
+  const reach = (f: Division) => (SEA.convoy.reach + tv(e.countries[f.country - 1].research, "navalRange")) * 3; // alcance naval de quem intercepta
+  const near = (f: Division) => Math.abs(((f.hex / w.W) | 0) - ((d.hex / w.W) | 0)) <= reach(f) && Math.min(Math.abs((f.hex % w.W) - (d.hex % w.W)), w.W - Math.abs((f.hex % w.W) - (d.hex % w.W))) <= reach(f);
   const fleets = e.divisions.filter((f) => f.kind === "fleet" && f.strength >= 1);
   const escort = fleets.filter((f) => f.country === d.country && missionOfFleet(f) === "Escolta de comboios").reduce((s, f) => s + f.strength * craftOf(SHIPS, f.unit).power, 0);
   const enemy = fleets.filter((f) => atWar(f.country, d.country) && near(f)).reduce((s, f) => s + f.strength * craftOf(SHIPS, f.unit).power * (craftOf(SHIPS, f.unit).name === "Submarinos" ? 1.5 : 1), 0);
-  let k = SEA.convoy.base + (escort > 0 ? SEA.convoy.escort : 0);
+  let k = SEA.convoy.base + tv(e.countries[d.country - 1].research, "navalLogistics") + (escort > 0 ? SEA.convoy.escort : 0);
   if (enemy > 0) k *= 1 - SEA.convoy.interdiction * enemy / (enemy + escort);
   let coast = -1;
   for (let r = 1; r <= 3 && coast < 0; r++) for (const dx of [-r, r]) { const j = d.hex + dx; if (j >= 0 && j < w.W * w.H && w.terrain[j] === T.OCEAN) coast = j; }

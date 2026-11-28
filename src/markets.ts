@@ -6,6 +6,7 @@ import { T, type World } from "./world.ts";
 import { TECHS } from "./tech.ts";
 import { forNeighbors } from "./hex.ts";
 import { incFx } from "./admin.ts";
+import { tv, tvMul, tvCut } from "./techvars.ts";
 
 export const MARKET = {
   release: 0.5,          // fração do estoque que volta à venda por semana
@@ -46,10 +47,10 @@ export function releaseStock(e: Economy) {
 export function storeSurplus(e: Economy) {
   for (const k of e.cities) {
     const m = k.market, st = (m.stock ??= new Float64Array(GOODS.length)), c = e.countries[k.country - 1];
-    const cap = (MARKET.storagePerSize * k.size * (1 + c.research.era / 2) + cityCommerce(e, k).storage);
+    const cap = (MARKET.storagePerSize * k.size * (1 + c.research.era / 2) + cityCommerce(e, k).storage) * tvMul(c.research, "storageCapacity");
     for (let g = 1; g < GOODS.length; g++) {
       const unsold = Math.max(0, m.supply[g] - m.used[g] - m.demand[g]);
-      st[g] = Math.min(cap, (st[g] + unsold * MARKET.keep) * (1 - (FOODS.includes(GOODS[g]) ? MARKET.spoilFood : MARKET.spoilOther)));
+      st[g] = Math.min(cap, (st[g] + unsold * MARKET.keep) * (1 - (FOODS.includes(GOODS[g]) ? MARKET.spoilFood * tvCut(c.research, "foodPreservation") : MARKET.spoilOther)));
     }
   }
 }
@@ -61,7 +62,7 @@ export function updateAccess(w: World, e: Economy) {
     const c = e.countries[k.country - 1], cap = e.cities.find((x) => x.country === k.country)!;
     const dx = Math.min(Math.abs((k.hex % w.W) - (cap.hex % w.W)), w.W - Math.abs((k.hex % w.W) - (cap.hex % w.W))), dy = Math.abs(((k.hex / w.W) | 0) - ((cap.hex / w.W) | 0));
     const water = k.port || (k.harbor ?? 0) > 0 ? MARKET.accessWater : 0;
-    let a = incFx(e, e.cities.indexOf(k), "access") + MARKET.accessBase[c.research.era] + MARKET.accessRoad * (k.road ?? 0) + water + cityCommerce(e, k).access - Math.max(dx, dy) / MARKET.accessDistance;
+    let a = incFx(e, e.cities.indexOf(k), "access") + tv(c.research, "marketAccess") + MARKET.accessBase[c.research.era] + MARKET.accessRoad * (k.road ?? 0) + water + cityCommerce(e, k).access - Math.max(dx, dy) / MARKET.accessDistance;
     if (k.isolated) a *= 0.5; // sem ligação por terra com a capital
     if (k === cap) a = 1;
     k.access = Math.max(0.05, Math.min(1, a));
@@ -127,4 +128,4 @@ export function complexityImpact(b: number) {
   return I.veryHighSet.includes(n) ? I.veryHigh : I.highSet.includes(n) ? I.high : BUILDINGS[b].industry ? I.medium : I.low;
 }
 /** Multiplicador do custo em dinheiro (e, pela metade, em pontos de construção) da construção b no país. */
-export const complexityCost = (c: Country, b: number) => 1 + complexityImpact(b) * (c.complexity ?? 0) / 1000;
+export const complexityCost = (c: Country, b: number) => 1 + complexityImpact(b) * (c.complexity ?? 0) / 1000 * tvCut(c.research, "industrialComplexity");

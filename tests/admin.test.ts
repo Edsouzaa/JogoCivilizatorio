@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { generateWorld } from "../src/world.ts";
 import { createEconomy, tick, build, BUILDINGS, GOODS } from "../src/economy.ts";
+import { tvCut } from "../src/techvars.ts";
 import { applyCommand } from "../src/commands.ts";
 import { hasIncentive, adminCap, INCENTIVES, ADMIN, socialComplexity, incentiveCost, canIncentive, progressOf, incFx, stepAdmin } from "../src/admin.ts";
 import { stepEvents } from "../src/events.ts";
@@ -47,7 +48,7 @@ assert.ok(!hasIncentive(e, 0, "Alívio emergencial"));
 // Complexidade Social: custo = base × (1 + C/100); estado +25% (sem multiplicar pelas cidades)
 const sc = socialComplexity(e, [0]);
 assert.ok(sc >= 0);
-assert.ok(Math.abs(incentiveCost(e, "Integração", [0], false).cost - INCENTIVES["Integração"].cost * (1 + sc / 100)) < 1e-9);
+assert.ok(Math.abs(incentiveCost(e, "Integração", [0], false).cost - INCENTIVES["Integração"].cost * (1 + sc / 100) * tvCut(c.research, "recordKeeping")) < 1e-9); // registros (tecnologias) barateiam
 assert.ok(Math.abs(incentiveCost(e, "Integração", [0], true).cost / incentiveCost(e, "Integração", [0], false).cost - ADMIN.stateMult) < 1e-9);
 // grupo de foco econômico: só um por território
 c.admin = 1000;
