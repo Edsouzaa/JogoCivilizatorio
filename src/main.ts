@@ -38,7 +38,7 @@ import { EVENT_LIST, CHOICES, type Effects } from "./choices.ts";
 import { INCENTIVES, hasIncentive, adminCap, socialComplexity, incentiveCost, canIncentive, progressOf, citiesOf, type IncentiveKind } from "./admin.ts";
 import { icon, hydrateIcons } from "./icons.ts";
 import { foundingCost, distanceLabel, hexPrice, EXPAND } from "./expansion.ts";
-import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES, PERSONALITIES, TRAIT_CAT, COMMAND_NAME, WEEKDAYS, generalCandidates, titlesOf, epithet } from "./characters.ts";
+import { rulerOf, ageOf, lifeText, CHAR, skill, TRAIT_FX, styleOf, STYLES, PERSONALITIES, TRAIT_CAT, COMMAND_NAME, WEEKDAYS, generalCandidates, titlesOf, epithet, diplomatOf, diplomatBonus, diplomatCandidates, DIPLOMAT } from "./characters.ts";
 import { unitOf, statsOf, unitsFor, craftsFor, craftOf, SHIPS, PLANES } from "./units.ts";
 import { portraitSVG } from "./portrait.ts";
 import { seaNodes, outline, zoneHexes, type SeaNodes } from "./regions.ts";
@@ -696,6 +696,9 @@ document.addEventListener("pointerdown", (e) => {
   if (d.act === "cancel-law" && active) return cmd({ t: "cancelLaw" });
   if (d.front) { const [k, mode, ids] = d.front.split("|"); return cmd({ t: "front", enemy: +k, mode: mode as "defend" | "attack", ids: ids.split(",").map(Number) }); }
   if (d.recruit) return cmd({ t: "recruit", hex: selected, unit: d.recruit });
+  if (d.act === "hire-dip") { hiringDip = !hiringDip; return updateUI(); }
+  if (d.hiredip !== undefined) { hiringDip = false; return cmd({ t: "diplomat", pick: Number(d.hiredip) }); }
+  if (d.chronf !== undefined) { chronFilter = d.chronf; return updateUI(); }
   if (d.act === "hire-general" && selectedDiv) { hiring = hiring === selectedDiv ? 0 : selectedDiv; return updateUI(); }
   if (d.hire !== undefined && selectedDiv) { hiring = 0; return cmd({ t: "general", id: selectedDiv, pick: Number(d.hire) }); }
   if (d.fleet) return cmd({ t: "fleet", hex: selected, unit: d.fleet });
@@ -1257,10 +1260,13 @@ function overviewHtml() {
     headerHtml() + warsHtml() + chronicleHtml(eventsOfCountry(eco, active), 25);
 }
 /** Crônica: acontecimentos registrados (mais recentes primeiro), com dia da semana e os personagens envolvidos. */
-function chronicleHtml(evs: Ev[], n: number) {
-  if (!evs.length) return "";
+let chronFilter = "";
+function chronicleHtml(all: Ev[], n: number) {
+  if (!all.length) return "";
+  const types = [...new Set(all.map((v) => v.t))], evs = chronFilter ? all.filter((v) => v.t === chronFilter) : all;
+  const tabs = `<div class="tabs">${["", ...types].map((t) => `<button data-chronf="${t}" class="${t === chronFilter ? "on" : ""}">${t || "tudo"}</button>`).join(" ")}</div>`;
   const who = (id: number) => { const x = eco.characters?.find((y) => y.id === id); return x ? `<a data-char="${x.id}" style="cursor:pointer;text-decoration:underline dotted">${x.name}</a>` : ""; };
-  return `<h3>${icon("book")} Crônica</h3><table>${evs.slice(-n).reverse().map((v) => `<tr><td><small>${WEEKDAYS[v.d].split("-")[0]}, ${dateLabel(v.w)}</small></td><td>${lifeText(world, v.x)}${v.c.length ? `<br><small>${v.c.map(who).filter(Boolean).join(", ")}</small>` : ""}</td></tr>`).join("")}</table>`;
+  return `<h3>${icon("book")} Crônica</h3>${tabs}<table>${evs.slice(-n).reverse().map((v) => `<tr><td><small>${WEEKDAYS[v.d].split("-")[0]}, ${dateLabel(v.w)}</small></td><td>${lifeText(world, v.x)}${v.c.length ? `<br><small>${v.c.map(who).filter(Boolean).join(", ")}</small>` : ""}</td></tr>`).join("")}</table>`;
 }
 
 // construção em massa (docs/construcoes.md): escolhas do jogador no painel
@@ -1430,6 +1436,18 @@ function obrasHtml() {
 
 function diplomacyHtml() {
   if (!active) return "";
+  return diplomatHtml() + diplomacyBody();
+}
+/** Diplomata do país: o atual (com o bônus que dá) ou três candidatos para escolher. */
+let hiringDip = false;
+function diplomatHtml() {
+  const d = diplomatOf(eco, active), era = eco.countries[active - 1].research.era;
+  const head = d ? `<div class="card" style="display:flex;gap:8px">${portraitSVG(d, era, 48)}<div><b data-char="${d.id}" style="cursor:pointer">Diplomata ${d.name}</b><br><small>diplomacia ${skill(d, "dip")} · ${d.personality ?? ""} · ${diplomatBonus(eco, active) >= 0 ? "+" : ""}${diplomatBonus(eco, active)} por gesto de relação e na tolerância dos acordos</small></div></div>` : "<small>Sem diplomata: relações melhoram só pelo valor base.</small>";
+  if (!hiringDip) return head + ` <button data-act="hire-dip">${d ? "Trocar" : "Nomear"} diplomata (${DIPLOMAT.cost})</button>`;
+  return head + `<h3>Escolha um de três candidatos</h3><div class="bcards" style="grid-template-columns:repeat(3,1fr)">` + diplomatCandidates(world, eco, active).map((c, k) =>
+    `<div class="bcard" style="cursor:default">${portraitSVG(c, era, 56)}<b>${c.name}</b><small>${ageOf(c, eco.week)} anos · ${c.personality}</small><small>diplomacia <b>${skill(c, "dip")}</b> · adm ${skill(c, "adm")}</small><small>${c.traits.join(", ")}</small><button data-hiredip="${k}">Nomear</button></div>`).join("") + `</div><button data-act="hire-dip">Cancelar</button>`;
+}
+function diplomacyBody() {
   const known = new Set<number>([...(eco.contacts?.[active - 1] ?? [])]);
   for (let k = 1; k <= eco.countries.length; k++) if (k !== active && (atWar(eco, active, k) || hasPact(eco, active, k) || relation(eco, active, k) !== 0)) known.add(k);
   const rows = [...known].sort((a, b) => relation(eco, active, b) - relation(eco, active, a)).map((k) => {
@@ -1783,7 +1801,7 @@ function openBook(id: number) {
     ${c.laws?.length ? `<h2>Atuação política</h2><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th align="left">Data</th><th align="left">Lei</th><th align="left">Participação</th></tr>${c.laws.map((l) => `<tr style="border-top:1px dotted #c9b88f"><td>${esc(dateLabel(l.week))}</td><td>${esc(l.name)}</td><td>${l.result === "proposta" ? "propôs" : l.result === "aprovada" ? "aprovada no seu governo" : "retirou a proposta"}</td></tr>`).join("")}</table>` : ""}
     ${c.founded?.length || c.taken?.length ? `<h2>Cidades</h2><p>${c.founded?.length ? `Fundadas no seu governo: ${esc(c.founded.join(", "))}. ` : ""}${c.taken?.length ? `Tomadas em cerco: ${esc(c.taken.join(", "))}.` : ""}</p>` : ""}
     <h2>Personalidade e traços</h2><ul>${c.personality ? `<li><b>${esc(c.personality)}</b> — ${esc(PERSONALITIES[c.personality]?.desc ?? "")}</li>` : ""}${c.traits.map((t) => `<li><b>${esc(t)}</b> <small>${TRAIT_CAT[t] ?? ""} · ${Object.entries(TRAIT_FX[t] ?? {}).map(([k, v]) => `${v! > 0 ? "+" : ""}${v} ${k}`).join(", ") || "sem efeito nos atributos"}</small></li>`).join("")}</ul>
-    ${c.record?.length ? `<h2>Batalhas</h2><table style="width:100%;border-collapse:collapse;font-size:13px;page-break-inside:auto"><tr><th align="left">Data</th><th align="left">Batalha</th><th>Lado</th><th>Forças (suas × inimigo)</th><th>Baixas (suas / inimigo)</th><th>Resultado</th></tr>${c.record.map((b) => `<tr style="border-top:1px dotted #c9b88f;page-break-inside:avoid"><td>${WEEKDAYS[b.day]}, ${esc(dateLabel(b.week))}</td><td>${esc(b.place)} contra ${esc(world.countries[b.enemy - 1]?.name ?? "?")}</td><td>${b.side}</td><td align="center">${b.own} × ${b.foe}</td><td align="center">${b.ownLost} / ${b.foeLost}</td><td>${b.won ? "vitória" : "derrota"} (${b.weeks} sem.)</td></tr>`).join("")}</table><p><small>Baixas somam mortos, feridos e capturados: o combate do jogo não separa os três.</small></p>` : ""}
+    ${c.record?.length ? `<h2>Batalhas</h2><table style="width:100%;border-collapse:collapse;font-size:13px;page-break-inside:auto"><tr><th align="left">Data</th><th align="left">Batalha</th><th>Lado</th><th>Forças (suas × inimigo)</th><th>Baixas (suas / inimigo)</th><th>Resultado</th><th align="left">Avaliação</th></tr>${c.record.map((b) => `<tr style="border-top:1px dotted #c9b88f;page-break-inside:avoid"><td>${WEEKDAYS[b.day]}, ${esc(dateLabel(b.week))}</td><td>${esc(b.place)} contra ${esc(world.countries[b.enemy - 1]?.name ?? "?")}</td><td>${b.side}</td><td align="center">${b.own} × ${b.foe}</td><td align="center">${b.ownLost} / ${b.foeLost}</td><td>${b.won ? "vitória" : "derrota"} (${b.weeks} sem.)</td><td><small>${esc((b.notes ?? []).join("; ") || "—")}</small></td></tr>`).join("")}</table><p><small>Baixas somam mortos, feridos e capturados: o combate do jogo não separa os três.</small></p>` : ""}
     ${eventsOfCharacter(eco, c.id).length ? `<h2>Acontecimentos registrados</h2><ul>${eventsOfCharacter(eco, c.id).map((v) => `<li>${WEEKDAYS[v.d]}, ${esc(dateLabel(v.w))} — ${esc(lifeText(world, v.x))}</li>`).join("")}</ul>` : ""}
     <h2>Linha do tempo</h2><ul>${c.life.map((l) => `<li>${esc(lifeText(world, l))}</li>`).join("")}</ul>
     <p><small>Gerado em ${esc(dateLabel(eco.week))} · mundo ${world.seed}</small></p></body></html>`);

@@ -14,7 +14,7 @@ export type Character = {
   adm: number; dip: number; mil: number; traits: string[]; looks: Looks;
   life: string[]; // acontecimentos ("ano: texto"), para o livro da história
   dead?: boolean; saved?: boolean;
-  role?: "General" | "Agitador"; // sem = governante
+  role?: "General" | "Agitador" | "Diplomata"; // sem = governante
   division?: number;     // general: divisão que comanda
   personality?: string;  // comportamento duradouro (PERSONALITIES); traços são características e experiências
   command?: Command; spec?: string; // comando (terrestre, naval, aéreo) e especialização do comandante
@@ -34,7 +34,7 @@ export type Character = {
 export type Office = { title: string; country: number; from: number; to?: number; why: string; end?: string };
 export type Command = "army" | "fleet" | "air";
 /** Uma batalha na vida do comandante. Baixas: o jogo não separa mortos, feridos e capturados (não inventamos). */
-export type BattleRec = { week: number; day: number; place: string; enemy: number; side: "atacante" | "defensor"; won: boolean; own: number; foe: number; ownLost: number; foeLost: number; weeks: number };
+export type BattleRec = { week: number; day: number; place: string; enemy: number; side: "atacante" | "defensor"; won: boolean; own: number; foe: number; ownLost: number; foeLost: number; weeks: number; notes?: string[] };
 
 export const TRAITS = ["Ambicioso", "Cauteloso", "Corrupto", "Honesto", "Carismático", "Cruel", "Devoto", "Erudito", "Guerreiro", "Pacifista",
   "Gênio", "Paciente", "Temperamental", "Paranoico", "Orador", "Negociador", "Popular", "Conspirador", "Reformador", "Poliglota", "Filantropo", "Cético",
@@ -215,6 +215,28 @@ export function generalCandidates(w: World, e: Economy, id: number): Character[]
     return g;
   });
 }
+export const DIPLOMAT = { cost: 60, perPoint: 0.2 }; // bônus = (diplomacia − 50) × perPoint
+export const diplomatOf = (e: Economy, k: number) => { const id = e.countries[k - 1]?.diplomat; return id ? e.characters?.find((c) => c.id === id && !c.dead) : undefined; };
+/** Pontos a mais de relação por gesto e de tolerância nos acordos, pela diplomacia do diplomata (pode ser negativo). */
+export const diplomatBonus = (e: Economy, k: number) => { const d = diplomatOf(e, k); return d ? Math.round((skill(d, "dip") - 50) * DIPLOMAT.perPoint) : 0; };
+/** Três candidatos a diplomata (mesma semana = os mesmos três). */
+export function diplomatCandidates(w: World, e: Economy, k: number): Character[] {
+  const next = e.nextCharacter ?? 0;
+  return [0, 1, 2].map((i) => { const c = newCharacter(w, e, k, e.week * 19 + k * 7 + i); e.nextCharacter = next; c.id = next + 1 + i; c.role = "Diplomata"; c.dip = Math.min(100, c.dip + 8 + i * 4); return c; });
+}
+/** Nomeia o diplomata (substitui o anterior, que deixa o cargo). */
+export function hireDiplomat(w: World, e: Economy, k: number, pick = 0): string | null {
+  const c = e.countries[k - 1];
+  if (c.treasury < DIPLOMAT.cost) return `Precisa de ${DIPLOMAT.cost} no tesouro`;
+  const d = diplomatCandidates(w, e, k)[Math.max(0, Math.min(2, pick | 0))];
+  c.treasury -= DIPLOMAT.cost; e.nextCharacter = d.id;
+  const old = diplomatOf(e, k);
+  if (old) { closeOffice(old, "Diplomata", e.week, `substituído por ${d.name}`); old.role = undefined; old.gone = true; note(old, e.week, "deixou o cargo de diplomata"); }
+  note(d, d.born, `nasceu em §${k}§`); note(d, e.week, `${WEEKDAYS[dayOf(e.week, d.id)]}: nomeado diplomata de §${k}§`);
+  openOffice(d, "Diplomata", k, e.week, "escolhido entre três candidatos");
+  (e.characters ??= []).push(d); c.diplomat = d.id;
+  return null;
+}
 /** Contrata o candidato `pick` (0–2) para comandar a unidade (exército, frota ou esquadrão). */
 export function hireGeneral(w: World, e: Economy, id: number, pick = 0): string | null {
   const d = e.divisions.find((x) => x.id === id);
@@ -235,7 +257,20 @@ export function hireGeneral(w: World, e: Economy, id: number, pick = 0): string 
 }
 
 /** Batalha decidida: entra no registro de cada comandante, com números; experiência vira traço. Não inventa o que o combate não mede. */
-export function recordBattle(e: Economy, b: { id: number; hex: number; start: number; attacker: number; defender: number; startAtt: number; startDef: number; deadAtt: number; deadDef: number }, winner: "att" | "def", att: { general?: number }[], def: { general?: number }[], place: string) {
+/** Avaliação do comando: o que pesou além do general (números, terreno, suprimento); só fatos medidos. */
+export function assess(r: BattleRec, supply: number, terrain?: { name: string; defense: number }) {
+  const n: string[] = [], ratio = r.foe > 0 ? r.own / r.foe : 9, trade = r.foeLost > 0 ? r.ownLost / r.foeLost : 9;
+  if (r.won && ratio < 0.8) n.push("venceu em inferioridade numérica");
+  else if (r.won && ratio > 1.5) n.push("venceu com superioridade numérica (mérito dividido com os números)");
+  else if (!r.won && ratio > 1.2) n.push("perdeu apesar da superioridade numérica");
+  else if (!r.won && ratio < 0.67) n.push("perdeu em grande inferioridade numérica");
+  if (terrain && terrain.defense > 0) n.push(r.side === "defensor" ? `defendeu em ${terrain.name.toLowerCase()} (+${terrain.defense} no dado)` : `atacou em ${terrain.name.toLowerCase()} (o terreno favorecia o inimigo)`);
+  if (supply < 0.5) n.push(`tropas mal abastecidas (${Math.round(supply * 100)}%)`);
+  if (trade < 0.5) n.push("perdeu muito menos gente que o inimigo");
+  else if (trade > 2) n.push("perdeu muito mais gente que o inimigo");
+  return n;
+}
+export function recordBattle(e: Economy, b: { id: number; hex: number; start: number; attacker: number; defender: number; startAtt: number; startDef: number; deadAtt: number; deadDef: number }, winner: "att" | "def", att: { general?: number; supply?: { level: number } }[], def: { general?: number; supply?: { level: number } }[], place: string, terrain?: { name: string; defense: number }) {
   const day = dayOf(e.week, b.id), gens = [...att, ...def].map((d) => d.general).filter((x): x is number => !!x);
   chronicle(e, "batalha", `batalha ${place}: vitória ${winner === "att" ? `de §${b.attacker}§ (atacante)` : `de §${b.defender}§ (defensor)`} — ${Math.round(b.startAtt)} × ${Math.round(b.startDef)} soldados, baixas ${Math.round(b.deadAtt)} e ${Math.round(b.deadDef)}`, [b.attacker, b.defender], gens, 2);
   const sides: [typeof att, "atacante" | "defensor"][] = [[att, "atacante"], [def, "defensor"]];
@@ -243,8 +278,10 @@ export function recordBattle(e: Economy, b: { id: number; hex: number; start: nu
     const g = d.general ? e.characters?.find((x) => x.id === d.general) : undefined;
     if (!g || g.record?.some((x) => x.week === e.week && x.place === place)) continue;
     const isAtt = side === "atacante", won = (winner === "att") === isAtt;
+    const sup = (isAtt ? att : def).map((x) => x.supply?.level ?? 1), supply = sup.length ? sup.reduce((s, v) => s + v, 0) / sup.length : 1;
     const rec: BattleRec = { week: e.week, day, place, enemy: isAtt ? b.defender : b.attacker, side, won, own: Math.round(isAtt ? b.startAtt : b.startDef), foe: Math.round(isAtt ? b.startDef : b.startAtt),
       ownLost: Math.round(isAtt ? b.deadAtt : b.deadDef), foeLost: Math.round(isAtt ? b.deadDef : b.deadAtt), weeks: e.week - b.start + 1 };
+    rec.notes = assess(rec, supply, terrain);
     (g.record ??= []).push(rec);
     g.fights = (g.fights ?? 0) + 1; if (won) g.wins = (g.wins ?? 0) + 1;
     note(g, e.week, `${WEEKDAYS[day]}: ${won ? "venceu" : "perdeu"} a batalha ${place} contra §${rec.enemy}§ como ${side} — ${rec.own} × ${rec.foe} soldados; baixas ${rec.ownLost} suas, ${rec.foeLost} do inimigo`);
@@ -380,6 +417,7 @@ export function stepCharacters(w: World, e: Economy) {
     crown(w, e, k, gov === "República" ? "eleito para governar" : gov === "Teocracia" ? "escolhido pelo clero para governar" : gov === "Partido único" ? "escolhido pelo partido para comandar" : "herdou o governo");
   });
   // morto só continua guardado se o jogador guardou na história (o livro dele)
+  for (const c of e.characters ?? []) if (c.role === "Diplomata" && !c.dead && e.week >= c.dies) { c.dead = true; note(c, e.week, `morreu aos ${ageOf(c, e.week)} anos`); closeOffice(c, "Diplomata", e.week, "morte"); e.countries[c.country - 1].diplomat = undefined; }
   for (const c of e.characters ?? []) if ((c.exiledTo || c.gone) && !c.dead && e.week >= c.dies) { c.dead = true; note(c, e.week, `morreu aos ${ageOf(c, e.week)} anos${c.exiledTo ? ` no exílio, em §${c.exiledTo}§` : ""}`); closeOffice(c, "Exilado", e.week, "morte"); }
   const rulers = new Set([...e.countries.map((x) => x.ruler), ...e.countries.map((x) => x.heirWaiting)]);
   e.characters = (e.characters ?? []).filter((c) => (!c.dead || c.saved) && (c.saved || c.role || c.command || rulers.has(c.id) || c.exiledTo || c.gone || !kinOnly(e, c, rulers)));

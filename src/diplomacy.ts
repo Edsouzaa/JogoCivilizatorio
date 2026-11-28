@@ -3,7 +3,7 @@
 // fronteira disputada e infâmia do outro. Relação ruim trava acordos; a IA só ataca quem ela não gosta.
 // Prestígio = peso no mundo (economia, tecnologia, gente) + glória de guerras, que se apaga devagar.
 import type { Economy } from "./economy.ts";
-import { rulerOf, CHAR, skill } from "./characters.ts";
+import { rulerOf, CHAR, skill, diplomatBonus } from "./characters.ts";
 
 export const DIPLO = {
   pactMonth: 2, warMonth: -8, borderMonth: -0.5, infamyMonth: -0.05, // por mês (infâmia: × infâmia do outro)
@@ -38,7 +38,7 @@ export function improveRelations(e: Economy, a: number, b: number): string | nul
   const c = e.countries[a - 1];
   if ((c.admin ?? 0) < DIPLO.improveCost) return `Precisa de ${DIPLO.improveCost} pontos administrativos`;
   c.admin! -= DIPLO.improveCost;
-  addRelation(e, a, b, DIPLO.improve);
+  addRelation(e, a, b, DIPLO.improve + diplomatBonus(e, a)); // diplomata hábil rende mais
   return null;
 }
 

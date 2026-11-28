@@ -174,6 +174,7 @@ Atributos 0–100: `adm` (impostos), `dip` (relações), `mil` (exército e bata
 | general no dado | 0 a +2 pela habilidade militar (`attrMod(skill(gen, "mil"))`) |
 | almirante no dado | idem, +0,5 com Combate naval |
 | comandante aéreo | prontidão +10% (+20% com Logística aérea) |
+| diplomata (`DIPLOMAT`) | (diplomacia − 50) × 0,2 = pontos a mais por "Melhorar relações" e de tolerância para assinar acordos; custa 60 |
 
 Traço (`TRAIT_FX`) e personalidade (`PERSONALITIES`) usam o mesmo formato:
 

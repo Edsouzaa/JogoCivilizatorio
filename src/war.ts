@@ -1,6 +1,6 @@
 import { resolveNaval, convoyFactor, bombardMods } from "./seawar.ts";
 import { stepAir, airSupport, airRecon, AIRW } from "./airwar.ts";
-import { resolveBattles, entrench, setRiverCheck, BATTLE_HOOKS } from "./battle.ts";
+import { resolveBattles, entrench, setRiverCheck, BATTLE_HOOKS, BATTLE } from "./battle.ts";
 import { chronicle } from "./chronicle.ts";
 import { incFx } from "./admin.ts";
 import { stepSupply, attrition, depotHexes } from "./logistics.ts";
@@ -434,7 +434,7 @@ export function stepWar(w: World, e: Economy) {
     (ds, n) => takeLosses(w, e, ds, n),
     (b, winner, att, def) => { // batalha decidida: registro de cada comandante (characters.ts)
       const k = e.market[b.hex]; const city = k && e.cities[k - 1].hex === b.hex ? e.cities[k - 1].name : null;
-      recordBattle(e, b, winner, att, def, city ? `de ${city}` : `em (${b.hex % w.W}, ${(b.hex / w.W) | 0})`);
+      recordBattle(e, b, winner, att, def, city ? `de ${city}` : `em (${b.hex % w.W}, ${(b.hex / w.W) | 0})`, { name: TERRAINS[w.terrain[b.hex]].name, defense: BATTLE.terrainDefense[w.terrain[b.hex]] ?? 0 });
     },
     (hex, a, b) => Math.round((2 * airSuperiority(e, airRegion(e, hex), a, b) - 1) * 10) / 10);
   for (const d of landFights) fighting.add(d);

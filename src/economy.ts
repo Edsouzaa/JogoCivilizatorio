@@ -29,7 +29,7 @@ import { payTribute, stepSubjects, type Subject } from "./subjects.ts";
 import { stepClaims, type Claim } from "./claims.ts";
 import { foundingCost, updateExpansion } from "./expansion.ts";
 import { expireProposals, type Proposal, type Vote } from "./proposals.ts";
-import { rulerOf, attrMod, CHAR, noteRuler, lawNote, type Character, skill } from "./characters.ts";
+import { rulerOf, attrMod, CHAR, noteRuler, lawNote, note, diplomatOf, diplomatBonus, type Character, skill } from "./characters.ts";
 import { homeIdentity, stepCulture, type Identity } from "./culture.ts";
 import { ADMIN, hasIncentive, stepAdmin, adminCap, INCENTIVES, incFx, incCountryFx, type Incentive } from "./admin.ts";
 import { BUILDING_KIND } from "./pops.ts";
@@ -310,6 +310,7 @@ export type Country = {
   radicals: number;     // fração da população com lealdade baixa
   migration: number;    // saldo migratório do último mês (+ chegou, − saiu)
   subsistence: number;  // valor da comida de subsistência comida em casa na semana (renda em espécie de quem vive da terra)
+  diplomat?: number;    // personagem no cargo de diplomata (characters.ts)
   heirWaiting?: number; // herdeiro criança esperando a maioridade (há regente)
   incLiteracy?: number; incSkill?: number; incCulture?: number; // marcas permanentes dos incentivos (admin.ts)
   subSold?: number;     // valor do excedente de subsistência vendido na semana
@@ -704,10 +705,11 @@ export function proposePact(e: Economy, a: number, b: number): string | null {
   if (bad) return `Recusado: infâmia alta (${Math.round(e.countries[bad - 1].infamy)} ≥ ${INFAMY.noPacts})`;
   const puppet = [a, b].find((x) => e.subjects?.[x]?.kind === "Fantoche" && e.subjects[x].overlord !== (x === a ? b : a));
   if (puppet) return "Fantoche não assina acordos sem o soberano";
-  if (relation(e, a, b) < DIPLO.pactMin) return `Recusado: relações ruins demais (${Math.round(relation(e, a, b))})`;
+  if (relation(e, a, b) < DIPLO.pactMin - diplomatBonus(e, a) - diplomatBonus(e, b)) return `Recusado: relações ruins demais (${Math.round(relation(e, a, b))})`;
   e.pacts.add(pactKey(a, b));
   const ra = rulerOf(e, a), rb = rulerOf(e, b);
-  chronicle(e, "tratado", `acordo comercial entre §${a}§ e §${b}§`, [a, b], [ra?.id, rb?.id].filter((x): x is number => x !== undefined), 2);
+  chronicle(e, "tratado", `acordo comercial entre §${a}§ e §${b}§`, [a, b], [ra?.id, rb?.id, e.countries[a - 1].diplomat, e.countries[b - 1].diplomat].filter((x): x is number => x !== undefined), 2);
+  for (const k of [a, b]) { const d = diplomatOf(e, k); if (d) note(d, e.week, `negociou o acordo comercial entre §${a}§ e §${b}§`); }
   noteRuler(e, a, `assinou um acordo comercial com §${b}§`); noteRuler(e, b, `assinou um acordo comercial com §${a}§`);
   return null;
 }

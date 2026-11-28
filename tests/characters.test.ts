@@ -217,3 +217,35 @@ console.log("characters ok");
   assert.ok(e.chronicle!.some((v) => v.x === "guerra importante"), "importante não some primeiro");
   console.log("characters ok (crônica, tratados, regência)");
 }
+
+// etapa 6: diplomata (cargo, bônus real), avaliação do comando por batalha
+{
+  const ch = await import("../src/characters.ts");
+  const { generateWorld } = await import("../src/world.ts");
+  const { createEconomy } = await import("../src/economy.ts");
+  const { improveRelations, relation } = await import("../src/diplomacy.ts");
+  const { applyCommand } = await import("../src/commands.ts");
+  const w = generateWorld(120, 60, 7, 2), e = createEconomy(w);
+  ch.stepCharacters(w, e);
+  const cs = ch.diplomatCandidates(w, e, 1);
+  assert.equal(cs.length, 3);
+  e.countries[0].treasury = 1000;
+  assert.equal(applyCommand(w, e, 1, { t: "diplomat", pick: 2 }), null);
+  const d = ch.diplomatOf(e, 1)!;
+  assert.equal(d.name, cs[2].name); assert.equal(d.offices![0].title, "Diplomata");
+  d.dip = 100; d.traits = []; d.personality = "Pragmático";
+  const bonus = ch.diplomatBonus(e, 1); assert.ok(bonus > 0);
+  e.countries[0].admin = 100; const r0 = relation(e, 1, 2);
+  assert.equal(improveRelations(e, 1, 2), null);
+  assert.equal(relation(e, 1, 2) - r0, 15 + bonus, "diplomata hábil rende mais");
+  // trocar: o anterior deixa o cargo
+  applyCommand(w, e, 1, { t: "diplomat", pick: 0 });
+  assert.equal(d.offices![0].end?.startsWith("substituído"), true);
+  // avaliação: só fatos medidos
+  const base = { week: 1, day: 0, place: "x", enemy: 2, weeks: 1 } as const;
+  assert.ok(ch.assess({ ...base, side: "atacante", won: true, own: 50, foe: 100, ownLost: 5, foeLost: 30 }, 1).includes("venceu em inferioridade numérica"));
+  assert.ok(ch.assess({ ...base, side: "atacante", won: true, own: 300, foe: 100, ownLost: 5, foeLost: 30 }, 1)[0].includes("mérito dividido"));
+  assert.ok(ch.assess({ ...base, side: "defensor", won: true, own: 100, foe: 100, ownLost: 5, foeLost: 30 }, 0.3, { name: "Colinas", defense: 2 }).some((n) => n.includes("colinas")));
+  assert.ok(ch.assess({ ...base, side: "defensor", won: true, own: 100, foe: 100, ownLost: 5, foeLost: 30 }, 0.3).some((n) => n.includes("mal abastecidas")));
+  console.log("characters ok (diplomata, avaliação)");
+}

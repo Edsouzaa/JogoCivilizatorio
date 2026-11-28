@@ -22,7 +22,7 @@ import { EVENT_LIST, resolve } from "./choices.ts";
 import { improveRelations } from "./diplomacy.ts";
 import { proposeSubject, releaseSubject, SUBJECT_KINDS, type SubjectKind } from "./subjects.ts";
 import { addProposal, respond, startVote, castVote } from "./proposals.ts";
-import { hireGeneral, lawNote } from "./characters.ts";
+import { hireGeneral, lawNote, hireDiplomat } from "./characters.ts";
 import { buildOutpost, buyHex } from "./expansion.ts";
 import { addIncentive, removeIncentive, INCENTIVES, type IncentiveKind } from "./admin.ts";
 import { createState, addCityToState, removeCityFromState, setStateTax } from "./states.ts";
@@ -64,6 +64,7 @@ export type Cmd =
   | { t: "law"; cat: string; name: string }
   | { t: "cancelLaw" }
   | { t: "recruit"; hex: number; unit?: string }
+  | { t: "diplomat"; pick?: number } // nomear diplomata (um de três candidatos)
   | { t: "general"; id: number; pick?: number } // contratar um dos 3 candidatos para a unidade
   | { t: "front"; ids: number[]; enemy: number; mode: "defend" | "attack" } // ordem de frente para um grupo
   | { t: "fleet"; hex: number; unit?: string }
@@ -183,6 +184,7 @@ export function applyCommand(w: World, e: Economy, country: number, c: Cmd): str
     case "cancelLaw": { const was = co.politics.enacting?.law; cancelLaw(co.politics); if (was) lawNote(e, country, was, "retirada"); return null; }
     case "recruit": return recruit(w, e, country, c.hex, typeof c.unit === "string" ? c.unit : undefined);
     case "front": return Array.isArray(c.ids) && c.ids.length <= 500 && c.ids.every((x) => isInt(x)) && isInt(c.enemy, 1) && (c.mode === "defend" || c.mode === "attack") ? frontOrder(w, e, country, c.ids, c.enemy, c.mode) : "Ordem inválida";
+    case "diplomat": return hireDiplomat(w, e, country, isInt(c.pick) ? c.pick : 0);
     case "general": return own(c.id) ? hireGeneral(w, e, c.id, isInt(c.pick) ? c.pick : 0) : "Unidade não é sua";
     case "fleet": return isInt(c.hex) && e.market[c.hex] ? orderShip(w, e, country, e.market[c.hex] - 1, typeof c.unit === "string" ? c.unit : "Galés") : "Escolha uma cidade sua no litoral"; // vai para a fila naval
     case "classTax": return (c.mode === "pct" || c.mode === "fixed") && Number.isFinite(c.v) ? setClassTax(e.countries[country - 1], c.cls, { mode: c.mode, v: c.v }) : "Imposto inválido";
