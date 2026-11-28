@@ -3,7 +3,7 @@
 // Atributos de 0 a 100 mexem em impostos, exército e diplomacia; a vida vira uma lista de acontecimentos.
 import { mulberry32, type World } from "./world.ts";
 import type { Economy } from "./economy.ts";
-import { makeName } from "./names.ts";
+import { makeName, LANGUAGES } from "./names.ts";
 import { lawOf } from "./politics.ts";
 import { START_YEAR } from "./tech.ts";
 
@@ -13,7 +13,7 @@ export type Character = {
   adm: number; dip: number; mil: number; traits: string[]; looks: Looks;
   life: string[]; // acontecimentos ("ano: texto"), para o livro da história
   dead?: boolean; saved?: boolean;
-  role?: "General";      // sem = governante
+  role?: "General" | "Agitador"; // sem = governante
   division?: number;     // general: divisão que comanda
   personality?: string;  // comportamento duradouro (PERSONALITIES); traços são características e experiências
   command?: Command; spec?: string; // comando (terrestre, naval, aéreo) e especialização do comandante
@@ -23,6 +23,10 @@ export type Character = {
   laws?: { name: string; week: number; result: "proposta" | "aprovada" | "retirada" }[]; // participação real em leis
   founded?: string[]; taken?: string[]; // cidades fundadas no governo; cidades tomadas em cerco
   coup?: boolean;                   // chegou ao poder por golpe
+  revolution?: boolean;             // chegou ao poder por revolução
+  langs?: number[];                 // línguas que fala (a primeira é a materna)
+  exiledTo?: number;                // país onde vive exilado
+  gone?: boolean;                   // saiu da vida pública (não morreu)
 };
 export type Office = { title: string; country: number; from: number; to?: number; why: string; end?: string };
 export type Command = "army" | "fleet" | "air";
@@ -122,6 +126,7 @@ export function newCharacter(w: World, e: Economy, country: number, seed: number
     looks: { skin: Math.floor(r() * 5), hair: Math.floor(r() * 5), hairStyle: traits.includes("Calvo") ? 2 : Math.floor(r() * 4), beard: female ? 0 : traits.includes("Barba longa") ? 3 : Math.floor(r() * 4), face: Math.floor(r() * 3), body: Math.floor(r() * 3), eyes: Math.floor(r() * 3), scar: traits.includes("Cicatrizado") || r() < 0.08 },
     life: [],
   };
+  c.langs = [lang, ...(traits.includes("Poliglota") ? [(lang + 1 + Math.floor(r() * 5)) % LANGUAGES.length] : [])];
   return c;
 }
 
@@ -174,6 +179,7 @@ export function titlesOf(c: Character, week: number): string[] {
   if (c.traits.includes("Herói de guerra")) t.push("Herói nacional");
   if ((c.laws?.filter((l) => l.result === "aprovada").length ?? 0) >= 2) t.push("Reformador");
   if ((c.founded?.length ?? 0) >= 3) t.push("Fundador");
+  if (c.revolution) t.push("Revolucionário");
   if (c.coup) t.push(PERSONALITIES[c.personality ?? ""] && ["Implacável", "Autoritário"].includes(c.personality!) ? "Tirano" : "Usurpador");
   if (ruled >= 20) t.push("Estadista");
   if (r.length >= 3 && wins === 0) t.push("Comandante derrotado");
@@ -245,6 +251,18 @@ export function recordBattle(e: Economy, b: { id: number; hex: number; start: nu
 }
 
 /** Uma vez por mês: governantes envelhecem e morrem; vem o sucessor. Devolve as mortes (para avisar o jogador). */
+export const AGITATION = { appear: 0.3, fade: 0.12, revolt: 0.45, legitimacy: 0.2, newLegitimacy: 0.5 };
+/** Governante derrubado vai para o país que melhor o recebe (melhor relação); aprende a língua de lá. */
+function exile(w: World, e: Economy, c: Character, from: number) {
+  const rel = (k: number) => e.relations?.[from < k ? `${from}-${k}` : `${k}-${from}`] ?? 0;
+  const host = e.countries.map((_, i) => i + 1).filter((k) => k !== from && e.cities.some((x) => x.country === k)).sort((a, b) => rel(b) - rel(a))[0];
+  if (!host) { c.gone = true; return; }
+  c.exiledTo = host; c.gone = true;
+  note(c, e.week, `${WEEKDAYS[dayOf(e.week, c.id + 1)]}: partiu para o exílio em §${host}§`);
+  openOffice(c, "Exilado", host, e.week, `fugiu de §${from}§`);
+  const l = w.countries[host - 1].lang ?? 0;
+  if (!(c.langs ??= [w.countries[from - 1].lang ?? 0]).includes(l)) { c.langs.push(l); note(c, e.week, "aprendeu a língua do país que o recebeu"); }
+}
 export function stepCharacters(w: World, e: Economy) {
   const deaths: Character[] = [];
   for (const g of e.characters ?? []) { // general morre de velhice ou perde a divisão (destruída)
@@ -259,8 +277,29 @@ export function stepCharacters(w: World, e: Economy) {
     const gen = strongman(e, k);
     // golpe: general vitorioso e ambicioso, governo fraco (sorteio fixo pela semana: no máximo 1 em 13 meses)
     if (gen && gen.id !== ruler.id && ambitious(gen) && ctry.politics.legitimacy < 0.25 && dayOf(e.week, gen.id + k) === 0 && (e.week >> 2) % 13 === gen.id % 13) {
-      note(ruler, e.week, `foi deposto por um golpe do general ${gen.name}`); closeOffice(ruler, "Governante", e.week, `deposto por golpe de ${gen.name}`);
+      note(ruler, e.week, `foi deposto por um golpe do general ${gen.name}`); closeOffice(ruler, "Governante", e.week, `deposto por golpe de ${gen.name}`); exile(w, e, ruler, k);
       gen.coup = true; enthrone(w, e, k, gen, "tomou o poder num golpe"); ctry.politics.legitimacy = Math.max(0, ctry.politics.legitimacy - 0.1);
+      return;
+    }
+    // agitador: aparece quando muita gente está radical; some quando o movimento esfria
+    let agit = (e.characters ?? []).find((c) => c.role === "Agitador" && c.country === k && !c.dead && !c.gone);
+    if (!agit && ctry.radicals > AGITATION.appear) {
+      agit = newCharacter(w, e, k, e.week * 5 + k);
+      agit.role = "Agitador"; agit.personality = ["Populista", "Idealista", "Inspirador", "Implacável"][agit.id % 4];
+      note(agit, agit.born, `nasceu em §${k}§`); note(agit, e.week, `${WEEKDAYS[dayOf(e.week, agit.id)]}: passou a liderar os descontentes de §${k}§`);
+      openOffice(agit, "Agitador político", k, e.week, `radicais em ${Math.round(ctry.radicals * 100)}% da população`);
+      (e.characters ??= []).push(agit);
+    } else if (agit && ctry.radicals < AGITATION.fade) {
+      agit.gone = true; agit.role = undefined; closeOffice(agit, "Agitador político", e.week, "o movimento se dispersou"); note(agit, e.week, "deixou a vida pública: o movimento esfriou");
+      agit = undefined;
+    }
+    // revolução: radicais demais e governo sem legitimidade; o agitador toma o poder, o governante vai para o exílio
+    if (agit && ctry.radicals > AGITATION.revolt && ctry.politics.legitimacy < AGITATION.legitimacy && dayOf(e.week, agit.id) === 0) {
+      note(ruler, e.week, `foi derrubado pela revolução de ${agit.name}`); closeOffice(ruler, "Governante", e.week, `derrubado pela revolução de ${agit.name}`);
+      exile(w, e, ruler, k);
+      closeOffice(agit, "Agitador político", e.week, "a revolução venceu");
+      agit.role = undefined; agit.revolution = true; enthrone(w, e, k, agit, "liderou a revolução e tomou o governo");
+      ctry.politics.legitimacy = AGITATION.newLegitimacy;
       return;
     }
     if (e.week < ruler.dies) return;
@@ -275,6 +314,7 @@ export function stepCharacters(w: World, e: Economy) {
     crown(w, e, k, gov === "República" ? "eleito para governar" : gov === "Teocracia" ? "escolhido pelo clero para governar" : gov === "Partido único" ? "escolhido pelo partido para comandar" : "herdou o governo");
   });
   // morto só continua guardado se o jogador guardou na história (o livro dele)
+  for (const c of e.characters ?? []) if ((c.exiledTo || c.gone) && !c.dead && e.week >= c.dies) { c.dead = true; note(c, e.week, `morreu aos ${ageOf(c, e.week)} anos${c.exiledTo ? ` no exílio, em §${c.exiledTo}§` : ""}`); closeOffice(c, "Exilado", e.week, "morte"); }
   e.characters = (e.characters ?? []).filter((c) => !c.dead || c.saved);
   return deaths;
 }

@@ -110,3 +110,33 @@ console.log("characters ok");
   assert.deepEqual(ch.titlesOf(ch.newCharacter(w, e, 2, 77), e.week), []);
   console.log("characters ok (cargos, leis, sucessão, títulos)");
 }
+
+// etapa 3: agitador aparece com radicais; revolução derruba o governante, que vai para o exílio e aprende a língua de lá
+{
+  const ch = await import("../src/characters.ts");
+  const { generateWorld } = await import("../src/world.ts");
+  const { createEconomy } = await import("../src/economy.ts");
+  const { rulerWar } = await import("../src/ai.ts");
+  const w = generateWorld(120, 60, 4, 2), e = createEconomy(w);
+  ch.stepCharacters(w, e);
+  const c = e.countries[0], old = ch.rulerOf(e, 1)!;
+  c.radicals = 0.5; c.politics.legitimacy = 0.1; old.dies = e.week + 9999;
+  ch.stepCharacters(w, e);
+  const agit = e.characters!.find((x) => x.country === 1 && x.offices?.some((o) => o.title === "Agitador político"))!;
+  assert.ok(agit, "agitador apareceu");
+  let weeks = 0;
+  while (ch.rulerOf(e, 1)!.id === old.id && weeks++ < 30) { e.week++; ch.stepCharacters(w, e); }
+  assert.equal(ch.rulerOf(e, 1)!.id, agit.id, "a revolução venceu");
+  assert.ok(agit.revolution && ch.titlesOf(agit, e.week).includes("Revolucionário"));
+  assert.ok(old.exiledTo && old.exiledTo !== 1, "governante no exílio");
+  assert.ok(old.langs!.includes(w.countries[old.exiledTo - 1].lang ?? 0));
+  assert.equal(c.politics.legitimacy, ch.AGITATION.newLegitimacy);
+  // radicais baixos: o movimento esfria e o agitador sai de cena
+  c.radicals = 0.5; e.week++; ch.stepCharacters(w, e);
+  const a2 = e.characters!.find((x) => x.role === "Agitador" && x.country === 1 && !x.gone);
+  if (a2) { c.radicals = 0; e.week++; ch.stepCharacters(w, e); assert.ok(a2.gone); }
+  // IA: governante expansionista empurra para a guerra, pacifista segura
+  const r = ch.rulerOf(e, 1)!; r.personality = "Expansionista"; r.traits = []; assert.ok(rulerWar(e, 1) > 1);
+  r.personality = "Conciliador"; r.traits = ["Pacifista"]; assert.ok(rulerWar(e, 1) < 0.5);
+  console.log("characters ok (agitadores, revolução, exílio)");
+}

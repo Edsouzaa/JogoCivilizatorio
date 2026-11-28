@@ -126,6 +126,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 - Incentivos regionais com Complexidade Social (docs/incentivos.md).
 - Personagens: personalidade separada de traços, traços adquiridos em batalha, 3 candidatos por comando (terrestre, naval, aéreo) com especialização, registro de batalhas com números, livro com biografia e exportação em PDF, dia da semana no calendário.
 - Personagens, etapa 2: histórico de cargos (acumula governante e comandante), leis propostas, retiradas e aprovadas no governo, cidades fundadas e tomadas, general herói assume na sucessão, golpe de general ambicioso com governo fraco, classificações históricas e título da capa do livro pelos feitos registrados.
+- Personagens, etapa 3: agitadores surgem com radicais acima de 30% e somem abaixo de 12%; revolução (radicais > 45%, legitimidade < 20%) põe o agitador no governo; governante derrubado vai para o exílio no país de melhor relação e aprende a língua de lá; línguas no perfil; governante pesa na IA (guerra e leis). Modo Militar com setas de ofensiva e avanço e pilhas agrupadas.
 
 ## Próximos (nesta ordem)
 
@@ -146,7 +147,7 @@ Fila de implementação a partir da lista grande de pedidos. A ordem segue a dep
 8. **População**
     - Cultura/língua/religião por POP (hoje é por cidade), grupos culturais, famílias de línguas e religiões, surgimento e divisão de culturas.
 9. **Leis**
-10. **Personagens, etapa 3**: revoluções lideradas por agitadores, mudança de país e exílio, idiomas aprendidos, retratos em estilo caricatural com mais formas, IA usando a personalidade nas decisões.
+10. **Personagens, etapa 4**: retratos em estilo caricatural com mais formas e acessórios por era, religião própria do personagem, casamento e herdeiros.
 10. **Construção estilo Vic3 (resto)**: setor de construção (capacidade, materiais), propriedade dos edifícios, privatização e nacionalização, investimento estrangeiro.
 11. **Diplomacia**
     - Confiança, influência e esferas.

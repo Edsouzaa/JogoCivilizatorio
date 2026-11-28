@@ -16,6 +16,13 @@ import { hexDistance, hexesInRadius, forNeighbors } from "./hex.ts";
 import { relation, DIPLO } from "./diplomacy.ts";
 import { proposeSubject } from "./subjects.ts";
 import { personality, PERSONALITIES } from "./claims.ts";
+import { rulerOf } from "./characters.ts";
+/** Quanto o governante empurra para a guerra (personalidade e traços); 1 = neutro. */
+export function rulerWar(e: Economy, country: number) {
+  const r = rulerOf(e, country); if (!r) return 1;
+  const p = ({ Expansionista: 1.8, Agressivo: 1.5, "Implacável": 1.4, Audacioso: 1.3, Impulsivo: 1.3, Arrogante: 1.2, Conciliador: 0.5, Prudente: 0.7, Isolacionista: 0.6, Humilde: 0.8, Generoso: 0.8 } as Record<string, number>)[r.personality ?? ""] ?? 1;
+  return p * (r.traits.includes("Pacifista") ? 0.4 : 1) * (r.traits.includes("Guerreiro") ? 1.3 : 1);
+}
 import { anchors, pathDistance, buildOutpost } from "./expansion.ts";
 import { bestUnit, bestCraft, craftsFor, SHIPS, PLANES } from "./units.ts";
 import { TERRAINS, isLand, mulberry32, type World } from "./world.ts";
@@ -156,10 +163,10 @@ export function privateInvest(w: World, e: Economy) {
   });
 }
 
-function legislate(c: Economy["countries"][number]) {
+function legislate(c: Economy["countries"][number], reformer = 1) {
   const p = c.politics;
   if (p.enacting) return;
-  let best: [string, string] | null = null, bestS = AI.lawSupport;
+  let best: [string, string] | null = null, bestS = AI.lawSupport / reformer; // governante reformista tenta com menos apoio
   for (const [cat, laws] of Object.entries(LAWS)) for (const l of laws) {
     if (l.era > c.research.era || (l.tech && !c.research.known.has(l.tech)) || l.name === p.laws[cat]) continue;
     const s = lawSupport(p, l);
@@ -239,7 +246,7 @@ function military(w: World, e: Economy, country: number, rand: () => number) {
     if (mine.some((m) => dist(w, m.hex, k.hex) <= AI.warReach * 2)) { declareWar(e, country, k.country); return; }
   }
   const pers = PERSONALITIES[personality(w, e, country)];
-  if (!armies.length || rand() > AI.warChancePerMonth * pers.war) return;
+  if (!armies.length || rand() > AI.warChancePerMonth * pers.war * rulerWar(e, country)) return; // o governante também pesa
   const claimed = new Set((e.claims ?? []).filter((x) => x.country === country).map((x) => e.cities[x.city]?.country));
   for (const k of [...e.cities].sort((a, b) => +claimed.has(b.country) - +claimed.has(a.country))) { // reivindicados primeiro
     if (k.country === country || relation(e, country, k.country) > DIPLO.warMax || !mine.some((m) => dist(w, m.hex, k.hex) <= AI.warReach)) continue;
@@ -255,7 +262,7 @@ export function runAI(w: World, e: Economy, country: number) {
   const rand = mulberry32(w.seed * 31 + country * 7919 + e.week);
   expand(w, e, country, c.research.era);
   invest(w, e, country);
-  legislate(c);
+  { const r = rulerOf(e, country); legislate(c, r && (r.personality === "Reformista" || r.traits.includes("Reformador")) ? 2 : r?.personality === "Conservador" ? 0.5 : 1); }
   if (rand() < AI.pactChancePerMonth * PERSONALITIES[personality(w, e, country)].pact) { // acordo comercial com o vizinho mais perto que ainda não tem
     const mine = e.cities.filter((k) => k.country === country);
     let best = 0, bestD = RULES.foreignRange;

@@ -1742,6 +1742,9 @@ function bioText(c: NonNullable<Economy["characters"]>[number]) {
   if (c.founded?.length) parts.push(`Fundou ${c.founded.join(", ")}.`);
   const acquired = c.traits.filter((t) => ["Veterano", "Herói de guerra", "Sobrevivente de derrota", "Ferido em combate", "Caolho"].includes(t));
   if (acquired.length) parts.push(`As campanhas o marcaram: ${acquired.join(", ").toLowerCase()}.`);
+  if (c.revolution) parts.push("Chegou ao poder à frente de uma revolução.");
+  if (c.exiledTo) parts.push(`Terminou exilado em ${world.countries[c.exiledTo - 1].name}.`);
+  if ((c.langs?.length ?? 0) > 1) parts.push(`Falava ${c.langs!.map(languageName).join(", ")}.`);
   parts.push(c.dead ? `Morreu aos ${ageOf(c, Math.min(eco.week, c.dies))} anos.` : `Aos ${ageOf(c, eco.week)} anos, segue vivo.`);
   return parts.join(" ");
 }
@@ -1796,6 +1799,7 @@ function charProfileHtml(c: NonNullable<Economy["characters"]>[number]) {
     attr("adm", "Administração (impostos)") + attr("dip", "Diplomacia (relações)") + attr("mil", "Militar (exército e batalhas)") +
     (c.personality ? `<p><small>Personalidade: <b>${c.personality}</b> — ${PERSONALITIES[c.personality]?.desc ?? ""}</small></p>` : "") +
     (c.command ? `<p><small>Comando ${COMMAND_NAME[c.command]} · especialização <b>${c.spec}</b> · ${c.fights ?? 0} batalhas, ${c.wins ?? 0} vitórias</small></p>` : "") +
+    `<p><small>Fala ${(c.langs ?? [world.countries[c.country - 1].lang ?? 0]).map(languageName).join(", ")}${c.exiledTo ? ` · <b>exilado em ${world.countries[c.exiledTo - 1].name}</b>` : c.gone ? " · fora da vida pública" : ""}</small></p>` +
     (titlesOf(c, eco.week).length ? `<p><small>Lembrado como: <b>${titlesOf(c, eco.week).join(", ")}</b></small></p>` : "") +
     `<h3>Traços</h3><ul style="margin:0;padding-left:16px">${traits}</ul>` +
     (c.role === "General" ? `<small>Estilo de comando: <b>${styleOf(c)}</b> — ${STYLES[styleOf(c)]}</small>` : "") +
@@ -2295,7 +2299,7 @@ function drawUnits() {
     units.fillStyle = `rgb(${world.countries[o.country - 1].color})`; units.strokeStyle = "#000"; units.lineWidth = 1.2;
     units.beginPath(); units.moveTo(x, y - r * 0.7); units.lineTo(x + r * 0.6, y + r * 0.45); units.lineTo(x - r * 0.6, y + r * 0.45); units.closePath(); units.fill(); units.stroke();
   }
-  const stack = new Map<number, number>();
+  const stack = new Map<number, number>(), mil = special === "military"; // modo Militar: setas de todas as ordens e pilhas agrupadas
   for (const d of eco.divisions) {
     if (d.country !== active && !canSee(d.hex)) continue;
     const [sx, sy] = toScreen(d.hex);
@@ -2303,10 +2307,13 @@ function drawUnits() {
     const n = stack.get(d.hex) ?? 0; stack.set(d.hex, n + 1);
     const x = sx + n * r * 0.6, y = sy - n * r * 0.6;
     const sel = d.id === selectedDiv || group.includes(d.id);
-    if (d.target !== null && sel) {
-      const [tx, ty] = toScreen(d.target);
-      units.strokeStyle = "#fff"; units.setLineDash([4, 4]); units.beginPath(); units.moveTo(x, y); units.lineTo(tx, ty); units.stroke(); units.setLineDash([]);
+    if (d.target !== null && (sel || (mil && d.country === active))) {
+      const [tx, ty] = toScreen(d.target), hostile = world.owner[d.target] && world.owner[d.target] !== d.country;
+      units.strokeStyle = sel ? "#fff" : hostile ? "#e86a5a" : "#8cc8ff"; units.lineWidth = mil ? 2 : 1; units.setLineDash(hostile ? [] : [4, 4]);
+      units.beginPath(); units.moveTo(x, y); units.lineTo(tx, ty); units.stroke(); units.setLineDash([]);
+      if (mil) { const a = Math.atan2(ty - y, tx - x), h = Math.max(6, r * 0.8); units.beginPath(); units.moveTo(tx, ty); units.lineTo(tx - h * Math.cos(a - 0.4), ty - h * Math.sin(a - 0.4)); units.moveTo(tx, ty); units.lineTo(tx - h * Math.cos(a + 0.4), ty - h * Math.sin(a + 0.4)); units.stroke(); } // ofensiva: seta cheia vermelha; avanço/defesa: azul tracejada
     }
+    if (mil && n >= 3 && !sel) continue; // pilha grande: o resto vira o número do grupo
     units.fillStyle = `rgb(${world.countries[d.country - 1].color})`;
     units.strokeStyle = sel ? "#fff" : "#000"; units.lineWidth = sel ? 3 : 1.5;
     units.beginPath();
@@ -2318,6 +2325,11 @@ function drawUnits() {
     units.fillStyle = "#3c3"; units.fillRect(x - r, y + r + 2, 2 * r * d.org, 3); // barra de organização
     if (r >= 6) drawFlag(units, x - r * 1.1, y - r * 1.9, r * 1.2, r * 0.8, flagOf(d.country)); // bandeira do país
     if (r >= 10) { units.fillStyle = "#000"; units.font = `bold ${Math.round(r * 0.8)}px sans-serif`; units.textAlign = "center"; units.textBaseline = "middle"; units.fillText(String(Math.round(d.strength)), x, y); }
+  }
+  if (mil) for (const [hex, n] of stack) if (n > 3) { // grupo: quantas unidades há no hex
+    const [sx, sy] = toScreen(hex), x = sx + 3 * r * 0.6 + r, y = sy - 3 * r * 0.6 - r;
+    units.fillStyle = "#1b1e24"; units.strokeStyle = "#ffd76a"; units.lineWidth = 1.5; units.beginPath(); units.arc(x, y, Math.max(7, r * 0.7), 0, Math.PI * 2); units.fill(); units.stroke();
+    units.fillStyle = "#ffd76a"; units.font = `bold ${Math.max(9, Math.round(r * 0.7))}px sans-serif`; units.textAlign = "center"; units.textBaseline = "middle"; units.fillText(`${n}`, x, y);
   }
 }
 
